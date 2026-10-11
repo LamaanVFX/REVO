@@ -556,104 +556,81 @@ bool GraphicsCapture::IsWindowCandidate(HWND window) const {
 
 bool GraphicsCapture::StartSessionLocked(const CaptureTarget& target, Error& error) {
   StopSessionLocked();
+  if (target.kind == TargetKind::kNone) return false;
   last_enqueued_pts_.store(-1, std::memory_order_relaxed);
   wgc_clock_trace_ = {};
   frame_clock_mode_ = FrameClockMode::kUndetermined;
-  try {
-    const auto monitor = target.kind == TargetKind::kMonitor ? target.monitor
-                         : target.kind == TargetKind::kWindow
-                             ? MonitorFromWindow(target.window, MONITOR_DEFAULTTONEAREST)
-                             : nullptr;
-    LogTargetAdapter(monitor, target.kind == TargetKind::kMonitor);
-    item_ = target.kind == TargetKind::kWindow ? CreateForWindow(target.window)
-                                               : CreateForMonitor(target.monitor);
-    const auto size = item_.Size();
-    if (size.Width <= 0 || size.Height <= 0 || size.Width > 8192 || size.Height > 8192) {
-      error = Error{ErrorComponent::kCapture, "inspect capture target",
-                    "capture target dimensions must be between 1 and 8192 pixels"};
-      return false;
-    }
-    current_width_ = static_cast<std::uint32_t>(size.Width);
-    current_height_ = static_cast<std::uint32_t>(size.Height);
-    if (output_width_ == 0 && output_height_ == 0) {
-      output_width_ = EvenNv12Dimension(current_width_);
-      output_height_ = EvenNv12Dimension(current_height_);
-      logger_.Info("Source-sized video output locked to " + std::to_string(output_width_) + "x" +
-                   std::to_string(output_height_) + " for this media pipeline" +
-                   (output_width_ != current_width_ || output_height_ != current_height_
-                        ? " (rounded to even NV12 dimensions)"
-                        : ""));
-    }
-    frame_pool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
-        interop_device_,
-        winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized, 3, size);
-    frame_token_ = frame_pool_.FrameArrived({this, &GraphicsCapture::OnFrameArrived});
-    closed_token_ = item_.Closed({this, &GraphicsCapture::OnTargetClosed});
-    session_ = frame_pool_.CreateCaptureSession(item_);
-    // Recent Windows builds default WGC to 60 updates/s even on a high-refresh
-    // monitor. Request input headroom; the output scheduler still sets file FPS.
-    // The dependent requires expression keeps older Windows SDK builds working.
-    bool interval_configured = false;
-    try {
-      const auto configure_interval = [&](auto& session) {
-        const winrt::Windows::Foundation::TimeSpan interval{
-            FixedVideoTimestamp100ns(0, 1, config_.target_fps * 2)};
-        if constexpr (requires { session.MinUpdateInterval(interval); }) {
-          session.MinUpdateInterval(interval);
-          return true;
-        }
-        return false;
-      };
-      interval_configured = configure_interval(session_);
-    } catch (const winrt::hresult_error&) {
-      // Older Windows versions have no update-interval interface.
-    }
-    if (interval_configured)
-      logger_.Info("WGC minimum update interval configured for " +
-                   std::to_string(config_.target_fps * 2) + " Hz input headroom");
-    else if (config_.target_fps > 60)
-      logger_.Warning(
-          "Windows capture update-rate control is unavailable; 120 FPS output "
-          "may repeat a 60 FPS source. Check source FPS in the dashboard");
-    try {
-      session_.IsCursorCaptureEnabled(config_.capture_cursor);
-    } catch (const winrt::hresult_error&) {
-      logger_.Warning("Cursor capture control is unavailable on this Windows build");
-    }
-    try {
-      session_.IsBorderRequired(config_.capture_border);
-    } catch (const winrt::hresult_error&) {
-      logger_.Warning("Capture highlight control is unavailable on this Windows build");
-    }
-    session_.StartCapture();
-    active_target_ = target;
-    capture_target_active_.store(true, std::memory_order_release);
-    const auto requested_mode = target_mode_.load(std::memory_order_acquire);
-    const bool window = target.kind == TargetKind::kWindow;
-    const auto source_id =
-        window ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.window))
-               : static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.monitor));
-    const auto description =
-        window ? WindowLabel(target.window)
-               : (requested_mode == CaptureTargetMode::kGameWindow ? "Choose a game or window"
-                                                                   : MonitorLabel(target.monitor));
-    state_.SetTarget(requested_mode, description,
-                     requested_mode == CaptureTargetMode::kGameWindow && !window ? 0 : source_id);
-    state_.SetStatus(CaptureStatus::kBuffering, "Capturing");
-    logger_.Info("Capture target: " + description);
-    return true;
-  } catch (const winrt::hresult_error& exception) {
+  const HMONITOR monitor = target.kind == TargetKind::kWindow
+                               ? MonitorFromWindow(target.window, MONITOR_DEFAULTTONEAREST)
+                               : target.monitor;
+  LogTargetAdapter(monitor, target.kind == TargetKind::kMonitor);
+  if (!CreateDesktopDuplication(monitor, error)) {
     capture_target_active_.store(false, std::memory_order_release);
-    error =
-        MakeHresultError(ErrorComponent::kCapture, "start capture session", exception.code().value);
-    return false;
-  } catch (const std::exception& exception) {
-    capture_target_active_.store(false, std::memory_order_release);
-    error = Error{ErrorComponent::kCapture, "start capture session", exception.what()};
     return false;
   }
-}
 
+  RECT crop{};
+  const auto desktop = duplication_output_desc_.DesktopCoordinates;
+  if (target.kind == TargetKind::kWindow) {
+    if (!IsWindow(target.window) || !GetClientRect(target.window, &crop)) {
+      error = MakeWin32Error(ErrorComponent::kCapture, "inspect selected game window", GetLastError());
+      duplication_ = nullptr;
+      return false;
+    }
+    POINT top_left{crop.left, crop.top};
+    POINT bottom_right{crop.right, crop.bottom};
+    if (!ClientToScreen(target.window, &top_left) || !ClientToScreen(target.window, &bottom_right)) {
+      error = MakeWin32Error(ErrorComponent::kCapture, "convert game bounds to screen coordinates", GetLastError());
+      duplication_ = nullptr;
+      return false;
+    }
+    crop = RECT{top_left.x, top_left.y, bottom_right.x, bottom_right.y};
+    crop.left = std::max(crop.left, desktop.left);
+    crop.top = std::max(crop.top, desktop.top);
+    crop.right = std::min(crop.right, desktop.right);
+    crop.bottom = std::min(crop.bottom, desktop.bottom);
+    crop.left -= desktop.left;
+    crop.right -= desktop.left;
+    crop.top -= desktop.top;
+    crop.bottom -= desktop.top;
+  } else {
+    crop = RECT{0, 0, desktop.right - desktop.left, desktop.bottom - desktop.top};
+  }
+  const auto width = crop.right - crop.left;
+  const auto height = crop.bottom - crop.top;
+  if (width < 2 || height < 2 || width > 8192 || height > 8192) {
+    error = Error{ErrorComponent::kCapture, "inspect capture crop",
+                  "the selected window or display has invalid capture dimensions"};
+    duplication_ = nullptr;
+    return false;
+  }
+  current_width_ = EvenNv12Dimension(static_cast<std::uint32_t>(width));
+  current_height_ = EvenNv12Dimension(static_cast<std::uint32_t>(height));
+  if (output_width_ == 0 && output_height_ == 0) {
+    output_width_ = current_width_;
+    output_height_ = current_height_;
+    logger_.Info("Source-sized video output locked to " + std::to_string(output_width_) + "x" +
+                 std::to_string(output_height_));
+  }
+  active_target_ = target;
+  capture_target_active_.store(true, std::memory_order_release);
+  capture_generation_.fetch_add(1, std::memory_order_acq_rel);
+  const auto requested_mode = target_mode_.load(std::memory_order_acquire);
+  const bool window = target.kind == TargetKind::kWindow;
+  const auto source_id = window
+      ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.window))
+      : static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.monitor));
+  const auto description = window
+      ? WindowLabel(target.window)
+      : (requested_mode == CaptureTargetMode::kGameWindow ? "Choose a game or window"
+                                                          : MonitorLabel(target.monitor));
+  state_.SetTarget(requested_mode, description,
+                   requested_mode == CaptureTargetMode::kGameWindow && !window ? 0 : source_id);
+  state_.SetStatus(CaptureStatus::kBuffering, "Capturing without WGC / capture highlight");
+  logger_.Info("DXGI Desktop Duplication capture target: " + description);
+  duplication_thread_ = std::jthread([this](std::stop_token token) { DesktopDuplicationLoop(token); });
+  return true;
+}
 void GraphicsCapture::LogTargetAdapter(HMONITOR monitor, bool is_display_capture) {
   state_.SetCaptureAdapter({}, "unknown");
   if (monitor == nullptr) return;
@@ -720,6 +697,10 @@ void GraphicsCapture::LogTargetAdapter(HMONITOR monitor, bool is_display_capture
 }
 
 void GraphicsCapture::StopSessionLocked() noexcept {
+  duplication_thread_.request_stop();
+  duplication_thread_ = {};
+  duplication_ = nullptr;
+  duplication_output_desc_ = {};
   try {
     if (frame_pool_ != nullptr) frame_pool_.FrameArrived(frame_token_);
     if (item_ != nullptr) item_.Closed(closed_token_);
@@ -734,7 +715,6 @@ void GraphicsCapture::StopSessionLocked() noexcept {
   item_ = nullptr;
   active_target_ = {};
 }
-
 bool GraphicsCapture::StartLiveOverlay(Error& error) {
   HWND target = nullptr;
   struct SearchContext {
