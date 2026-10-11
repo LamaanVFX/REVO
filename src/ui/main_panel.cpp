@@ -1581,7 +1581,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 
     if (begin_settings_tab("audio", 3)) {
       SectionLabel("clips / audio");
-      ImGui::Checkbox("record desktop audio", &draft_.desktop_audio_enabled);
+      ImGui::Checkbox("enable selected application audio", &draft_.desktop_audio_enabled);
 #if defined(KLIP_USE_LIBOBS)
       ImGui::Checkbox("save five separate audio tracks", &draft_.obs_separate_audio_tracks);
       ImGui::TextColored(kMuted, "1 combined / 2 game / 3 microphone / 4 Discord / 5 music");
