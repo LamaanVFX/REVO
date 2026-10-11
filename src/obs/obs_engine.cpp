@@ -132,7 +132,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   if (!config_.capture_border && config_.obs_display_method == 0)
     config_.obs_display_method = 1;
   // Start with the non-Minecraft profile; detection upgrades to Minecraft's
-  // 240 FPS / 30 Mbps profile if javaw.exe is running.
+  // 240 FPS / 35 Mbps profile if javaw.exe is running.
   config_.target_fps = 60;
   config_.obs_replay_bitrate_kbps = 20'000;
   config_.obs_duration_priority = true;  // Profiles require a fixed CBR bitrate.
@@ -919,24 +919,72 @@ void ObsEngine::Tick() {
       std::transform(exe.begin(), exe.end(), exe.begin(),
                      [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
       const auto executable = PathToUtf8(std::filesystem::path(process.szExeFile));
-      if (exe == L"javaw.exe") {
-        detected_game = "Minecraft"; folder_name = "minecraft";
-        filename_prefix = "minecraft"; detected_executable = executable;
-        executables = {"javaw.exe"};
+      const auto set_profile = [&](const char* game, const char* folder,
+                                   const char* prefix,
+                                   std::initializer_list<const char*> aliases) {
+        detected_game = game;
+        folder_name = folder;
+        filename_prefix = prefix;
+        detected_executable = executable;
+        executables.clear();
+        executables.emplace_back(executable);
+        for (const auto* alias : aliases) {
+          if (std::find(executables.begin(), executables.end(), alias) == executables.end())
+            executables.emplace_back(alias);
+        }
+      };
+      if (exe == L"javaw.exe" || exe == L"minecraft.windows.exe") {
+        set_profile("Minecraft", "minecraft", "minecraft",
+                    {"javaw.exe", "minecraft.windows.exe"});
       } else if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
                  exe == L"fortniteclient-win64-shipping_eac_eos.exe") {
-        detected_game = "Fortnite"; folder_name = "fortnite";
-        filename_prefix = "fortnite"; detected_executable = executable;
-        executables = {"fortnite.exe", "fortniteclient-win64-shipping.exe",
-                       "fortniteclient-win64-shipping_eac_eos.exe"};
+        set_profile("Fortnite", "fortnite", "fortnite",
+                    {"fortnite.exe", "fortniteclient-win64-shipping.exe",
+                     "fortniteclient-win64-shipping_eac_eos.exe"});
       } else if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") {
-        detected_game = "Valorant"; folder_name = "valorant";
-        filename_prefix = "valorant"; detected_executable = executable;
-        executables = {"valorant.exe", "valorant-win64-shipping.exe"};
-      } else if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") {
-        detected_game = "GTA 5"; folder_name = "gta5";
-        filename_prefix = "gta5"; detected_executable = executable;
-        executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"};
+        set_profile("Valorant", "valorant", "valorant",
+                    {"valorant.exe", "valorant-win64-shipping.exe"});
+      } else if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" ||
+                 exe == L"playgtav.exe") {
+        set_profile("GTA 5", "gta5", "gta5",
+                    {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"});
+      } else if (exe.starts_with(L"fivem_") && exe.find(L"gtaprocess.exe") != std::wstring::npos) {
+        set_profile("GTA 5", "gta5", "gta5",
+                    {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"});
+      } else if (exe == L"cs2.exe") {
+        set_profile("Counter-Strike 2", "cs2", "cs2", {"cs2.exe"});
+      } else if (exe == L"r5apex.exe") {
+        set_profile("Apex Legends", "apex", "apex", {"r5apex.exe"});
+      } else if (exe == L"robloxplayerbeta.exe") {
+        set_profile("Roblox", "roblox", "roblox", {"robloxplayerbeta.exe"});
+      } else if (exe == L"overwatch.exe") {
+        set_profile("Overwatch", "overwatch", "overwatch", {"overwatch.exe"});
+      } else if (exe == L"rocketleague.exe") {
+        set_profile("Rocket League", "rocket-league", "rocket-league", {"rocketleague.exe"});
+      } else if (exe == L"eldenring.exe") {
+        set_profile("Elden Ring", "elden-ring", "elden-ring", {"eldenring.exe"});
+      } else if (exe == L"helldivers2.exe") {
+        set_profile("Helldivers 2", "helldivers2", "helldivers2", {"helldivers2.exe"});
+      } else if (exe == L"deadbydaylight-win64-shipping.exe") {
+        set_profile("Dead by Daylight", "dead-by-daylight", "dead-by-daylight",
+                    {"deadbydaylight-win64-shipping.exe"});
+      } else if (exe == L"destiny2.exe") {
+        set_profile("Destiny 2", "destiny2", "destiny2", {"destiny2.exe"});
+      } else if (exe == L"rainbowsix.exe" || exe == L"rainbowsix_vulkan.exe" ||
+                 exe == L"rainbow6.exe") {
+        set_profile("Rainbow Six Siege", "rainbow-six", "rainbow-six",
+                    {"rainbowsix.exe", "rainbowsix_vulkan.exe", "rainbow6.exe"});
+      } else if (exe == L"dota2.exe") {
+        set_profile("Dota 2", "dota2", "dota2", {"dota2.exe"});
+      } else if (exe == L"tslgame.exe" || exe == L"pubg.exe") {
+        set_profile("PUBG", "pubg", "pubg", {"tslgame.exe", "pubg.exe"});
+      } else if (exe == L"discovery.exe" || exe == L"thefinals.exe") {
+        set_profile("THE FINALS", "the-finals", "the-finals", {"discovery.exe", "thefinals.exe"});
+      } else if (exe == L"marvel-win64-shipping.exe") {
+        set_profile("Marvel Rivals", "marvel-rivals", "marvel-rivals",
+                    {"marvel-win64-shipping.exe"});
+      } else if (exe == L"bf2042.exe") {
+        set_profile("Battlefield 2042", "battlefield-2042", "battlefield-2042", {"bf2042.exe"});
       }
       return !detected_game.empty();
     };
@@ -984,14 +1032,26 @@ void ObsEngine::Tick() {
           std::transform(exe.begin(), exe.end(), exe.begin(),
                          [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
           int score = -1;
-          if (exe == L"javaw.exe") score = 10;
-          else if (exe == L"valorant-win64-shipping.exe") score = 70;
-          else if (exe == L"valorant.exe") score = 40;
-          else if (exe == L"fortniteclient-win64-shipping.exe" ||
-                   exe == L"fortniteclient-win64-shipping_eac_eos.exe") score = 70;
-          else if (exe == L"fortnite.exe") score = 40;
-          else if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe") score = 60;
-          else if (exe == L"playgtav.exe") score = 40;
+          if (exe == L"javaw.exe") score = 60;
+          else if (exe == L"minecraft.windows.exe") score = 65;
+          else if (exe == L"valorant.exe" || exe == L"fortnite.exe" ||
+                   exe == L"playgtav.exe") score = 35; // Launcher processes.
+          else if (exe == L"valorant-win64-shipping.exe" ||
+                   exe == L"fortniteclient-win64-shipping.exe" ||
+                   exe == L"fortniteclient-win64-shipping_eac_eos.exe" ||
+                   exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" ||
+                   exe == L"cs2.exe" || exe == L"r5apex.exe" ||
+                   exe == L"robloxplayerbeta.exe" || exe == L"overwatch.exe" ||
+                   exe == L"rocketleague.exe" || exe == L"eldenring.exe" ||
+                   exe == L"helldivers2.exe" || exe == L"deadbydaylight-win64-shipping.exe" ||
+                   exe == L"destiny2.exe" || exe == L"rainbowsix.exe" ||
+                   exe == L"rainbowsix_vulkan.exe" || exe == L"rainbow6.exe" ||
+                   exe == L"dota2.exe" || exe == L"tslgame.exe" || exe == L"pubg.exe" ||
+                   exe == L"discovery.exe" || exe == L"thefinals.exe" ||
+                   exe == L"marvel-win64-shipping.exe" || exe == L"bf2042.exe" ||
+                   (exe.starts_with(L"fivem_") &&
+                    exe.find(L"gtaprocess.exe") != std::wstring::npos))
+            score = 70;
 
           const bool has_visible_window =
               std::find(visible_window_pids.begin(), visible_window_pids.end(),
@@ -1057,7 +1117,7 @@ void ObsEngine::Tick() {
       // no-game fallback use 60 FPS. Bitrate values are kbps, as expected by OBS.
       const bool minecraft_profile = detected_game == "Minecraft";
       const std::uint32_t profile_fps = minecraft_profile ? 240U : 60U;
-      const int profile_bitrate_kbps = minecraft_profile ? 30'000 : 20'000;
+      const int profile_bitrate_kbps = minecraft_profile ? 35'000 : 20'000;
 
       StopOutput(replay_);
       if (replay_) { obs_output_release(replay_); replay_ = nullptr; }
