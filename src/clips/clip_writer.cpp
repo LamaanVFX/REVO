@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <exception>
 #include <iomanip>
 #include <sstream>
