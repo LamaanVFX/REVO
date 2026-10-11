@@ -208,6 +208,12 @@ void GraphicsCapture::Stop() noexcept {
   if (raw_queue_) raw_queue_->Clear();
   if (encode_queue_) encode_queue_->Clear();
   {
+    std::scoped_lock lock(capture_texture_pool_mutex_);
+    capture_texture_pool_.clear();
+    capture_texture_pool_width_ = 0;
+    capture_texture_pool_height_ = 0;
+  }
+  {
     std::scoped_lock lock(texture_pool_mutex_);
     texture_pool_.clear();
     encoder_texture_pool_.clear();
@@ -1448,15 +1454,19 @@ void GraphicsCapture::ProcessingLoop(std::stop_token stop_token) noexcept {
       RawFrame newer;
       while (raw_queue_->TryPop(newer)) {
         if (raw.frame != nullptr) {
-          try {
-            raw.frame.Close();
-          } catch (...) {
-          }
+          try { raw.frame.Close(); } catch (...) {}
         }
+        if (raw.recyclable && raw.texture)
+          RecycleCaptureTexture(raw.texture.get(), raw.width, raw.height);
         raw = std::move(newer);
         coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed);
       }
-      if (raw.generation != capture_generation_.load(std::memory_order_acquire)) continue;
+      if (raw.generation != capture_generation_.load(std::memory_order_acquire)) {
+        if (raw.frame != nullptr) { try { raw.frame.Close(); } catch (...) {} }
+        if (raw.recyclable && raw.texture)
+          RecycleCaptureTexture(raw.texture.get(), raw.width, raw.height);
+        continue;
+      }
       UpdatePreview(raw);
       ConvertedFrame converted;
       Error error;
@@ -1470,6 +1480,8 @@ void GraphicsCapture::ProcessingLoop(std::stop_token stop_token) noexcept {
                               .ToString());
         }
       }
+      if (raw.recyclable && raw.texture)
+        RecycleCaptureTexture(raw.texture.get(), raw.width, raw.height);
       if (!converted_ok) {
         state_.SetError(error);
         logger_.ErrorMessage(error);
