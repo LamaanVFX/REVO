@@ -979,7 +979,7 @@ void ObsEngine::Shutdown() noexcept {
   if (music_encoder_) { obs_encoder_release(music_encoder_); music_encoder_ = nullptr; }
   if (game_audio_meter_) { obs_volmeter_destroy(game_audio_meter_); game_audio_meter_ = nullptr; }
   if (microphone_meter_) { obs_volmeter_destroy(microphone_meter_); microphone_meter_ = nullptr; }
-  if (initialized_) for (std::uint32_t i = 0; i < 3; ++i) obs_set_output_source(i, nullptr);
+  if (initialized_) for (std::uint32_t i = 0; i < 5; ++i) obs_set_output_source(i, nullptr);
   if (scene_) { obs_scene_release(scene_); scene_ = nullptr; capture_item_ = nullptr; overlay_item_ = nullptr; }
   if (capture_) { obs_source_release(capture_); capture_ = nullptr; }
   if (overlay_) { obs_source_release(overlay_); overlay_ = nullptr; }
