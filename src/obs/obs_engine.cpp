@@ -512,7 +512,32 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
       return;
     }
     auto settings = MakeData();
-    obs_data_set_string(settings.get(), "window", window.c_str());
+    // Resolve the stable executable selector to the exact value exposed by
+    // the installed WASAPI process-capture source when that process is listed.
+    // This avoids passing our UI shorthand directly to a source expecting its
+    // serialized window selector, while retaining the executable fallback for
+    // processes that appear a moment later.
+    std::string source_window = window;
+    Properties process_properties(
+        obs_get_source_properties("wasapi_process_output_capture"),
+        obs_properties_destroy);
+    auto* process_window = process_properties
+        ? obs_properties_get(process_properties.get(), "window") : nullptr;
+    if (process_window && window.starts_with("::")) {
+      const auto desired_exe = window.substr(2);
+      for (std::size_t i = 0; i < obs_property_list_item_count(process_window); ++i) {
+        if (obs_property_list_item_disabled(process_window, i)) continue;
+        const char* candidate = obs_property_list_item_string(process_window, i);
+        if (!candidate) continue;
+        const auto last_colon = std::string_view(candidate).rfind(':');
+        if (last_colon != std::string_view::npos &&
+            _stricmp(std::string(candidate + last_colon + 1).c_str(), desired_exe.c_str()) == 0) {
+          source_window = candidate;
+          break;
+        }
+      }
+    }
+    obs_data_set_string(settings.get(), "window", source_window.c_str());
     obs_data_set_int(settings.get(), "priority", 2);
     if (!source) source = obs_source_create("wasapi_process_output_capture", name, settings.get(), nullptr);
     else obs_source_update(source, settings.get());
