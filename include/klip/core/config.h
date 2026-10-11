@@ -50,7 +50,7 @@ struct AppConfig {
   int obs_replay_bitrate_kbps = 40000;
   std::string obs_filename_format = "clip_%CCYY-%MM-%DD_%hh-%mm-%ss";
   bool obs_separate_audio_tracks = false;
-  int obs_display_method = 0; // OBS monitor_capture: auto=0, DXGI=1, WGC=2.
+  int obs_display_method = 1; // OBS monitor_capture: DXGI Desktop Duplication avoids the WGC border.
   bool obs_limit_game_capture_fps = false; // Opt-in OBS hook copy limiter; never caps the game itself.
   double clip_duration_seconds = 60.0;
   std::uint32_t target_fps = 60;
