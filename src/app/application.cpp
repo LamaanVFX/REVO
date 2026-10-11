@@ -799,6 +799,9 @@ bool KlipApplication::ApplySettings(const AppConfig& updated) {
   if (previous.excluded_audio_process != desired.excluded_audio_process)
     audio_.SetExcludedApplication(desired.excluded_audio_process);
   audio_.SetMicrophoneGain(static_cast<float>(desired.microphone_audio_gain));
+  audio_.SetGameGain(static_cast<float>(desired.game_audio_gain));
+  audio_.SetDiscordGain(static_cast<float>(desired.discord_audio_gain));
+  audio_.SetMusicGain(static_cast<float>(desired.music_audio_gain));
   audio_.SetMicrophoneEnabled(desired.microphone_enabled);
   capture_.SetPreviewEnabled(desired.capture_preview_enabled);
   capture_.SetBorderRequired(desired.capture_border);
