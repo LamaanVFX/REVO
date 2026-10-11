@@ -140,6 +140,8 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   if (key == "desktop_audio_enabled") return ParseBool(value, config.desktop_audio_enabled);
   if (key == "desktop_audio_gain") return ParseDouble(value, config.desktop_audio_gain);
   if (key == "microphone_audio_gain") return ParseDouble(value, config.microphone_audio_gain);
+  if (key == "discord_audio_gain") return ParseDouble(value, config.discord_audio_gain);
+  if (key == "music_audio_gain") return ParseDouble(value, config.music_audio_gain);
   if (key == "rolling_buffer_seconds") return ParseDouble(value, config.rolling_buffer_seconds);
   if (key == "rolling_buffer_bytes") return ParseInteger(value, config.rolling_buffer_bytes);
   if (key == "microphone_enabled") return ParseBool(value, config.microphone_enabled);
@@ -346,6 +348,8 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
          << '\n';
   output << "desktop_audio_gain=" << config.desktop_audio_gain << '\n';
   output << "microphone_audio_gain=" << config.microphone_audio_gain << '\n';
+  output << "discord_audio_gain=" << config.discord_audio_gain << '\n';
+  output << "music_audio_gain=" << config.music_audio_gain << '\n';
   output << "rolling_buffer_seconds=" << config.rolling_buffer_seconds << '\n';
   output << "rolling_buffer_bytes=" << config.rolling_buffer_bytes << '\n';
   output << "microphone_enabled=" << (config.microphone_enabled ? "true" : "false") << '\n';
