@@ -28,6 +28,13 @@ int failures = 0;
     }                                        \
   } while (false)
 
+void TestNativeCaptureDefaults() {
+  const klip::AppConfig config;
+  CHECK(!config.capture_border);
+  CHECK(config.capture_cursor);
+  CHECK(config.output_container == "mkv");
+}
+
 void TestWaveFormats() {
   CHECK(klip::ResolveWaveSampleFormat(nullptr) == AV_SAMPLE_FMT_NONE);
   WAVEFORMATEXTENSIBLE wave{};
@@ -479,6 +486,7 @@ void TestRecordingSurvivesCaptureSourceReset() {
 }  // namespace
 
 int main() {
+  TestNativeCaptureDefaults();
   TestWaveFormats();
   TestAudioRecoveryBackoff();
   TestPartialHotkeyRegistration();
