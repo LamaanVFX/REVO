@@ -749,6 +749,42 @@ void GraphicsCapture::DesktopDuplicationLoop(std::stop_token stop_token) noexcep
     winrt::com_ptr<ID3D11Texture2D> desktop_texture;
     auto result = resource->QueryInterface(IID_PPV_ARGS(desktop_texture.put()));
     if (FAILED(result)) { release_frame(); continue; }
+
+    // Desktop Duplication separates the hardware pointer on some adapters. Fetch the
+    // pointer shape only when Windows reports a shape update and keep it as its own
+    // GPU surface; this avoids CPU readback of every game frame.
+    if (frame_info.PointerShapeBufferSize != 0) {
+      cursor_shape_buffer_.resize(frame_info.PointerShapeBufferSize);
+      UINT required_size = 0;
+      DXGI_OUTDUPL_POINTER_SHAPE_INFO shape{};
+      const auto shape_result = duplication_->GetFramePointerShape(
+          frame_info.PointerShapeBufferSize, cursor_shape_buffer_.data(), &required_size, &shape);
+      if (SUCCEEDED(shape_result) && required_size <= cursor_shape_buffer_.size() &&
+          shape.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR && shape.Width > 0 && shape.Height > 0) {
+        D3D11_TEXTURE2D_DESC cursor_desc{};
+        cursor_desc.Width = shape.Width;
+        cursor_desc.Height = shape.Height;
+        cursor_desc.MipLevels = 1;
+        cursor_desc.ArraySize = 1;
+        cursor_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        cursor_desc.SampleDesc.Count = 1;
+        cursor_desc.Usage = D3D11_USAGE_DEFAULT;
+        cursor_desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA initial{};
+        initial.pSysMem = cursor_shape_buffer_.data();
+        initial.SysMemPitch = shape.Pitch;
+        winrt::com_ptr<ID3D11Texture2D> texture;
+        if (SUCCEEDED(device_->CreateTexture2D(&cursor_desc, &initial, texture.put()))) {
+          cursor_shape_info_ = shape;
+          cursor_shape_texture_ = std::move(texture);
+        }
+      } else {
+        // Unknown monochrome/masked cursors cannot be blended as ordinary alpha surfaces.
+        cursor_shape_texture_ = nullptr;
+        cursor_shape_info_ = shape;
+      }
+    }
+
     RECT crop{};
     const auto desktop = duplication_output_desc_.DesktopCoordinates;
     if (target.kind == TargetKind::kWindow) {
@@ -784,7 +820,18 @@ void GraphicsCapture::DesktopDuplicationLoop(std::stop_token stop_token) noexcep
       coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed); continue;
     }
     const auto generation = capture_generation_.load(std::memory_order_acquire);
-    if (raw_queue_->TryPush(RawFrame{nullptr, std::move(cropped), width, height, pts, generation, true}))
+    RawFrame raw{nullptr, std::move(cropped), width, height, pts, generation, true};
+    if (config_.capture_cursor && frame_info.PointerPosition.Visible && cursor_shape_texture_) {
+      const auto& pointer = frame_info.PointerPosition.Position;
+      const auto left = pointer.x - desktop.left - crop.left;
+      const auto top = pointer.y - desktop.top - crop.top;
+      raw.cursor_texture = cursor_shape_texture_;
+      raw.cursor_rect = RECT{left, top,
+          left + static_cast<LONG>(cursor_shape_info_.Width),
+          top + static_cast<LONG>(cursor_shape_info_.Height)};
+      raw.cursor_visible = true;
+    }
+    if (raw_queue_->TryPush(std::move(raw)))
       captured_frames_.fetch_add(1, std::memory_order_relaxed);
     else coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed);
   }
