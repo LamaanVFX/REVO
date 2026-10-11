@@ -924,7 +924,7 @@ void ObsEngine::Tick() {
           logger_.Info("Automatic game profile: " + (active_game_.empty() ? std::string("default clips folder") : active_game_) +
                        " -> " + PathToUtf8(config_.output_directory));
           if ((target && (config_.target_mode != CaptureTargetMode::kGameWindow || selected_source_id_ != target->id)) ||
-              (detected_game.empty() && config_.target_mode != CaptureTargetMode::kGameWindow)) {
+              (detected_game.empty() && selected_source_id_ != 0)) {
             Error capture_error;
             if (!ConfigureCapture(CaptureTargetMode::kGameWindow, target ? target->label : std::string{}, capture_error)) {
               state_.SetError(capture_error);
