@@ -568,7 +568,9 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
   config_.microphone_enabled = config.microphone_enabled;
   config_.preferred_microphone_name = config.preferred_microphone_name;
   state_.SetMicrophoneEnabled(config.microphone_enabled);
-  state_.SetAudio(game_audio_ != nullptr, microphone_ != nullptr, 0.0F, 0.0F);
+  state_.SetAudio(desktop_audio_ != nullptr, microphone_ != nullptr,
+                  desktop_audio_level_.load(std::memory_order_relaxed),
+                  microphone_level_.load(std::memory_order_relaxed));
 }
 
 void ObsEngine::SetDashboardActive(bool active) {
