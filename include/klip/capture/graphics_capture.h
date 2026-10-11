@@ -63,6 +63,7 @@ class GraphicsCapture {
     std::uint32_t height = 0;
     std::int64_t pts_100ns = 0;
     std::uint64_t generation = 0;
+    bool recyclable = false;
   };
 
   struct ConvertedFrame {
@@ -106,6 +107,12 @@ class GraphicsCapture {
   static std::string WindowLabel(HWND window);
   static std::string MonitorLabel(HMONITOR monitor);
   bool StartSessionLocked(const CaptureTarget& target, Error& error);
+  bool CreateDesktopDuplication(HMONITOR monitor, Error& error);
+  void DesktopDuplicationLoop(std::stop_token stop_token) noexcept;
+  winrt::com_ptr<ID3D11Texture2D> AcquireCaptureTexture(std::uint32_t width,
+                                                       std::uint32_t height);
+  void RecycleCaptureTexture(ID3D11Texture2D* texture, std::uint32_t width,
+                             std::uint32_t height) noexcept;
   void StopSessionLocked() noexcept;
   void OnFrameArrived(const winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool& sender,
                       const winrt::Windows::Foundation::IInspectable&);
@@ -195,6 +202,14 @@ class GraphicsCapture {
 
   std::mutex session_mutex_;
   CaptureTarget active_target_{};
+  winrt::com_ptr<IDXGIOutputDuplication> duplication_;
+  DXGI_OUTPUT_DESC duplication_output_desc_{};
+  std::jthread duplication_thread_;
+  std::mutex capture_texture_pool_mutex_;
+  std::vector<winrt::com_ptr<ID3D11Texture2D>> capture_texture_pool_;
+  std::size_t capture_texture_count_ = 0;
+  std::uint32_t capture_texture_pool_width_ = 0;
+  std::uint32_t capture_texture_pool_height_ = 0;
   std::chrono::steady_clock::time_point last_source_refresh_{};
   winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool frame_pool_{nullptr};
   winrt::Windows::Graphics::Capture::GraphicsCaptureSession session_{nullptr};
