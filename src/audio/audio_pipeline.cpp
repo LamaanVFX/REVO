@@ -701,17 +701,17 @@ void AudioPipeline::ApplicationAudioLoop(std::stop_token stop_token) noexcept {
         continue;
       }
       const auto target_state = state_.Snapshot();
-      std::string game_selector = config_.game_audio_window;
-      if (game_selector.empty()) {
-        const auto open = target_state.capture_target.rfind('[');
-        const auto close = target_state.capture_target.rfind(']');
-        if (open != std::string::npos && close != std::string::npos && close > open + 1)
-          game_selector = target_state.capture_target.substr(open + 1, close - open - 1);
-      }
-      if (game_selector.empty()) {
-        const auto lower = target_state.capture_target;
-        if (lower.find("Minecraft") != std::string::npos) game_selector = "javaw.exe";
-      }
+      // Prefer the process identified by the currently captured game window. The
+      // saved selector is a fallback only, never a pin that can keep old-game audio
+      // attached after the capture target follows a different game.
+      std::string game_selector;
+      const auto open = target_state.capture_target.rfind('[');
+      const auto close = target_state.capture_target.rfind(']');
+      if (open != std::string::npos && close != std::string::npos && close > open + 1)
+        game_selector = target_state.capture_target.substr(open + 1, close - open - 1);
+      if (game_selector.empty() && target_state.capture_target.find("Minecraft") != std::string::npos)
+        game_selector = "javaw.exe";
+      if (game_selector.empty()) game_selector = config_.game_audio_window;
       auto resolve_selector = [&](std::string selector) -> DWORD {
         if (selector.starts_with("::")) selector.erase(0, 2);
         if (selector.empty()) return 0;
