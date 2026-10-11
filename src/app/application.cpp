@@ -97,7 +97,8 @@ std::optional<AutomaticGameProfile> DetectGameProfile(std::string label) {
       "deadbydaylight-win64-shipping.exe", "destiny2.exe", "rainbowsix.exe",
       "rainbowsix_vulkan.exe", "rainbow6.exe", "dota2.exe", "pubg.exe", "tslgame.exe",
       "discovery.exe", "thefinals.exe", "marvel-rivals.exe", "marvel-win64-shipping.exe",
-      "bf2042.exe", "battlefield.exe"};
+      "bf2042.exe", "battlefield.exe", "league of legends.exe", "leagueclient.exe",
+      "escape from tarkov.exe", "escapefromtarkov.exe"};
   for (const auto* executable : other_games) {
     if (label.find(executable) != std::string::npos)
       return AutomaticGameProfile{"Other game", 60, 20'000'000};

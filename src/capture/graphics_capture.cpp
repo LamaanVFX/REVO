@@ -916,6 +916,9 @@ void GraphicsCapture::StopSessionLocked() noexcept {
   }
   frame_token_ = {};
   closed_token_ = {};
+  cursor_shape_texture_ = nullptr;
+  cursor_shape_buffer_.clear();
+  cursor_shape_info_ = {};
   session_ = nullptr;
   frame_pool_ = nullptr;
   item_ = nullptr;

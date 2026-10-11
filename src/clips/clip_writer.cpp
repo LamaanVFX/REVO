@@ -241,6 +241,12 @@ std::filesystem::path ClipWriter::BuildOutputPath() const {
   } else if (lower.find("bf2042.exe") != std::string::npos ||
              lower.find("battlefield.exe") != std::string::npos) {
     set_game("battlefield-2042", "battlefield-2042");
+  } else if (lower.find("league of legends.exe") != std::string::npos ||
+             lower.find("leagueclient.exe") != std::string::npos) {
+    set_game("league-of-legends", "league-of-legends");
+  } else if (lower.find("escape from tarkov.exe") != std::string::npos ||
+             lower.find("escapefromtarkov.exe") != std::string::npos) {
+    set_game("escape-from-tarkov", "escape-from-tarkov");
   }
 
   auto directory = config_.output_directory;
