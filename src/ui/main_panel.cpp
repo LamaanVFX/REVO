@@ -1439,6 +1439,12 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
 
 void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppConfig& config,
                                const UiCommands& commands) {
+  // Keep the visible game-audio selector in sync with the executable detected by the engine.
+  // The UI draft is otherwise a separate copy and would continue showing stale javaw.exe.
+  if (!snapshot.detected_game_audio_application.empty()) {
+    draft_.game_audio_window = "::" + snapshot.detected_game_audio_application;
+  }
+
   if (!draft_initialized_) ResetDraft(config);
   auto* viewport = ImGui::GetMainViewport();
   ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, {0.5F, 0.5F});
