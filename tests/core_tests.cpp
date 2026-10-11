@@ -113,13 +113,15 @@ void TestConfig() {
   storage_change.output_directory = "D:/Klip Clips";
   CHECK(klip::RequiresMediaPipelineReconfigure(klip::AppConfig{}, storage_change));
   klip::AppConfig capture_limiter;
-  CHECK(!capture_limiter.obs_limit_game_capture_fps);
-  capture_limiter.obs_limit_game_capture_fps = true;
+  CHECK(capture_limiter.obs_limit_game_capture_fps);
+  capture_limiter.obs_limit_game_capture_fps = false;
   CHECK(klip::RequiresMediaPipelineReconfigure(klip::AppConfig{}, capture_limiter));
   klip::AppConfig replay;
   CHECK(replay.obs_duration_priority);
+  CHECK(replay.obs_separate_audio_tracks);
   replay.clip_duration_seconds = 30;
   CHECK(klip::ObsReplayRetentionSeconds(replay) == 32);
+  replay.obs_separate_audio_tracks = false;
   CHECK(klip::ObsReplayBitrateKbps(replay) == 35336);
   replay.obs_separate_audio_tracks = true;
   CHECK(klip::ObsReplayBitrateKbps(replay) == 34952);
@@ -212,7 +214,7 @@ void TestConfigRoundTrip() {
   CHECK(klip::LoadConfig(path, loaded, diagnostic));
   CHECK(!loaded.obs_replay_enabled);
   CHECK(loaded.obs_encoder_id == saved.obs_encoder_id);
-  CHECK(loaded.obs_cq == 21 && loaded.obs_display_method == 2);
+  CHECK(loaded.obs_cq == 21 && loaded.obs_display_method == 1);
   CHECK(!loaded.obs_duration_priority && loaded.obs_replay_bitrate_kbps == 27000);
   CHECK(loaded.obs_limit_game_capture_fps);
   CHECK(loaded.obs_filename_format == saved.obs_filename_format);
@@ -221,7 +223,9 @@ void TestConfigRoundTrip() {
   CHECK(loaded.target_fps == 240);
   CHECK(loaded.video_bitrate == 8'000'000);
   CHECK(loaded.audio_bitrate == 128'000);
-  CHECK(!loaded.desktop_audio_enabled);
+  CHECK(loaded.desktop_audio_enabled);
+  CHECK(loaded.microphone_enabled);
+  CHECK(loaded.game_audio_gain == 1.0);
   CHECK(loaded.desktop_audio_gain == 0.65);
   CHECK(loaded.microphone_audio_gain == 1.35);
   CHECK(loaded.rolling_buffer_seconds == 90.0);
@@ -266,7 +270,7 @@ void TestConfigRoundTrip() {
   CHECK(migrated.obs_duration_priority);
   CHECK(migrated.clip_duration_seconds == 30);
   CHECK(migrated.rolling_buffer_bytes == 192ULL * 1024 * 1024);
-  CHECK(klip::ObsReplayBitrateKbps(migrated) == 35336);
+  CHECK(klip::ObsReplayBitrateKbps(migrated) == 34952);
 
   saved.static_overlay_enabled = false;
   saved.live_overlay_enabled = true;
