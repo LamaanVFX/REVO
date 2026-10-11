@@ -68,7 +68,11 @@ bool RecordingWriter::StartRecording(Error& error) {
     return false;
   }
   if (audio_tracks_snapshot_) {
-    if (!audio_tracks_snapshot_(audio_tracks)) audio_tracks.clear();
+    if (!audio_tracks_snapshot_(audio_tracks) || audio_tracks.size() != 5) {
+      error = Error{ErrorComponent::kRecordingWriter, "snapshot audio tracks",
+                    "all five independent audio encoders must be ready before recording"};
+      return false;
+    }
   } else if (audio_snapshot_) {
     CodecSnapshot audio;
     if (audio_snapshot_(audio)) audio_tracks.push_back(std::move(audio));

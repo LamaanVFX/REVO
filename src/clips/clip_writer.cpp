@@ -111,12 +111,18 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
         error = Error{ErrorComponent::kClipWriter, "snapshot video codec",
                       "video encoder is not ready"};
       } else {
+        bool audio_tracks_ready = true;
         if (audio_tracks_snapshot_) {
-          if (!audio_tracks_snapshot_(audio_tracks)) audio_tracks.clear();
+          audio_tracks_ready = audio_tracks_snapshot_(audio_tracks) && audio_tracks.size() == 5;
         } else if (audio_snapshot_) {
           CodecSnapshot audio;
           if (audio_snapshot_(audio)) audio_tracks.push_back(std::move(audio));
-        }        // A clip requested immediately after capture starts can arrive before the
+        }
+        if (!audio_tracks_ready) {
+          error = Error{ErrorComponent::kClipWriter, "snapshot audio tracks",
+                        "all five independent audio encoders must be ready before saving a clip"};
+        } else {
+        // A clip requested immediately after capture starts can arrive before the
         // encoder has emitted its first keyframe. Give the rolling buffer a short
         // warm-up window instead of failing the user-visible clip operation.
         std::vector<EncodedPacket> packets;
@@ -142,6 +148,7 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
           logger_.Info("Clip saved: " + PathToUtf8(request.output_path));
           restore_status();
           continue;
+        }
         }
       }
       state_.SetError(error);
