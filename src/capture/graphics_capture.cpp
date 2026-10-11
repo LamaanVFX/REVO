@@ -20,6 +20,8 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
+#include <string_view>
 #include <cmath>
 #include <exception>
 #include <iomanip>
@@ -72,7 +74,7 @@ int GameExecutablePriority(const std::string& label) {
       "destiny2.exe", "rainbowsix.exe", "rainbow6.exe", "league of legends.exe",
       "leagueclient.exe", "dota2.exe", "pubg.exe", "tslgame.exe", "thefinals.exe",
       "marvel-rivals.exe", "battlefield.exe", "bf2042.exe", "escape from tarkov.exe"};
-  for (std::size_t i = 0; i < std::size(known_games); ++i) {
+  for (std::size_t i = 0; i < sizeof(known_games) / sizeof(known_games[0]); ++i) {
     if (executable == known_games[i]) return 80 - static_cast<int>(i);
   }
   return 0;
