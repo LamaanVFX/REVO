@@ -899,6 +899,7 @@ void ObsEngine::Tick() {
     std::string folder_name;
     std::string filename_prefix;
     std::vector<std::string> executables;
+    std::string detected_executable;
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot != INVALID_HANDLE_VALUE) {
       PROCESSENTRY32W process{};
@@ -907,18 +908,19 @@ void ObsEngine::Tick() {
         do {
           std::wstring exe = process.szExeFile;
           std::transform(exe.begin(), exe.end(), exe.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
-          if (exe == L"javaw.exe") { detected_game = "Minecraft"; folder_name = "minecraft"; filename_prefix = "minecraft"; executables = {"javaw.exe"}; break; }
+          if (exe == L"javaw.exe") { detected_game = "Minecraft"; folder_name = "minecraft"; filename_prefix = "minecraft"; detected_executable = "javaw.exe"; executables = {"javaw.exe"}; break; }
           if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
               exe == L"fortniteclient-win64-shipping_eac_eos.exe") {
             detected_game = "Fortnite"; folder_name = "fortnite"; filename_prefix = "fortnite";
+            detected_executable = PathToUtf8(std::filesystem::path(process.szExeFile));
             executables = {"fortnite.exe", "fortniteclient-win64-shipping.exe", "fortniteclient-win64-shipping_eac_eos.exe"};
             break;
           }
           if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") {
-            detected_game = "Valorant"; folder_name = "valorant"; filename_prefix = "valorant"; executables = {"valorant.exe", "valorant-win64-shipping.exe"}; break;
+            detected_game = "Valorant"; folder_name = "valorant"; filename_prefix = "valorant"; detected_executable = PathToUtf8(std::filesystem::path(process.szExeFile)); executables = {"valorant.exe", "valorant-win64-shipping.exe"}; break;
           }
           if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") {
-            detected_game = "GTA 5"; folder_name = "gta5"; filename_prefix = "gta5"; executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}; break;
+            detected_game = "GTA 5"; folder_name = "gta5"; filename_prefix = "gta5"; detected_executable = PathToUtf8(std::filesystem::path(process.szExeFile)); executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}; break;
           }
         } while (Process32NextW(snapshot, &process));
       }
@@ -970,8 +972,10 @@ void ObsEngine::Tick() {
       // selector format used by the Audio settings UI ("::process.exe").
       if (detected_game.empty()) {
         config_.game_audio_window.clear();
-      } else if (!executables.empty()) {
-        config_.game_audio_window = "::" + executables.front();
+      } else if (!detected_executable.empty()) {
+        // Use the exact process that was detected, not the first alias in the
+        // game's executable list (which may not be the process producing audio).
+        config_.game_audio_window = "::" + detected_executable;
       }
       try {
         ConfigureAudio(config_);
@@ -1012,6 +1016,14 @@ void ObsEngine::Tick() {
             state_.SetError(capture_error);
             logger_.ErrorMessage(capture_error);
           }
+        }
+        if (!detected_game.empty() && !target) {
+          // OBS may not enumerate a game's window even while automatic
+          // fullscreen capture is successfully hooking it. Reflect the
+          // detected game in the card instead of the generic fallback label.
+          state_.SetTarget(CaptureTargetMode::kGameWindow,
+                           detected_game + " (automatic fullscreen capture)",
+                           selected_source_id_);
         }
 
         // Reconfigure libobs's video clock only after stopping the replay output
