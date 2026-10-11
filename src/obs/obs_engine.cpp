@@ -10,6 +10,8 @@
 #include <array>
 #include <cstdarg>
 #include <cmath>
+#include <cctype>
+#include <cwctype>
 #include <cstdio>
 #include <fstream>
 #include <memory>
@@ -849,6 +851,8 @@ void ObsEngine::Tick() {
   if (now_for_game >= next_game_detection_ && !IsRecording()) {
     next_game_detection_ = now_for_game + std::chrono::seconds(1);
     std::string detected_game;
+    std::string folder_name;
+    std::string filename_prefix;
     std::vector<std::string> executables;
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot != INVALID_HANDLE_VALUE) {
@@ -858,18 +862,18 @@ void ObsEngine::Tick() {
         do {
           std::wstring exe = process.szExeFile;
           std::transform(exe.begin(), exe.end(), exe.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
-          if (exe == L"javaw.exe") { detected_game = "Minecraft"; executables = {"javaw.exe"}; break; }
+          if (exe == L"javaw.exe") { detected_game = "Minecraft"; folder_name = "minecraft"; filename_prefix = "minecraft"; executables = {"javaw.exe"}; break; }
           if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
               exe == L"fortniteclient-win64-shipping_eac_eos.exe") {
-            detected_game = "Fortnite";
+            detected_game = "Fortnite"; folder_name = "fortnite"; filename_prefix = "fortnite";
             executables = {"fortnite.exe", "fortniteclient-win64-shipping.exe", "fortniteclient-win64-shipping_eac_eos.exe"};
             break;
           }
           if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") {
-            detected_game = "Valorant"; executables = {"valorant.exe", "valorant-win64-shipping.exe"}; break;
+            detected_game = "Valorant"; folder_name = "valorant"; filename_prefix = "valorant"; executables = {"valorant.exe", "valorant-win64-shipping.exe"}; break;
           }
           if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") {
-            detected_game = "GTA 5"; executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}; break;
+            detected_game = "GTA 5"; folder_name = "gta5"; filename_prefix = "gta5"; executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}; break;
           }
         } while (Process32NextW(snapshot, &process));
       }
@@ -903,10 +907,10 @@ void ObsEngine::Tick() {
         StopOutput(replay_);
         if (replay_) { obs_output_release(replay_); replay_ = nullptr; }
         active_game_ = detected_game;
-        config_.output_directory = clips_root_ / (active_game_.empty() ? std::filesystem::path{} : std::filesystem::path(active_game_));
-        config_.obs_filename_format = active_game_.empty()
+        config_.output_directory = clips_root_ / (folder_name.empty() ? std::filesystem::path{} : std::filesystem::path(folder_name));
+        config_.obs_filename_format = filename_prefix.empty()
             ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
-            : active_game_ + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
+            : filename_prefix + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
         std::error_code directory_error;
         std::filesystem::create_directories(config_.output_directory, directory_error);
         if (directory_error) {
@@ -919,9 +923,10 @@ void ObsEngine::Tick() {
           }
           logger_.Info("Automatic game profile: " + (active_game_.empty() ? std::string("default clips folder") : active_game_) +
                        " -> " + PathToUtf8(config_.output_directory));
-          if (target && (config_.target_mode != CaptureTargetMode::kGameWindow || selected_source_id_ != target->id)) {
+          if ((target && (config_.target_mode != CaptureTargetMode::kGameWindow || selected_source_id_ != target->id)) ||
+              (detected_game.empty() && config_.target_mode != CaptureTargetMode::kGameWindow)) {
             Error capture_error;
-            if (!ConfigureCapture(CaptureTargetMode::kGameWindow, target->label, capture_error)) {
+            if (!ConfigureCapture(CaptureTargetMode::kGameWindow, target ? target->label : std::string{}, capture_error)) {
               state_.SetError(capture_error);
               logger_.ErrorMessage(capture_error);
             }
