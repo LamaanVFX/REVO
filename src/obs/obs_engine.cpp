@@ -900,29 +900,64 @@ void ObsEngine::Tick() {
     std::string filename_prefix;
     std::vector<std::string> executables;
     std::string detected_executable;
+
+    // Prefer the process owning the foreground window. Process enumeration
+    // order is arbitrary, so a background javaw.exe must not win over the
+    // Valorant/Fortnite window the user just opened.
+    const auto consider_process = [&](const PROCESSENTRY32W& process) {
+      std::wstring exe = process.szExeFile;
+      std::transform(exe.begin(), exe.end(), exe.begin(),
+                     [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+      const auto executable = PathToUtf8(std::filesystem::path(process.szExeFile));
+      if (exe == L"javaw.exe") {
+        detected_game = "Minecraft"; folder_name = "minecraft";
+        filename_prefix = "minecraft"; detected_executable = executable;
+        executables = {"javaw.exe"};
+      } else if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
+                 exe == L"fortniteclient-win64-shipping_eac_eos.exe") {
+        detected_game = "Fortnite"; folder_name = "fortnite";
+        filename_prefix = "fortnite"; detected_executable = executable;
+        executables = {"fortnite.exe", "fortniteclient-win64-shipping.exe",
+                       "fortniteclient-win64-shipping_eac_eos.exe"};
+      } else if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") {
+        detected_game = "Valorant"; folder_name = "valorant";
+        filename_prefix = "valorant"; detected_executable = executable;
+        executables = {"valorant.exe", "valorant-win64-shipping.exe"};
+      } else if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") {
+        detected_game = "GTA 5"; folder_name = "gta5";
+        filename_prefix = "gta5"; detected_executable = executable;
+        executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"};
+      }
+      return !detected_game.empty();
+    };
+
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot != INVALID_HANDLE_VALUE) {
+      DWORD foreground_pid = 0;
+      if (const HWND foreground = GetForegroundWindow())
+        GetWindowThreadProcessId(foreground, &foreground_pid);
+
       PROCESSENTRY32W process{};
       process.dwSize = sizeof(process);
-      if (Process32FirstW(snapshot, &process)) {
+      // Pass 1: resolve the foreground game's process first.
+      if (foreground_pid && Process32FirstW(snapshot, &process)) {
         do {
-          std::wstring exe = process.szExeFile;
-          std::transform(exe.begin(), exe.end(), exe.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
-          if (exe == L"javaw.exe") { detected_game = "Minecraft"; folder_name = "minecraft"; filename_prefix = "minecraft"; detected_executable = "javaw.exe"; executables = {"javaw.exe"}; break; }
-          if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
-              exe == L"fortniteclient-win64-shipping_eac_eos.exe") {
-            detected_game = "Fortnite"; folder_name = "fortnite"; filename_prefix = "fortnite";
-            detected_executable = PathToUtf8(std::filesystem::path(process.szExeFile));
-            executables = {"fortnite.exe", "fortniteclient-win64-shipping.exe", "fortniteclient-win64-shipping_eac_eos.exe"};
+          if (process.th32ProcessID == foreground_pid) {
+            consider_process(process);
             break;
           }
-          if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") {
-            detected_game = "Valorant"; folder_name = "valorant"; filename_prefix = "valorant"; detected_executable = PathToUtf8(std::filesystem::path(process.szExeFile)); executables = {"valorant.exe", "valorant-win64-shipping.exe"}; break;
-          }
-          if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") {
-            detected_game = "GTA 5"; folder_name = "gta5"; filename_prefix = "gta5"; detected_executable = PathToUtf8(std::filesystem::path(process.szExeFile)); executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}; break;
-          }
         } while (Process32NextW(snapshot, &process));
+      }
+      // Pass 2: if focus is not on a supported game, retain the existing
+      // automatic detection fallback for a game running in the background.
+      if (detected_game.empty()) {
+        process = {};
+        process.dwSize = sizeof(process);
+        if (Process32FirstW(snapshot, &process)) {
+          do {
+            if (consider_process(process)) break;
+          } while (Process32NextW(snapshot, &process));
+        }
       }
       CloseHandle(snapshot);
     }
