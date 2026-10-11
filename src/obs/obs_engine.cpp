@@ -948,50 +948,55 @@ void ObsEngine::Tick() {
           }
         } while (Process32NextW(snapshot, &process));
       }
-      // Pass 2: KlipEdit itself may be foreground while a game is visible
-      // beside it. Prefer supported game processes with a real visible top-level
-      // window, and explicitly prefer non-Java games over stale/background Java
-      // processes. Toolhelp enumeration order is not a meaningful priority.
-      if (detected_game.empty()) {
-        std::vector<DWORD> visible_window_pids;
-        EnumWindows([](HWND hwnd, LPARAM parameter) -> BOOL {
-          if (!IsWindowVisible(hwnd)) return TRUE;
-          DWORD pid = 0;
-          GetWindowThreadProcessId(hwnd, &pid);
-          if (pid) reinterpret_cast<std::vector<DWORD>*>(parameter)->push_back(pid);
-          return TRUE;
-        }, reinterpret_cast<LPARAM>(&visible_window_pids));
+      // Always score all supported processes, even when the foreground PID
+      // belongs to a launcher process such as VALORANT.exe. The launcher can be
+      // foreground briefly while the actual game audio/window belongs to
+      // VALORANT-Win64-Shipping.exe; accepting the first match pins audio to a
+      // process with no capturable window.
+      std::vector<DWORD> visible_window_pids;
+      EnumWindows([](HWND hwnd, LPARAM parameter) -> BOOL {
+        if (!IsWindowVisible(hwnd)) return TRUE;
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        if (pid) reinterpret_cast<std::vector<DWORD>*>(parameter)->push_back(pid);
+        return TRUE;
+      }, reinterpret_cast<LPARAM>(&visible_window_pids));
 
-        struct Candidate {
-          PROCESSENTRY32W process{};
+      struct Candidate {
+        PROCESSENTRY32W process{};
+        int score = -1;
+      } best;
+      process = {};
+      process.dwSize = sizeof(process);
+      if (Process32FirstW(snapshot, &process)) {
+        do {
+          std::wstring exe = process.szExeFile;
+          std::transform(exe.begin(), exe.end(), exe.begin(),
+                         [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
           int score = -1;
-        } best;
-        process = {};
-        process.dwSize = sizeof(process);
-        if (Process32FirstW(snapshot, &process)) {
-          do {
-            std::wstring exe = process.szExeFile;
-            std::transform(exe.begin(), exe.end(), exe.begin(),
-                           [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
-            int score = -1;
-            if (exe == L"javaw.exe") score = 10;
-            else if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") score = 50;
-            else if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
-                     exe == L"fortniteclient-win64-shipping_eac_eos.exe") score = 50;
-            else if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") score = 50;
+          if (exe == L"javaw.exe") score = 10;
+          else if (exe == L"valorant-win64-shipping.exe") score = 70;
+          else if (exe == L"valorant.exe") score = 40;
+          else if (exe == L"fortniteclient-win64-shipping.exe" ||
+                   exe == L"fortniteclient-win64-shipping_eac_eos.exe") score = 70;
+          else if (exe == L"fortnite.exe") score = 40;
+          else if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe") score = 60;
+          else if (exe == L"playgtav.exe") score = 40;
 
-            if (score >= 0 &&
-                std::find(visible_window_pids.begin(), visible_window_pids.end(),
-                          process.th32ProcessID) != visible_window_pids.end())
-              score += 100;
-            if (score > best.score) {
-              best.process = process;
-              best.score = score;
-            }
-          } while (Process32NextW(snapshot, &process));
-        }
-        if (best.score >= 0) consider_process(best.process);
+          const bool has_visible_window =
+              std::find(visible_window_pids.begin(), visible_window_pids.end(),
+                        process.th32ProcessID) != visible_window_pids.end();
+          if (score >= 0 && has_visible_window) score += 100;
+          // The foreground process is a useful tie-breaker, but never let a
+          // launcher outrank the visible game executable.
+          if (score >= 0 && process.th32ProcessID == foreground_pid) score += 5;
+          if (score > best.score) {
+            best.process = process;
+            best.score = score;
+          }
+        } while (Process32NextW(snapshot, &process));
       }
+      if (best.score >= 0) consider_process(best.process);
       CloseHandle(snapshot);
     }
 
