@@ -15,6 +15,7 @@
 #include <cwctype>
 #include <cstdio>
 #include <fstream>
+#include <initializer_list>
 #include <memory>
 #include <stdexcept>
 #include <thread>
