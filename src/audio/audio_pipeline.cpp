@@ -122,15 +122,17 @@ std::string ProcessName(DWORD process_id);
 
 DWORD FindRunningProcessId(const std::string& executable_name) {
   if (executable_name.empty()) return 0;
-  const auto matches = [&](DWORD pid) {
-    const auto name = ProcessName(pid);
-    return !name.empty() && _stricmp(name.c_str(), executable_name.c_str()) == 0;
-  };
-  DWORD foreground_pid = 0;
-  if (const auto foreground = GetForegroundWindow())
-    GetWindowThreadProcessId(foreground, &foreground_pid);
-  if (foreground_pid && matches(foreground_pid)) return foreground_pid;
+  const auto required = MultiByteToWideChar(CP_UTF8, 0, executable_name.c_str(), -1,
+                                             nullptr, 0);
+  if (required <= 1) return 0;
+  std::wstring desired(static_cast<std::size_t>(required), L'\0');
+  if (MultiByteToWideChar(CP_UTF8, 0, executable_name.c_str(), -1,
+                          desired.data(), required) <= 0) return 0;
+  desired.pop_back();
 
+  DWORD foreground_pid = 0;
+  if (const HWND foreground = GetForegroundWindow())
+    GetWindowThreadProcessId(foreground, &foreground_pid);
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE) return 0;
   DWORD first_match = 0;
@@ -138,7 +140,7 @@ DWORD FindRunningProcessId(const std::string& executable_name) {
   process.dwSize = sizeof(process);
   if (Process32FirstW(snapshot, &process)) {
     do {
-      if (!matches(process.th32ProcessID)) continue;
+      if (_wcsicmp(process.szExeFile, desired.c_str()) != 0) continue;
       if (first_match == 0) first_match = process.th32ProcessID;
       if (foreground_pid == process.th32ProcessID) {
         CloseHandle(snapshot);
