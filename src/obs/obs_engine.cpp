@@ -335,11 +335,16 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     obs_data_set_string(settings.get(), "monitor_id", selected->value.c_str());
     Properties properties(obs_get_source_properties(type), obs_properties_destroy);
     auto* method = properties ? obs_properties_get(properties.get(), "method") : nullptr;
+    // Display capture should start reliably by default. OBS' automatic method
+    // may choose Windows Graphics Capture, which draws the yellow OS indicator
+    // on some Windows builds. Prefer legacy DXGI Desktop Duplication and only
+    // fall back to WGC if DXGI does not deliver frames.
+    const int requested_method = config_.obs_display_method == 0 ? 1 : config_.obs_display_method;
     bool supported = false;
     if (method) for (std::size_t i = 0; i < obs_property_list_item_count(method); ++i)
-      if (!obs_property_list_item_disabled(method, i) && obs_property_list_item_int(method, i) == config_.obs_display_method) supported = true;
+      if (!obs_property_list_item_disabled(method, i) && obs_property_list_item_int(method, i) == requested_method) supported = true;
     if (!supported) { error = Error{ErrorComponent::kCapture, "select display method", "The selected OBS display method is unsupported"}; return false; }
-    obs_data_set_int(settings.get(), "method", config_.obs_display_method);
+    obs_data_set_int(settings.get(), "method", requested_method);
     obs_data_set_bool(settings.get(), "capture_cursor", config_.capture_cursor);
   } else {
     pending_game_label_ = !selected && !label.empty() ? label : "";
@@ -1171,7 +1176,8 @@ void ObsEngine::Tick() {
   }
   if (refresh_pending_sources) next_source_refresh_ = std::chrono::steady_clock::now() + std::chrono::seconds(3);
   if (capture_ && config_.target_mode == CaptureTargetMode::kDisplay &&
-      config_.obs_display_method == 0 && !display_fallback_attempted_ &&
+      (config_.obs_display_method == 0 || config_.obs_display_method == 1) &&
+      !display_fallback_attempted_ &&
       obs_source_get_width(capture_) == 0 &&
       std::chrono::steady_clock::now() - capture_started_ > std::chrono::seconds(3)) {
     display_fallback_attempted_ = true;

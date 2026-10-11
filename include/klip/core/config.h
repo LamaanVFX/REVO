@@ -54,7 +54,7 @@ struct AppConfig {
   std::string discord_audio_window;
   std::string music_audio_window;
   std::string output_container = "mkv";
-  int obs_display_method = 0; // OBS monitor_capture: auto=0, DXGI=1, WGC=2.
+  int obs_display_method = 1; // Default to DXGI Desktop Duplication; WGC fallback only if no frames.
   bool obs_limit_game_capture_fps = false; // Opt-in OBS hook copy limiter; never caps the game itself.
   double clip_duration_seconds = 60.0;
   std::uint32_t target_fps = 60;
