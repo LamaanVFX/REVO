@@ -185,7 +185,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     obs_video_info video{};
     const auto graphics_path = PathToUtf8(root / "bin/64bit/libobs-d3d11.dll");
     video.graphics_module = graphics_path.c_str();
-    video.fps_num = config.target_fps;
+    video.fps_num = config_.target_fps;
     video.fps_den = 1;
     video.base_width = video.output_width = config.output_width ? config.output_width : 1920;
     video.base_height = video.output_height = config.output_height ? config.output_height : 1080;
@@ -238,7 +238,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     if (!ConfigureEncoder(error) || !StartReplayBuffer(error)) { Shutdown(); return false; }
     logger_.Info("LIBOBS ENGINE READY version=" + std::string(obs_get_version_string()) +
                  " resolution=" + std::to_string(video.output_width) + "x" + std::to_string(video.output_height) +
-                 " fps=" + std::to_string(config.target_fps) + " NV12 Rec709 limited");
+                 " fps=" + std::to_string(config_.target_fps) + " NV12 Rec709 limited");
     Tick();
     return true;
   } catch (const std::exception& exception) {
