@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <thread>
 
@@ -73,6 +74,31 @@ std::string FeatureLevelName(D3D_FEATURE_LEVEL level) {
     default:
       return "unknown";
   }
+}
+
+struct AutomaticGameProfile {
+  std::string name;
+  std::uint32_t fps = 60;
+  std::int64_t bitrate = 20'000'000;
+};
+
+std::optional<AutomaticGameProfile> DetectGameProfile(std::string label) {
+  std::transform(label.begin(), label.end(), label.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (label.find("javaw.exe") != std::string::npos)
+    return AutomaticGameProfile{"Minecraft", 240, 35'000'000};
+  static constexpr const char* other_games[] = {
+      "minecraft.windows.exe", "fortniteclient-win64-shipping.exe",
+      "valorant-win64-shipping.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
+      "rocketleague.exe", "gta5.exe", "fivem_gtaprocess.exe", "robloxplayerbeta.exe",
+      "eldenring.exe", "helldivers2.exe", "deadbydaylight-win64-shipping.exe",
+      "destiny2.exe", "rainbowsix.exe", "rainbow6.exe", "dota2.exe", "pubg.exe",
+      "tslgame.exe", "thefinals.exe", "marvel-rivals.exe", "bf2042.exe"};
+  for (const auto* executable : other_games) {
+    if (label.find(executable) != std::string::npos)
+      return AutomaticGameProfile{"Other game", 60, 20'000'000};
+  }
+  return std::nullopt;
 }
 
 }  // namespace
@@ -176,9 +202,46 @@ int KlipApplication::Run() {
   const auto commands = BuildUiCommands();
   auto next_hotkey_retry = std::chrono::steady_clock::now();
   auto next_metrics_update = std::chrono::steady_clock::now();
+  auto next_profile_check = std::chrono::steady_clock::now();
+  std::string active_automatic_profile;
   while (window_.PumpMessages()) {
     const auto ui_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(33);
     const auto now = std::chrono::steady_clock::now();
+    if (now >= next_profile_check) {
+      next_profile_check = now + std::chrono::milliseconds(500);
+      const auto profile_snapshot = state_.Snapshot();
+      const auto detected = profile_snapshot.target_mode == CaptureTargetMode::kGameWindow
+                                ? DetectGameProfile(profile_snapshot.capture_target)
+                                : std::nullopt;
+      const AutomaticGameProfile desired_profile =
+          detected.value_or(AutomaticGameProfile{"Default", 60, 20'000'000});
+      if (desired_profile.name != active_automatic_profile) {
+        // Never tear down the encoders while a recording is active. Retry the profile
+        // transition on the next poll after recording finalization completes.
+        if (!profile_snapshot.recording && !profile_snapshot.finalizing_recording &&
+            profile_snapshot.status != CaptureStatus::kSaving) {
+          active_automatic_profile = desired_profile.name;
+          if (config_.target_fps != desired_profile.fps ||
+              config_.video_bitrate != desired_profile.bitrate) {
+            AppConfig profiled = config_;
+            profiled.target_fps = desired_profile.fps;
+            profiled.video_bitrate = desired_profile.bitrate;
+            Error profile_error;
+            if (RestartMediaPipeline(profiled, profile_error)) {
+              config_ = profiled;
+              logger_.Info("Automatic game profile applied: " + desired_profile.name +
+                           " (" + std::to_string(profiled.target_fps) + " FPS, " +
+                           std::to_string(profiled.video_bitrate / 1000) + " kbps)");
+              state_.SetSettingsStatus(false, "Automatic game profile: " + desired_profile.name);
+            } else {
+              active_automatic_profile.clear();
+              state_.SetError(profile_error);
+              logger_.ErrorMessage(profile_error);
+            }
+          }
+        }
+      }
+    }
     if (now >= next_metrics_update) {
       UpdateRollingMetrics();
       next_metrics_update = now + std::chrono::milliseconds(250);
