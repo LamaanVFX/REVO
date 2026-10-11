@@ -53,6 +53,19 @@ try {
   if($LASTEXITCODE){exit $LASTEXITCODE}
   & cmake --build $build --parallel 4
   if($LASTEXITCODE){exit $LASTEXITCODE}
+
+  # Package every FFmpeg runtime DLL, including transitive codec dependencies.
+  $ffmpegBin=Join-Path $ffmpegRoot 'bin'
+  $ffmpegDlls=@(Get-ChildItem $ffmpegBin -File -Filter '*.dll' -ErrorAction SilentlyContinue)
+  if(-not $ffmpegDlls.Count){throw "No FFmpeg runtime DLLs found in $ffmpegBin"}
+  Copy-Item -LiteralPath $ffmpegDlls.FullName -Destination $build -Force
+
+  # llvm-mingw's C++ runtime is not part of Windows; ship it beside Klip.exe.
+  foreach($runtimeName in @('libc++.dll','libunwind.dll','libwinpthread-1.dll','libgcc_s_seh-1.dll')) {
+    $runtimePath=Join-Path $llvmBin $runtimeName
+    if(Test-Path $runtimePath) { Copy-Item -LiteralPath $runtimePath -Destination $build -Force }
+  }
+
   & ctest --test-dir $build --output-on-failure
   exit $LASTEXITCODE
 } finally {
