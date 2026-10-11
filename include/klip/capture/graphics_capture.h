@@ -64,6 +64,9 @@ class GraphicsCapture {
     std::int64_t pts_100ns = 0;
     std::uint64_t generation = 0;
     bool recyclable = false;
+    winrt::com_ptr<ID3D11Texture2D> cursor_texture{nullptr};
+    RECT cursor_rect{};
+    bool cursor_visible = false;
   };
 
   struct ConvertedFrame {
@@ -206,6 +209,9 @@ class GraphicsCapture {
   DXGI_OUTPUT_DESC duplication_output_desc_{};
   std::jthread duplication_thread_;
   std::mutex capture_texture_pool_mutex_;
+  std::vector<std::uint8_t> cursor_shape_buffer_;
+  DXGI_OUTDUPL_POINTER_SHAPE_INFO cursor_shape_info_{};
+  winrt::com_ptr<ID3D11Texture2D> cursor_shape_texture_;
   std::vector<winrt::com_ptr<ID3D11Texture2D>> capture_texture_pool_;
   std::size_t capture_texture_count_ = 0;
   std::uint32_t capture_texture_pool_width_ = 0;
