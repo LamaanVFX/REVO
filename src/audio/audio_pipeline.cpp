@@ -5,6 +5,7 @@
 #include <ksmedia.h>
 #include <propkey.h>
 #include <propsys.h>
+#include <tlhelp32.h>
 #include <propvarutil.h>
 
 #include <algorithm>
@@ -115,6 +116,37 @@ HRESULT ActivateProcessLoopback(DWORD process_id, bool include_process,
   const auto result = handler->Wait(client);
   handler->Release();
   return result;
+}
+
+DWORD FindRunningProcessId(const std::string& executable_name) {
+  if (executable_name.empty()) return 0;
+  const auto matches = [&](DWORD pid) {
+    const auto name = ProcessName(pid);
+    return !name.empty() && _stricmp(name.c_str(), executable_name.c_str()) == 0;
+  };
+  DWORD foreground_pid = 0;
+  if (const auto foreground = GetForegroundWindow())
+    GetWindowThreadProcessId(foreground, &foreground_pid);
+  if (foreground_pid && matches(foreground_pid)) return foreground_pid;
+
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return 0;
+  DWORD first_match = 0;
+  PROCESSENTRY32W process{};
+  process.dwSize = sizeof(process);
+  if (Process32FirstW(snapshot, &process)) {
+    do {
+      const auto filename = WideToUtf8(std::wstring(process.szExeFile));
+      if (_stricmp(filename.c_str(), executable_name.c_str()) != 0) continue;
+      if (first_match == 0) first_match = process.th32ProcessID;
+      if (foreground_pid == process.th32ProcessID) {
+        CloseHandle(snapshot);
+        return process.th32ProcessID;
+      }
+    } while (Process32NextW(snapshot, &process));
+  }
+  CloseHandle(snapshot);
+  return first_match;
 }
 
 std::string ProcessName(DWORD process_id) {
@@ -667,6 +699,57 @@ void AudioPipeline::ApplicationAudioLoop(std::stop_token stop_token) noexcept {
         logger_.Warning(applications_error.ToString());
         continue;
       }
+      const auto target_state = state_.Snapshot();
+      std::string game_selector = config_.game_audio_window;
+      if (game_selector.empty()) {
+        const auto open = target_state.capture_target.rfind('[');
+        const auto close = target_state.capture_target.rfind(']');
+        if (open != std::string::npos && close != std::string::npos && close > open + 1)
+          game_selector = target_state.capture_target.substr(open + 1, close - open - 1);
+      }
+      if (game_selector.empty()) {
+        const auto lower = target_state.capture_target;
+        if (lower.find("Minecraft") != std::string::npos) game_selector = "javaw.exe";
+      }
+      auto resolve_selector = [&](std::string selector) -> DWORD {
+        if (selector.starts_with("::")) selector.erase(0, 2);
+        if (selector.empty()) return 0;
+        return FindRunningProcessId(selector);
+      };
+      const DWORD game_pid = resolve_selector(game_selector);
+      const DWORD discord_pid = resolve_selector(config_.discord_audio_window);
+      const DWORD music_pid = resolve_selector(config_.music_audio_window);
+      const auto update_process_source = [&](CaptureContext& context, SourceBuffer& buffer,
+                                             SourceKind kind, DWORD process_id,
+                                             const char* name) {
+        const auto old_pid = context.process_id.load(std::memory_order_acquire);
+        const bool active = context.thread.joinable() &&
+                            !context.failed.load(std::memory_order_acquire);
+        if (old_pid == process_id && ((process_id == 0 && !context.thread.joinable()) ||
+                                      (process_id != 0 && active)))
+          return;
+        StopContext(context);
+        {
+          std::scoped_lock buffer_lock(buffer.mutex);
+          buffer.samples.clear();
+          buffer.read_pts = AV_NOPTS_VALUE;
+        }
+        context.kind = kind;
+        if (process_id == 0) return;
+        Error process_error;
+        if (!StartProcessAudio(context, buffer, kind, process_id, process_error)) {
+          context.failed.store(true, std::memory_order_release);
+          logger_.Warning(std::string("Could not isolate ") + name + " audio: " +
+                          process_error.ToString());
+          return;
+        }
+        logger_.Info(std::string("Separate ") + name + " audio attached to PID " +
+                     std::to_string(process_id));
+      };
+      update_process_source(game_, game_buffer_, SourceKind::kGame, game_pid, "game");
+      update_process_source(discord_, discord_buffer_, SourceKind::kDiscord, discord_pid, "Discord");
+      update_process_source(music_, music_buffer_, SourceKind::kMusic, music_pid, "music");
+
       DWORD candidate = 0;
       if (!config_.excluded_audio_process.empty()) {
         const auto match = std::find_if(
