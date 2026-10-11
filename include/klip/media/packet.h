@@ -25,6 +25,8 @@ struct EncodedPacket {
   PacketPtr packet;
   StreamKind kind = StreamKind::kVideo;
   AVRational time_base{1, 10'000'000};
+  // Audio stream index: desktop, game, microphone, Discord, music.
+  std::uint8_t audio_track = 0;
 };
 
 struct CodecParametersDeleter {

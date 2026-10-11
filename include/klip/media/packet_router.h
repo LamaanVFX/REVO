@@ -17,7 +17,8 @@ class PacketRouter {
                Logger& logger)
       : buffer_(buffer), recording_(recording), state_(state), logger_(logger) {}
 
-  void Publish(const AVPacket* packet, StreamKind kind, AVRational time_base) noexcept;
+  void Publish(const AVPacket* packet, StreamKind kind, AVRational time_base,
+               std::uint8_t audio_track = 0) noexcept;
   void RequestRecordingStop(std::uint64_t video_frame_target,
                             std::uint64_t audio_frame_target) noexcept;
   void ResetTimeline(bool stop_recording = true) noexcept;

@@ -11,7 +11,7 @@ RollingMediaBuffer::RollingMediaBuffer(double maximum_seconds, std::size_t maxim
     : maximum_seconds_(maximum_seconds), maximum_bytes_(maximum_bytes) {}
 
 bool RollingMediaBuffer::Push(const AVPacket* packet, StreamKind kind, AVRational time_base,
-                              Error& error) {
+                              Error& error, std::uint8_t audio_track) {
   if (packet == nullptr) {
     error = Error{ErrorComponent::kRollingBuffer, "retain encoded packet",
                   "encoder returned a null packet"};
@@ -25,7 +25,7 @@ bool RollingMediaBuffer::Push(const AVPacket* packet, StreamKind kind, AVRationa
   }
 
   const auto packet_bytes = clone->size > 0 ? static_cast<std::size_t>(clone->size) : 0;
-  EncodedPacket encoded{std::move(clone), kind, time_base};
+  EncodedPacket encoded{std::move(clone), kind, time_base, audio_track};
   const auto descriptor = DescribePacket(encoded);
   std::scoped_lock lock(mutex_);
   try {
@@ -83,7 +83,7 @@ bool RollingMediaBuffer::Snapshot(double seconds, std::vector<EncodedPacket>& re
                       "packet cloning failed; refusing to save an incomplete clip"};
         return false;
       }
-      result.push_back(EncodedPacket{std::move(clone), packet.kind, packet.time_base});
+      result.push_back(EncodedPacket{std::move(clone), packet.kind, packet.time_base, packet.audio_track});
     }
   } catch (const std::exception& exception) {
     result.clear();
