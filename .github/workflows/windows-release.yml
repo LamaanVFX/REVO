@@ -34,7 +34,7 @@ jobs:
       - name: Validate separate game, Discord, music and desktop audio in saved clips
         shell: pwsh
         run: |
-          & tools/run-obs-test.ps1 -Mode game -Configuration Release -BuildSuffix release-2 -Fps 60 -SourceFps 60 -Encoder obs_x264 -EncoderQuality performance -LimitGameCapture -DisplayMethod 1 -SeparateAudioTracks -Name release-five-track-smoke
+          & tools/run-obs-test.ps1 -Mode game -Configuration Release -BuildSuffix release-2 -Fps 30 -SourceFps 60 -OutputWidth 1280 -OutputHeight 720 -Encoder obs_x264 -EncoderQuality performance -LimitGameCapture -DisplayMethod 1 -SeparateAudioTracks -Name release-five-track-smoke
       - name: Obtain corresponding sources
         shell: pwsh
         run: '& packaging/prepare-obs-sources.ps1'

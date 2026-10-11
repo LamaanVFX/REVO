@@ -3,7 +3,9 @@ param(
   [ValidateSet('Debug','Release')][string]$Configuration='Release',
   [ValidatePattern('^[a-zA-Z0-9_-]{0,50}$')][string]$BuildSuffix='',
   [string]$Executable='',
-  [ValidateSet(60,120)][int]$Fps=60,
+  [ValidateSet(30,60,120)][int]$Fps=60,
+  [ValidateRange(320,3840)][int]$OutputWidth=1920,
+  [ValidateRange(240,2160)][int]$OutputHeight=1080,
   [ValidateSet(60,120,240)][int]$SourceFps=60,
   [ValidateSet('balanced','performance','quality')][string]$EncoderQuality='balanced',
   [switch]$LimitGameCapture,
@@ -41,7 +43,7 @@ if($Overlay -eq 'static'){
 }
 $modeSetting=if($Mode -eq 'game'){'game_window'}else{'display'}
 @("capture_mode=$modeSetting",'preferred_game_title="Klip cadence test scene"',
-  $(if($NativeResolution){'output_width=0'}else{'output_width=1920'}),$(if($NativeResolution){'output_height=0'}else{'output_height=1080'}),"target_fps=$Fps",$(if($ReplayDurationTest){"clip_duration_seconds=$ReplaySeconds"}else{'clip_duration_seconds=15'}),
+  $(if($NativeResolution){'output_width=0'}else{"output_width=$OutputWidth"}),$(if($NativeResolution){'output_height=0'}else{"output_height=$OutputHeight"}),"target_fps=$Fps",$(if($ReplayDurationTest){"clip_duration_seconds=$ReplaySeconds"}else{'clip_duration_seconds=15'}),
   "rolling_buffer_seconds=$($ReplaySeconds+15)","rolling_buffer_bytes=$([long]$ReplayMemoryMiB*1024*1024)",'desktop_audio_enabled=true',
   'microphone_enabled=false',
   'obs_separate_audio_tracks=true',
