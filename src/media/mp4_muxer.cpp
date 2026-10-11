@@ -1,6 +1,7 @@
 #include "klip/media/mp4_muxer.h"
 
 #include <algorithm>
+#include <string_view>
 
 #include "klip/core/path_text.h"
 
@@ -35,7 +36,9 @@ bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapsho
   std::filesystem::remove(temporary_path_, ignored);
 
   const auto utf8 = PathToUtf8(temporary_path_);
-  auto result = avformat_alloc_output_context2(&format_, nullptr, "mp4", utf8.c_str());
+  const auto extension = output_path.extension().string();
+  const char* format_name = extension == ".mkv" || extension == ".MKV" ? "matroska" : "mp4";
+  auto result = avformat_alloc_output_context2(&format_, nullptr, format_name, utf8.c_str());
   if (result < 0 || format_ == nullptr) {
     error = MakeFfmpegError(component_, "allocate MP4 output", result, utf8);
     Abort();
@@ -76,7 +79,7 @@ bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapsho
   }
 
   AVDictionary* options = nullptr;
-  av_dict_set(&options, "movflags", "+faststart", 0);
+  if (format_name == std::string_view("mp4")) av_dict_set(&options, "movflags", "+faststart", 0);
   result = avformat_write_header(format_, &options);
   av_dict_free(&options);
   if (result < 0) {
