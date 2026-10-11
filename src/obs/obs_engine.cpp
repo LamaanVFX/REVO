@@ -504,7 +504,12 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     else obs_source_update(source, settings.get());
     if (!source) throw std::runtime_error(std::string("OBS application-audio capture is unavailable for ") + name);
     obs_source_set_audio_mixers(source, config.obs_separate_audio_tracks ? (1U | dedicated_mix) : 1U);
-    obs_source_set_volume(source, static_cast<float>(config.desktop_audio_gain));
+    const float gain = std::string_view(name) == "Klip Discord audio"
+                           ? static_cast<float>(config.discord_audio_gain)
+                           : std::string_view(name) == "Klip music audio"
+                                 ? static_cast<float>(config.music_audio_gain)
+                                 : static_cast<float>(config.desktop_audio_gain);
+    obs_source_set_volume(source, gain);
     obs_set_output_source(channel, source);
   };
   configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 1);
@@ -597,7 +602,7 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
       else SetList(props.get(), settings.get(), "target_usage", performance ? "TU7" : maximum ? "TU1" : "TU4");
     }
     if (config_.obs_duration_priority) {
-      const int bitrate = ObsReplayBitrateKbps(config_);
+      const int bitrate = config_.obs_replay_bitrate_kbps;
       if (!obs_properties_get(props.get(), "bitrate") || bitrate < 1000)
         throw std::runtime_error("Cannot fit the replay duration into the memory budget. Increase replay memory or shorten the duration.");
       SetInt(props.get(), settings.get(), "bitrate", bitrate);
