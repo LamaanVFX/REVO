@@ -32,7 +32,7 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $root=Join-Path $repo "work/$Name"
 if(Test-Path $root){throw "Use a fresh test name to preserve evidence: $root"}
 New-Item -ItemType Directory $root | Out-Null
-$bin=Join-Path (Get-ChildItem "$repo/work/validation-tools/ffmpeg-8.1.2" -Directory | Select-Object -First 1).FullName 'bin'
+$bin=Join-Path (Get-ChildItem "$repo/work/validation-tools/ffmpeg-8.1" -Directory | Select-Object -First 1).FullName 'bin'
 $overlayImage=Join-Path $root 'overlay-white.png'
 if($Overlay -eq 'static'){
   # Deterministic test asset, not an application artwork or a captured user image.
