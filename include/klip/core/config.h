@@ -77,7 +77,7 @@ struct AppConfig {
   std::filesystem::path log_path = "klip.log";
   bool microphone_enabled = false;
   bool capture_cursor = true;
-  bool capture_border = true;
+  bool capture_border = false;
   bool capture_preview_enabled = false;
   bool static_overlay_enabled = false;
   std::filesystem::path static_overlay_path;
