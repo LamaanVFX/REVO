@@ -19,22 +19,41 @@
 namespace klip {
 namespace {
 #if defined(KLIP_USE_LIBOBS)
+std::string ExecutableAudioSelector(std::string_view window_value) {
+  // OBS window selectors are serialized as title:class:executable. Store only
+  // the executable portion so title changes (Discord chats, Spotify tracks)
+  // cannot invalidate the selection. The WASAPI source uses priority=2 (exe).
+  const auto first = window_value.find(':');
+  if (first == std::string_view::npos) return {};
+  const auto second = window_value.find(':', first + 1);
+  if (second == std::string_view::npos || second + 1 >= window_value.size()) return {};
+  return "::" + std::string(window_value.substr(second + 1));
+}
+
 void DrawAudioWindowSelector(const char* label, std::string& selected) {
   obs_properties_t* props = obs_get_source_properties("wasapi_process_output_capture");
   if (!props) { ImGui::TextDisabled("Application audio capture is unavailable."); return; }
   obs_property_t* window = obs_properties_get(props, "window");
-  const char* preview = "Choose an application window";
-  if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i)
-    if (std::string_view(obs_property_list_item_string(window, i)) == selected)
+  const char* preview = selected.empty() ? "Choose an application executable" : "Selected executable (may be closed)";
+  if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i) {
+    const char* value = obs_property_list_item_string(window, i);
+    if (value && ExecutableAudioSelector(value) == selected) {
       preview = obs_property_list_item_name(window, i);
+      break;
+    }
+  }
   if (ImGui::BeginCombo(label, preview)) {
     if (ImGui::Selectable("Not selected", selected.empty())) selected.clear();
     if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i) {
       if (obs_property_list_item_disabled(window, i)) continue;
       const char* value = obs_property_list_item_string(window, i);
       if (!value || !*value) continue;
-      const bool active = selected == value;
-      if (ImGui::Selectable(obs_property_list_item_name(window, i), active)) selected = value;
+      const std::string executable_selector = ExecutableAudioSelector(value);
+      if (executable_selector.empty()) continue;
+      const bool active = selected == executable_selector;
+      const std::string item_label = std::string(obs_property_list_item_name(window, i)) +
+          "  (" + executable_selector.substr(2) + ")";
+      if (ImGui::Selectable(item_label.c_str(), active)) selected = executable_selector;
       if (active) ImGui::SetItemDefaultFocus();
     }
     ImGui::EndCombo();
