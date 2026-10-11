@@ -20,6 +20,17 @@ probe = json.loads(subprocess.check_output([
 audio_streams = [s for s in probe["streams"] if s.get("codec_type") == "audio"]
 if len(audio_streams) != 5:
     raise SystemExit(f"expected 5 audio streams, found {len(audio_streams)}")
+expected_titles = [
+    "Klip desktop AAC", "Klip game AAC", "Klip microphone AAC",
+    "Klip Discord AAC", "Klip music AAC",
+]
+for index, (stream, expected_title) in enumerate(zip(audio_streams, expected_titles)):
+    actual_title = stream.get("tags", {}).get("title", "")
+    if actual_title != expected_title:
+        raise SystemExit(
+            f"audio stream {index} title mismatch: expected {expected_title!r}, "
+            f"found {actual_title!r}"
+        )
 
 def tone_amplitude(stream_index, frequency):
     raw = subprocess.check_output([
