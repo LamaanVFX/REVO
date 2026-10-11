@@ -88,6 +88,10 @@ class KlipApplication {
   RecordingWriter recording_writer_;
   PacketRouter packet_router_;
   AudioEncoder audio_encoder_;
+  AudioEncoder game_audio_encoder_;
+  AudioEncoder microphone_audio_encoder_;
+  AudioEncoder discord_audio_encoder_;
+  AudioEncoder music_audio_encoder_;
   VideoEncoder video_encoder_;
   GraphicsCapture capture_;
   AudioPipeline audio_;

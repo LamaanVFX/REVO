@@ -17,7 +17,7 @@ class AudioEncoder {
   static constexpr int kSampleRate = 48'000;
   static constexpr int kChannels = 2;
 
-  AudioEncoder(PacketRouter& router, Logger& logger);
+  AudioEncoder(PacketRouter& router, Logger& logger, std::uint8_t audio_track = 0);
   ~AudioEncoder() noexcept;
 
   AudioEncoder(const AudioEncoder&) = delete;
@@ -40,6 +40,7 @@ class AudioEncoder {
   void Normalize(AVPacket* packet, std::int64_t fallback_pts) noexcept;
 
   PacketRouter& router_;
+  std::uint8_t audio_track_ = 0;
   Logger& logger_;
   mutable std::mutex mutex_;
   AVCodecContext* codec_ = nullptr;

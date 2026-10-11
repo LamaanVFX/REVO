@@ -109,10 +109,16 @@ KlipApplication::KlipApplication(AppConfig config, std::filesystem::path setting
       media_buffer_(config_.rolling_buffer_seconds, config_.rolling_buffer_bytes),
       recording_writer_(state_, logger_),
       packet_router_(media_buffer_, recording_writer_, state_, logger_),
-      audio_encoder_(packet_router_, logger_),
+      audio_encoder_(packet_router_, logger_, 0),
+      game_audio_encoder_(packet_router_, logger_, 1),
+      microphone_audio_encoder_(packet_router_, logger_, 2),
+      discord_audio_encoder_(packet_router_, logger_, 3),
+      music_audio_encoder_(packet_router_, logger_, 4),
       video_encoder_(packet_router_, state_, logger_),
       capture_(video_encoder_, state_, logger_),
-      audio_(audio_encoder_, state_, logger_),
+      audio_(std::array<AudioEncoder*, 5>{&audio_encoder_, &game_audio_encoder_,
+                                          &microphone_audio_encoder_, &discord_audio_encoder_,
+                                          &music_audio_encoder_}, state_, logger_),
       clip_writer_(media_buffer_, state_, logger_, config_.clip_request_queue_capacity) {}
 
 KlipApplication::~KlipApplication() noexcept { Shutdown(); }
@@ -603,8 +609,11 @@ void KlipApplication::HandleHotkey(int id) {
   } else if (id == Hotkeys::kToggleRecording) {
     Error error;
     if (recording_writer_.IsRecording()) {
-      packet_router_.RequestRecordingStop(video_encoder_.SubmittedFrames(),
-                                          audio_encoder_.SubmittedFrames());
+      packet_router_.RequestRecordingStop(
+          video_encoder_.SubmittedFrames(),
+          audio_encoder_.SubmittedFrames() + game_audio_encoder_.SubmittedFrames() +
+              microphone_audio_encoder_.SubmittedFrames() + discord_audio_encoder_.SubmittedFrames() +
+              music_audio_encoder_.SubmittedFrames());
     } else if (state_.Snapshot().status != CaptureStatus::kBuffering) {
       return;
     } else if (!StartRecording(error)) {
@@ -623,8 +632,11 @@ UiCommands KlipApplication::BuildUiCommands() {
           [this] {
             Error error;
             if (recording_writer_.IsRecording()) {
-              packet_router_.RequestRecordingStop(video_encoder_.SubmittedFrames(),
-                                                  audio_encoder_.SubmittedFrames());
+              packet_router_.RequestRecordingStop(
+                  video_encoder_.SubmittedFrames(),
+                  audio_encoder_.SubmittedFrames() + game_audio_encoder_.SubmittedFrames() +
+                      microphone_audio_encoder_.SubmittedFrames() + discord_audio_encoder_.SubmittedFrames() +
+                      music_audio_encoder_.SubmittedFrames());
             } else if (state_.Snapshot().status != CaptureStatus::kBuffering) {
               return;
             } else if (!StartRecording(error)) {
@@ -823,16 +835,34 @@ bool KlipApplication::StartMediaPipeline(const AppConfig& config, Error& error) 
       !capture_.Initialize(graphics_.Device(), graphics_.Context(), window_.Handle(), config, error,
                            force_event_query_sync_) ||
       !audio_.Initialize(capture_.QpcOrigin(), capture_.QpcFrequency(), config, error) ||
-      !clip_writer_.Start(
+      !clip_writer_.StartWithAudioTracks(
           config,
           [this](CodecSnapshot& snapshot) { return video_encoder_.SnapshotCodec(snapshot); },
-          [this](CodecSnapshot& snapshot) { return audio_encoder_.SnapshotCodec(snapshot); },
-          error) ||
-      !recording_writer_.Initialize(
+          [this](std::vector<CodecSnapshot>& snapshots) {
+            snapshots.clear();
+            for (auto* encoder : std::array<AudioEncoder*, 5>{
+                     &audio_encoder_, &game_audio_encoder_, &microphone_audio_encoder_,
+                     &discord_audio_encoder_, &music_audio_encoder_}) {
+              CodecSnapshot snapshot;
+              if (!encoder->SnapshotCodec(snapshot)) { snapshots.clear(); return false; }
+              snapshots.push_back(std::move(snapshot));
+            }
+            return true;
+          }, error) ||
+      !recording_writer_.InitializeWithAudioTracks(
           config,
           [this](CodecSnapshot& snapshot) { return video_encoder_.SnapshotCodec(snapshot); },
-          [this](CodecSnapshot& snapshot) { return audio_encoder_.SnapshotCodec(snapshot); },
-          error) ||
+          [this](std::vector<CodecSnapshot>& snapshots) {
+            snapshots.clear();
+            for (auto* encoder : std::array<AudioEncoder*, 5>{
+                     &audio_encoder_, &game_audio_encoder_, &microphone_audio_encoder_,
+                     &discord_audio_encoder_, &music_audio_encoder_}) {
+              CodecSnapshot snapshot;
+              if (!encoder->SnapshotCodec(snapshot)) { snapshots.clear(); return false; }
+              snapshots.push_back(std::move(snapshot));
+            }
+            return true;
+          }, error) ||
       !capture_.Start(error)) {
     StopMediaPipeline();
     return false;
@@ -845,6 +875,10 @@ void KlipApplication::StopMediaPipeline() noexcept {
   audio_.StopCapture();
   video_encoder_.Flush();
   audio_encoder_.Flush();
+  game_audio_encoder_.Flush();
+  microphone_audio_encoder_.Flush();
+  discord_audio_encoder_.Flush();
+  music_audio_encoder_.Flush();
   recording_writer_.StopRecording();
   clip_writer_.Stop();
   recording_writer_.Shutdown();
