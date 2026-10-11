@@ -986,6 +986,14 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
       break;
     }
   }
+  // Automatic fullscreen capture uses source id 0, so it will not match an
+  // entry in the selectable-window list. Show the active target description
+  // instead of incorrectly displaying "choose a source".
+  if (snapshot.selected_capture_source_id == 0 &&
+      selected_mode == CaptureTargetMode::kGameWindow &&
+      !snapshot.capture_target.empty()) {
+    selected_label = snapshot.capture_target.c_str();
+  }
   const ImVec2 source_pos{mode_pos.x + capture_size.x + capture_gap, capture_y};
   ImGui::SetCursorScreenPos(source_pos);
   if (source_disabled) ImGui::BeginDisabled();
