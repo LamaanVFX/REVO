@@ -1055,6 +1055,46 @@ bool AudioPipeline::ReadFrame(SourceBuffer& source, std::vector<float>& output, 
   source.read_pts += FramesTo100ns(take);
   return true;
 }
+void AudioPipeline::Append(SourceBuffer& buffer, std::int64_t pts, const float* samples, int frames,
+                           bool discontinuity) {
+  if (samples == nullptr || frames <= 0) return;
+  std::scoped_lock lock(buffer.mutex);
+  if (discontinuity) {
+    buffer.samples.clear();
+    buffer.read_pts = pts;
+  }
+  if (buffer.read_pts == AV_NOPTS_VALUE) buffer.read_pts = pts;
+  const auto queued_frames = static_cast<int>(buffer.samples.size() / 2);
+  const auto expected = buffer.read_pts + FramesTo100ns(queued_frames);
+  const auto delta = PtsToFrames(pts - expected);
+  int offset = 0;
+  if (std::abs(delta) > kMaximumBufferedFrames) {
+    buffer.samples.clear();
+    buffer.read_pts = pts;
+  } else if (delta > 0) {
+    buffer.samples.insert(buffer.samples.end(), static_cast<std::size_t>(delta) * 2, 0.0F);
+  } else if (delta < 0) {
+    const auto overlap = std::min(-delta, frames);
+    offset = overlap * 2;
+    frames -= overlap;
+  }
+  float peak = 0.0F;
+  for (int index = offset; index < offset + frames * 2; ++index) {
+    peak = std::max(peak, std::abs(samples[index]));
+    buffer.samples.push_back(samples[index]);
+  }
+  while (buffer.samples.size() > static_cast<std::size_t>(kMaximumBufferedFrames * 2)) {
+    buffer.samples.pop_front();
+    buffer.samples.pop_front();
+    buffer.read_pts += FramesTo100ns(1);
+  }
+  const auto activity = pts + FramesTo100ns(frames);
+  buffer.last_activity.store(activity, std::memory_order_release);
+  buffer.peak.store(peak, std::memory_order_release);
+  buffer.peak_time.store(activity, std::memory_order_release);
+  sample_generation_.fetch_add(1, std::memory_order_release);
+  mixer_cv_.notify_one();
+}
 float AudioPipeline::Level(const SourceBuffer& buffer) const {
   const auto age = Now100ns() - buffer.peak_time.load(std::memory_order_acquire);
   if (age >= 3'000'000) return 0.0F;

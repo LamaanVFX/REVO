@@ -637,6 +637,159 @@ bool GraphicsCapture::StartSessionLocked(const CaptureTarget& target, Error& err
   duplication_thread_ = std::jthread([this](std::stop_token token) { DesktopDuplicationLoop(token); });
   return true;
 }
+bool GraphicsCapture::CreateDesktopDuplication(HMONITOR monitor, Error& error) {
+  duplication_ = nullptr;
+  duplication_output_desc_ = {};
+  if (monitor == nullptr) {
+    error = Error{ErrorComponent::kCapture, "select duplication output", "no monitor is selected"};
+    return false;
+  }
+  winrt::com_ptr<IDXGIDevice> dxgi_device;
+  winrt::com_ptr<IDXGIAdapter> adapter;
+  auto result = device_->QueryInterface(IID_PPV_ARGS(dxgi_device.put()));
+  if (SUCCEEDED(result)) result = dxgi_device->GetAdapter(adapter.put());
+  if (FAILED(result)) {
+    error = MakeHresultError(ErrorComponent::kCapture, "query Direct3D display adapter", result);
+    return false;
+  }
+  for (UINT index = 0;; ++index) {
+    winrt::com_ptr<IDXGIOutput> output;
+    result = adapter->EnumOutputs(index, output.put());
+    if (result == DXGI_ERROR_NOT_FOUND) break;
+    if (FAILED(result)) {
+      error = MakeHresultError(ErrorComponent::kCapture, "enumerate Direct3D outputs", result);
+      return false;
+    }
+    DXGI_OUTPUT_DESC desc{};
+    if (FAILED(output->GetDesc(&desc)) || desc.Monitor != monitor) continue;
+    winrt::com_ptr<IDXGIOutput1> output1;
+    result = output->QueryInterface(IID_PPV_ARGS(output1.put()));
+    if (FAILED(result)) {
+      error = MakeHresultError(ErrorComponent::kCapture, "query desktop duplication output", result);
+      return false;
+    }
+    result = output1->DuplicateOutput(device_.get(), duplication_.put());
+    if (FAILED(result)) {
+      error = MakeHresultError(ErrorComponent::kCapture, "start DXGI Desktop Duplication", result, MonitorLabel(monitor));
+      return false;
+    }
+    duplication_output_desc_ = desc;
+    return true;
+  }
+  error = Error{ErrorComponent::kCapture, "select duplication output",
+                "the selected monitor is not attached to Klip's Direct3D adapter. Select a monitor connected to the active GPU."};
+  return false;
+}
+
+winrt::com_ptr<ID3D11Texture2D> GraphicsCapture::AcquireCaptureTexture(std::uint32_t width,
+                                                                        std::uint32_t height) {
+  std::scoped_lock lock(capture_texture_pool_mutex_);
+  if (width != capture_texture_pool_width_ || height != capture_texture_pool_height_) {
+    capture_texture_pool_.clear();
+    capture_texture_pool_width_ = width;
+    capture_texture_pool_height_ = height;
+  }
+  if (!capture_texture_pool_.empty()) {
+    auto texture = std::move(capture_texture_pool_.back());
+    capture_texture_pool_.pop_back();
+    return texture;
+  }
+  D3D11_TEXTURE2D_DESC desc{};
+  desc.Width = width; desc.Height = height;
+  desc.MipLevels = 1; desc.ArraySize = 1;
+  desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  desc.SampleDesc.Count = 1;
+  desc.Usage = D3D11_USAGE_DEFAULT;
+  desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+  winrt::com_ptr<ID3D11Texture2D> texture;
+  if (FAILED(device_->CreateTexture2D(&desc, nullptr, texture.put()))) return nullptr;
+  return texture;
+}
+
+void GraphicsCapture::RecycleCaptureTexture(ID3D11Texture2D* texture, std::uint32_t width,
+                                            std::uint32_t height) noexcept {
+  if (texture == nullptr || !recycle_enabled_.load(std::memory_order_acquire)) return;
+  try {
+    D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
+    if (desc.Width != width || desc.Height != height) return;
+    winrt::com_ptr<ID3D11Texture2D> retained; retained.copy_from(texture);
+    std::scoped_lock lock(capture_texture_pool_mutex_);
+    if (capture_texture_pool_.size() < 5 && width == capture_texture_pool_width_ &&
+        height == capture_texture_pool_height_) capture_texture_pool_.push_back(std::move(retained));
+  } catch (...) {}
+}
+
+void GraphicsCapture::DesktopDuplicationLoop(std::stop_token stop_token) noexcept {
+  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+  const auto target = active_target_;
+  while (!stop_token.stop_requested() && running_.load(std::memory_order_acquire)) {
+    if (target.kind == TargetKind::kWindow &&
+        (!IsWindowCandidate(target.window) || MonitorFromWindow(target.window, MONITOR_DEFAULTTONEAREST) != duplication_output_desc_.Monitor)) {
+      target_dirty_.store(true, std::memory_order_release);
+      break;
+    }
+    DXGI_OUTDUPL_FRAME_INFO frame_info{};
+    winrt::com_ptr<IDXGIResource> resource;
+    const auto acquired = duplication_->AcquireNextFrame(50, &frame_info, resource.put());
+    if (acquired == DXGI_ERROR_WAIT_TIMEOUT) continue;
+    if (acquired == DXGI_ERROR_ACCESS_LOST) {
+      logger_.Warning("DXGI Desktop Duplication access was lost; reopening the capture output");
+      target_dirty_.store(true, std::memory_order_release);
+      break;
+    }
+    if (FAILED(acquired)) {
+      if (!stop_token.stop_requested()) {
+        state_.SetError(MakeHresultError(ErrorComponent::kCapture, "acquire desktop frame", acquired));
+        target_dirty_.store(true, std::memory_order_release);
+      }
+      break;
+    }
+    bool released = false;
+    const auto release_frame = [&] { if (!released) { duplication_->ReleaseFrame(); released = true; } };
+    winrt::com_ptr<ID3D11Texture2D> desktop_texture;
+    auto result = resource->QueryInterface(IID_PPV_ARGS(desktop_texture.put()));
+    if (FAILED(result)) { release_frame(); continue; }
+    RECT crop{};
+    const auto desktop = duplication_output_desc_.DesktopCoordinates;
+    if (target.kind == TargetKind::kWindow) {
+      RECT client{}; POINT tl{}, br{};
+      if (!GetClientRect(target.window, &client)) { release_frame(); continue; }
+      tl = POINT{client.left, client.top}; br = POINT{client.right, client.bottom};
+      if (!ClientToScreen(target.window, &tl) || !ClientToScreen(target.window, &br)) { release_frame(); continue; }
+      crop = RECT{tl.x, tl.y, br.x, br.y};
+      crop.left = std::max(crop.left, desktop.left); crop.top = std::max(crop.top, desktop.top);
+      crop.right = std::min(crop.right, desktop.right); crop.bottom = std::min(crop.bottom, desktop.bottom);
+      crop.left -= desktop.left; crop.right -= desktop.left;
+      crop.top -= desktop.top; crop.bottom -= desktop.top;
+    } else crop = RECT{0, 0, desktop.right - desktop.left, desktop.bottom - desktop.top};
+    if (crop.right - crop.left < 2 || crop.bottom - crop.top < 2) { release_frame(); continue; }
+    const auto width = EvenNv12Dimension(static_cast<std::uint32_t>(crop.right - crop.left));
+    const auto height = EvenNv12Dimension(static_cast<std::uint32_t>(crop.bottom - crop.top));
+    auto cropped = AcquireCaptureTexture(width, height);
+    if (!cropped) { release_frame(); continue; }
+    D3D11_BOX box{};
+    box.left = static_cast<UINT>(crop.left); box.top = static_cast<UINT>(crop.top); box.front = 0;
+    box.right = box.left + width; box.bottom = box.top + height; box.back = 1;
+    context_->CopySubresourceRegion(cropped.get(), 0, 0, 0, 0, desktop_texture.get(), 0, &box);
+    release_frame(); resource = nullptr; desktop_texture = nullptr;
+    current_width_ = width; current_height_ = height;
+    source_frames_.fetch_add(1, std::memory_order_relaxed);
+    const auto pts = Timestamp100ns();
+    if (!CaptureFrameIsDue(pts, last_enqueued_pts_.load(std::memory_order_relaxed), config_.target_fps)) {
+      RecycleCaptureTexture(cropped.get(), width, height); continue;
+    }
+    last_enqueued_pts_.store(pts, std::memory_order_relaxed);
+    if (raw_queue_->Size() >= raw_queue_->Capacity()) {
+      RecycleCaptureTexture(cropped.get(), width, height);
+      coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed); continue;
+    }
+    const auto generation = capture_generation_.load(std::memory_order_acquire);
+    if (raw_queue_->TryPush(RawFrame{nullptr, std::move(cropped), width, height, pts, generation, true}))
+      captured_frames_.fetch_add(1, std::memory_order_relaxed);
+    else coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
 void GraphicsCapture::LogTargetAdapter(HMONITOR monitor, bool is_display_capture) {
   state_.SetCaptureAdapter({}, "unknown");
   if (monitor == nullptr) return;
