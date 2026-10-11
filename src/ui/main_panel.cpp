@@ -5,6 +5,9 @@
 
 #include <Windows.h>
 #include <imgui.h>
+#if defined(KLIP_USE_LIBOBS)
+#include <obs.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -15,6 +18,60 @@
 
 namespace klip {
 namespace {
+#if defined(KLIP_USE_LIBOBS)
+std::string ExecutableAudioSelector(std::string_view window_value) {
+  // OBS window selectors are serialized as title:class:executable. Store only
+  // the executable portion so title changes (Discord chats, Spotify tracks)
+  // cannot invalidate the selection. The WASAPI source uses priority=2 (exe).
+  const auto first = window_value.find(':');
+  if (first == std::string_view::npos) return {};
+  const auto second = window_value.find(':', first + 1);
+  if (second == std::string_view::npos || second + 1 >= window_value.size()) return {};
+  return "::" + std::string(window_value.substr(second + 1));
+}
+
+void DrawAudioWindowSelector(const char* label, std::string& selected) {
+  // Migrate settings saved by earlier builds, which stored the whole changing
+  // title:class:executable window value.
+  if (!selected.empty() && !selected.starts_with("::")) {
+    const auto stable = ExecutableAudioSelector(selected);
+    if (!stable.empty()) selected = stable;
+  }
+  obs_properties_t* props = obs_get_source_properties("wasapi_process_output_capture");
+  if (!props) { ImGui::TextDisabled("Application audio capture is unavailable."); return; }
+  obs_property_t* window = obs_properties_get(props, "window");
+  std::string selected_preview = selected.empty()
+      ? "Choose an application executable"
+      : "Selected: " + selected.substr(2) + " (may be closed)";
+  if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i) {
+    const char* value = obs_property_list_item_string(window, i);
+    if (value && ExecutableAudioSelector(value) == selected) {
+      selected_preview = std::string(obs_property_list_item_name(window, i)) +
+          "  (" + selected.substr(2) + ")";
+      break;
+    }
+  }
+  const char* preview = selected_preview.c_str();
+  if (ImGui::BeginCombo(label, preview)) {
+    if (ImGui::Selectable("Not selected", selected.empty())) selected.clear();
+    if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i) {
+      if (obs_property_list_item_disabled(window, i)) continue;
+      const char* value = obs_property_list_item_string(window, i);
+      if (!value || !*value) continue;
+      const std::string executable_selector = ExecutableAudioSelector(value);
+      if (executable_selector.empty()) continue;
+      const bool active = selected == executable_selector;
+      const std::string item_label = std::string(obs_property_list_item_name(window, i)) +
+          "  (" + executable_selector.substr(2) + ")";
+      if (ImGui::Selectable(item_label.c_str(), active)) selected = executable_selector;
+      if (active) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+  }
+  obs_properties_destroy(props);
+}
+#endif
+
 
 constexpr ImVec4 kMuted{0.48F, 0.49F, 0.46F, 1.0F};
 constexpr ImVec4 kMint{0.30F, 0.80F, 0.49F, 1.0F};
@@ -933,6 +990,14 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
       break;
     }
   }
+  // Automatic fullscreen capture uses source id 0, so it will not match an
+  // entry in the selectable-window list. Show the active target description
+  // instead of incorrectly displaying "choose a source".
+  if (snapshot.selected_capture_source_id == 0 &&
+      selected_mode == CaptureTargetMode::kGameWindow &&
+      !snapshot.capture_target.empty()) {
+    selected_label = snapshot.capture_target.c_str();
+  }
   const ImVec2 source_pos{mode_pos.x + capture_size.x + capture_gap, capture_y};
   ImGui::SetCursorScreenPos(source_pos);
   if (source_disabled) ImGui::BeginDisabled();
@@ -1068,6 +1133,46 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     microphone_enabled = !microphone_enabled;
     commands.set_microphone_enabled(microphone_enabled);
   }
+  const float discord_y = microphone_y + audio_row_height + audio_row_gap;
+  DrawCard(draw, {content.x, discord_y}, audio_row_size, false, kPanel, kPanelBorder, 7.0F);
+  DrawSpeakerIcon(draw, {content.x + 38.0F, discord_y + 26.0F},
+                  config.discord_audio_window.empty() ? kMutedU32 : kPurpleBright);
+  DrawText(draw, semibold, 13.0F, {content.x + 76.0F, discord_y + 18.0F},
+           config.discord_audio_window.empty() ? kMutedU32 : kTextU32, "Discord audio");
+  float discord_gain = static_cast<float>(config.discord_audio_gain);
+  if (GainSlider("##discord-gain", {level_x, discord_y + 15.0F}, gain_width, discord_gain) &&
+      commands.set_discord_audio_gain) {
+    microphone_gain_dirty_ = true;
+    commands.set_discord_audio_gain(discord_gain);
+  }
+  char discord_gain_text[16]{};
+  std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%d%%",
+                static_cast<int>(discord_gain * 100.0F + 0.5F));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, discord_y + 18.0F},
+           config.discord_audio_window.empty() ? kMutedU32 : kTextU32, discord_gain_text);
+  if (ImGui::IsItemHovered() && config.discord_audio_window.empty())
+    ImGui::SetTooltip("Select Discord's executable in Settings > Audio to enable this source.");
+
+  const float music_y = discord_y + audio_row_height + audio_row_gap;
+  DrawCard(draw, {content.x, music_y}, audio_row_size, false, kPanel, kPanelBorder, 7.0F);
+  DrawSpeakerIcon(draw, {content.x + 38.0F, music_y + 26.0F},
+                  config.music_audio_window.empty() ? kMutedU32 : kPurpleBright);
+  DrawText(draw, semibold, 13.0F, {content.x + 76.0F, music_y + 18.0F},
+           config.music_audio_window.empty() ? kMutedU32 : kTextU32, "Spotify audio");
+  float music_gain = static_cast<float>(config.music_audio_gain);
+  if (GainSlider("##spotify-gain", {level_x, music_y + 15.0F}, gain_width, music_gain) &&
+      commands.set_music_audio_gain) {
+    microphone_gain_dirty_ = true;
+    commands.set_music_audio_gain(music_gain);
+  }
+  char music_gain_text[16]{};
+  std::snprintf(music_gain_text, sizeof(music_gain_text), "%d%%",
+                static_cast<int>(music_gain * 100.0F + 0.5F));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, music_y + 18.0F},
+           config.music_audio_window.empty() ? kMutedU32 : kTextU32, music_gain_text);
+  if (ImGui::IsItemHovered() && config.music_audio_window.empty())
+    ImGui::SetTooltip("Select Spotify's executable in Settings > Audio to enable this source.");
+
   if ((desktop_gain_dirty_ || microphone_gain_dirty_) &&
       !ImGui::IsMouseDown(ImGuiMouseButton_Left) && commands.persist_audio_gains) {
     commands.persist_audio_gains();
@@ -1106,7 +1211,10 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   ImGui::PopStyleColor(2);
   ImGui::PopStyleVar(3);
 
-  const float system_line_y = microphone_y + audio_row_height + 20.0F;
+  // Anchor status below the final mixer row (Spotify), not the microphone row.
+  // The mixer now has four rows; using microphone_y caused the status panel to
+  // overlap Discord and Spotify as the dashboard grew.
+  const float system_line_y = music_y + audio_row_height + 20.0F;
   draw->AddLine({window_min.x + 1.0F, system_line_y}, {window_max.x - 1.0F, system_line_y},
                 kDivider, 1.0F);
   DrawText(draw, label_font, 11.0F, {content.x, system_line_y + 22.0F}, kMutedU32,
@@ -1331,6 +1439,12 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
 
 void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppConfig& config,
                                const UiCommands& commands) {
+  // Keep the visible game-audio selector in sync with the executable detected by the engine.
+  // The UI draft is otherwise a separate copy and would continue showing stale javaw.exe.
+  if (!snapshot.detected_game_audio_application.empty()) {
+    draft_.game_audio_window = "::" + snapshot.detected_game_audio_application;
+  }
+
   if (!draft_initialized_) ResetDraft(config);
   auto* viewport = ImGui::GetMainViewport();
   ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, {0.5F, 0.5F});
@@ -1394,15 +1508,15 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 #endif
 
       SectionLabel("video / quality");
-      int fps = draft_.target_fps == 30 ? 0 : draft_.target_fps == 120 ? 2 : 1;
+      int fps = draft_.target_fps == 30 ? 0 : draft_.target_fps == 60 ? 1 : draft_.target_fps == 120 ? 2 : 3;
       constexpr const char* frame_rates[] = {"30 fps / lightest", "60 fps / recommended",
-                                             "120 fps / high load"};
+                                             "120 fps / high load", "240 fps / very high load"};
       if (ImGui::Combo("frame rate", &fps, frame_rates, IM_ARRAYSIZE(frame_rates)))
-        draft_.target_fps = fps == 0 ? 30U : fps == 2 ? 120U : 60U;
-      if (draft_.target_fps == 120)
+        draft_.target_fps = fps == 0 ? 30U : fps == 1 ? 60U : fps == 2 ? 120U : 240U;
+      if (draft_.target_fps >= 120)
         ImGui::TextColored(
             kMuted,
-            "Use a 120 Hz+ source. A hardware encoder is recommended; software fallback can use much more CPU.");
+            "Use a source and display pipeline that can sustain this rate. Hardware encoding is strongly recommended; 240 fps at high resolution is very demanding.");
 
       int resolution = draft_.output_width == 1280 ? 2 : draft_.output_width == 1920 ? 1 : 0;
       constexpr const char* resolutions[] = {"source resolution", "1920 x 1080", "1280 x 720"};
@@ -1471,7 +1585,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       ImGui::TextColored(kMuted,
                          "preview refreshes at 15 fps and does not change recorded frame rate.");
 #else
-      ImGui::TextWrapped("No capture preview runs in this build. Windows manages the capture border; stock OBS does not expose a border toggle.");
+      ImGui::TextWrapped("OBS game capture is borderless. DXGI display capture is preferred to avoid the yellow Windows Graphics Capture border.");
 #endif
 
       SectionLabel("studio / map cover or handcam");
@@ -1553,10 +1667,13 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 
     if (begin_settings_tab("audio", 3)) {
       SectionLabel("clips / audio");
-      ImGui::Checkbox("record desktop audio", &draft_.desktop_audio_enabled);
+      ImGui::Checkbox("enable desktop audio track", &draft_.desktop_audio_enabled);
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::Checkbox("separate desktop and microphone tracks", &draft_.obs_separate_audio_tracks);
-      ImGui::TextColored(kMuted, "track 1: mixed / track 2: desktop / track 3: microphone");
+      ImGui::TextColored(kMuted, "Five separate audio tracks are always enabled.");
+      ImGui::TextColored(kMuted, "Tracks: 1 desktop / 2 game / 3 mic / 4 Discord / 5 music");
+      DrawAudioWindowSelector("game audio application", draft_.game_audio_window);
+      DrawAudioWindowSelector("Discord audio application", draft_.discord_audio_window);
+      DrawAudioWindowSelector("music audio application", draft_.music_audio_window);
       constexpr int durations[] = {15, 30, 60, 120};
       constexpr const char* duration_names[] = {"15 seconds", "30 seconds", "60 seconds", "120 seconds"};
       int duration_index = -1;
@@ -1590,8 +1707,11 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       int desktop_volume = static_cast<int>(draft_.desktop_audio_gain * 100.0 + 0.5);
       if (ImGui::SliderInt("desktop volume", &desktop_volume, 0, 200, "%d%%"))
         draft_.desktop_audio_gain = static_cast<double>(desktop_volume) / 100.0;
+      int game_volume = static_cast<int>(draft_.game_audio_gain * 100.0 + 0.5);
+      if (ImGui::SliderInt("game volume", &game_volume, 0, 200, "%d%%"))
+        draft_.game_audio_gain = static_cast<double>(game_volume) / 100.0;
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::TextWrapped("Desktop audio records all applications. Excluding one application is not supported by stock OBS desktop audio.");
+      ImGui::TextWrapped("Track 1 captures system output. Game, microphone, Discord, and Spotify are routed to separate tracks. Choose application executables above; game audio is selected automatically when a supported game launches.");
       if (!draft_.excluded_audio_process.empty()) {
         ImGui::Text("Previous exclusion: %s", draft_.excluded_audio_process.c_str());
         if (ImGui::Button("clear previous exclusion / record all desktop audio")) draft_.excluded_audio_process.clear();
@@ -1700,6 +1820,13 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 
     if (begin_settings_tab("storage", 5)) {
       SectionLabel("storage / local files");
+#if defined(KLIP_USE_LIBOBS)
+      const char* container_names[] = {"MKV (recommended / crash-safe)", "MP4"};
+      int container_index = draft_.output_container == "mp4" ? 1 : 0;
+      if (ImGui::Combo("clip and recording container", &container_index, container_names, 2))
+        draft_.output_container = container_index == 1 ? "mp4" : "mkv";
+      ImGui::TextColored(kMuted, "MKV is the safe default. MP4 is supported but may be less recoverable after an interrupted write.");
+#endif
       ImGui::InputText("clips folder", clips_path_.data(), clips_path_.size());
       ImGui::InputText("recordings folder", recordings_path_.data(), recordings_path_.size());
 #if defined(KLIP_USE_LIBOBS)
@@ -1991,7 +2118,7 @@ void MainPanel::RenderDiagnosticsPreview(const ApplicationSnapshot& snapshot,
 
 void MainPanel::ResetDraft(const AppConfig& config) {
   draft_ = config;
-  if (draft_.target_fps != 30 && draft_.target_fps != 60 && draft_.target_fps != 120) {
+  if (draft_.target_fps != 30 && draft_.target_fps != 60 && draft_.target_fps != 120 && draft_.target_fps != 240) {
     draft_.target_fps = 60;
     ResizeReplayBudget(draft_);
   }

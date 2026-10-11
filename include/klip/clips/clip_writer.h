@@ -19,6 +19,7 @@ namespace klip {
 class ClipWriter {
  public:
   using SnapshotProvider = std::function<bool(CodecSnapshot&)>;
+  using AudioTracksSnapshotProvider = std::function<bool(std::vector<CodecSnapshot>&)>;
 
   ClipWriter(RollingMediaBuffer& buffer, ApplicationState& state, Logger& logger,
              std::size_t queue_capacity);
@@ -28,6 +29,8 @@ class ClipWriter {
   ClipWriter& operator=(const ClipWriter&) = delete;
 
   bool Start(AppConfig config, SnapshotProvider video, SnapshotProvider audio, Error& error);
+  bool StartWithAudioTracks(AppConfig config, SnapshotProvider video,
+                            AudioTracksSnapshotProvider audio, Error& error);
   void Stop() noexcept;
   bool RequestClip();
 
@@ -39,8 +42,9 @@ class ClipWriter {
 
   void Worker(std::stop_token stop_token) noexcept;
   bool Write(const Request& request, const std::vector<EncodedPacket>& packets,
-             const CodecSnapshot& video, const CodecSnapshot* audio, Error& error);
-  static std::filesystem::path BuildOutputPath(const std::filesystem::path& directory);
+             const CodecSnapshot& video, const std::vector<CodecSnapshot>& audio_tracks,
+             Error& error);
+  std::filesystem::path BuildOutputPath() const;
 
   RollingMediaBuffer& buffer_;
   ApplicationState& state_;
@@ -49,6 +53,7 @@ class ClipWriter {
   AppConfig config_;
   SnapshotProvider video_snapshot_;
   SnapshotProvider audio_snapshot_;
+  AudioTracksSnapshotProvider audio_tracks_snapshot_;
   std::jthread worker_;
   std::atomic<bool> running_{false};
 };

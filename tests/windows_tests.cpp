@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "klip/audio/audio_pipeline.h"
+#include "klip/core/path_text.h"
 #include "klip/audio/audio_recovery_policy.h"
 #include "klip/buffer/rolling_media_buffer.h"
 #include "klip/media/mp4_muxer.h"
@@ -27,6 +28,20 @@ int failures = 0;
       ++failures;                            \
     }                                        \
   } while (false)
+
+void TestNativeCaptureDefaults() {
+  const klip::AppConfig config;
+  CHECK(!config.capture_border);
+  CHECK(config.capture_cursor);
+  CHECK(config.output_container == "mkv");
+  CHECK(config.obs_separate_audio_tracks);
+  CHECK(config.desktop_audio_enabled);
+  CHECK(config.microphone_enabled);
+  CHECK(config.discord_audio_window == "::Discord.exe");
+  CHECK(config.music_audio_window == "::Spotify.exe");
+  CHECK(config.obs_display_method == 1);
+  CHECK(config.obs_limit_game_capture_fps);
+}
 
 void TestWaveFormats() {
   CHECK(klip::ResolveWaveSampleFormat(nullptr) == AV_SAMPLE_FMT_NONE);
@@ -476,9 +491,124 @@ void TestRecordingSurvivesCaptureSourceReset() {
   std::filesystem::remove_all(directory, ignored);
   avcodec_free_context(&encoder);
 }
+
+void TestFiveTrackMuxerRouting() {
+  const auto* codec = avcodec_find_encoder(AV_CODEC_ID_MPEG4);
+  CHECK(codec != nullptr);
+  if (!codec) return;
+  AVCodecContext* video = avcodec_alloc_context3(codec);
+  CHECK(video != nullptr);
+  if (!video) return;
+  video->width = video->height = 64;
+  video->pix_fmt = AV_PIX_FMT_YUV420P;
+  video->time_base = AVRational{1, 30};
+  video->framerate = AVRational{30, 1};
+  video->gop_size = 1;
+  video->max_b_frames = 0;
+  video->bit_rate = 100'000;
+  CHECK(avcodec_open2(video, codec, nullptr) >= 0);
+  auto video_packet = MakeTestKeyframe(video);
+  auto video_snapshot = MakeTestCodecSnapshot(video);
+  CHECK(video_packet != nullptr && video_snapshot.parameters != nullptr);
+  if (!video_packet || !video_snapshot.parameters) {
+    avcodec_free_context(&video);
+    return;
+  }
+  if (video_packet->duration <= 0) video_packet->duration = 1;
+
+  std::vector<klip::CodecSnapshot> audio_tracks;
+  for (int index = 0; index < 5; ++index) {
+    klip::CodecSnapshot audio;
+    audio.parameters.reset(avcodec_parameters_alloc());
+    CHECK(audio.parameters != nullptr);
+    if (!audio.parameters) {
+      avcodec_free_context(&video);
+      return;
+    }
+    audio.parameters->codec_type = AVMEDIA_TYPE_AUDIO;
+    audio.parameters->codec_id = AV_CODEC_ID_PCM_S16LE;
+    audio.parameters->format = AV_SAMPLE_FMT_S16;
+    audio.parameters->sample_rate = 48000;
+    audio.parameters->bit_rate = 48000 * 2 * 16;
+    audio.parameters->bits_per_coded_sample = 16;
+    audio.parameters->block_align = 4;
+    av_channel_layout_default(&audio.parameters->ch_layout, 2);
+    audio.time_base = AVRational{1, 48000};
+    audio_tracks.push_back(std::move(audio));
+  }
+
+  const auto path = std::filesystem::temp_directory_path() /
+      ("klip-five-track-mux-" + std::to_string(GetCurrentProcessId()) + ".mkv");
+  std::error_code ignored;
+  std::filesystem::remove(path, ignored);
+  std::filesystem::remove(path.wstring() + L".partial", ignored);
+  klip::Mp4Muxer muxer;
+  klip::Error error;
+  const bool opened = muxer.OpenMultiAudio(path, video_snapshot, audio_tracks,
+                                           klip::ErrorComponent::kClipWriter, error);
+  CHECK(opened);
+  if (opened) {
+    klip::EncodedPacket picture{std::move(video_packet), klip::StreamKind::kVideo, video->time_base};
+    CHECK(muxer.Write(picture, 0, error));
+    for (std::uint8_t track = 0; track < 5; ++track) {
+      klip::PacketPtr packet(av_packet_alloc());
+      CHECK(packet != nullptr);
+      if (!packet) continue;
+      CHECK(av_new_packet(packet.get(), 4096) == 0);
+      if (packet->data == nullptr) continue;
+      std::memset(packet->data, static_cast<int>(0x10 + track), 4096);
+      packet->pts = packet->dts = 0;
+      packet->duration = 1024;
+      klip::EncodedPacket encoded{std::move(packet), klip::StreamKind::kAudio,
+                                  AVRational{1, 48000}, track};
+      CHECK(muxer.Write(encoded, 0, error));
+    }
+    CHECK(muxer.Finalize(error));
+  }
+  avcodec_free_context(&video);
+
+  const auto utf8 = klip::PathToUtf8(path);
+  AVFormatContext* format = nullptr;
+  CHECK(avformat_open_input(&format, utf8.c_str(), nullptr, nullptr) >= 0);
+  if (format) {
+    CHECK(avformat_find_stream_info(format, nullptr) >= 0);
+    CHECK(format->nb_streams == 6);
+    static constexpr const char* expected_titles[] = {
+        "Desktop audio", "Game audio", "Microphone", "Discord audio", "Music audio"};
+    bool has_packet[5]{};
+    int audio_index = 0;
+    for (unsigned int index = 0; index < format->nb_streams; ++index) {
+      const auto* stream = format->streams[index];
+      if (stream->codecpar->codec_type != AVMEDIA_TYPE_AUDIO) continue;
+      CHECK(audio_index < 5);
+      if (audio_index < 5) {
+        const auto* title = av_dict_get(stream->metadata, "title", nullptr, 0);
+        CHECK(title != nullptr);
+        if (title) CHECK(std::strcmp(title->value, expected_titles[audio_index]) == 0);
+      }
+      ++audio_index;
+    }
+    AVPacket* packet = av_packet_alloc();
+    CHECK(packet != nullptr);
+    while (packet && av_read_frame(format, packet) >= 0) {
+      const auto stream_index = packet->stream_index;
+      if (stream_index >= 1 && stream_index <= 5)
+        has_packet[static_cast<std::size_t>(stream_index - 1)] = true;
+      av_packet_unref(packet);
+    }
+    av_packet_free(&packet);
+    CHECK(audio_index == 5);
+    for (bool seen : has_packet) CHECK(seen);
+    avformat_close_input(&format);
+  }
+  std::filesystem::remove(path, ignored);
+  std::filesystem::remove(path.wstring() + L".partial", ignored);
+}
+
 }  // namespace
 
 int main() {
+  TestNativeCaptureDefaults();
   TestWaveFormats();
   TestAudioRecoveryBackoff();
   TestPartialHotkeyRegistration();
@@ -487,5 +617,6 @@ int main() {
   TestAcceptedRecordingPrefixDecodes();
   TestRecordingOverloadSavesAcceptedPrefix();
   TestRecordingSurvivesCaptureSourceReset();
+  TestFiveTrackMuxerRouting();
   return failures ? 1 : 0;
 }

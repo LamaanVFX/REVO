@@ -21,7 +21,8 @@ std::int64_t FramesTo100ns(int frames) {
 
 }  // namespace
 
-AudioEncoder::AudioEncoder(PacketRouter& router, Logger& logger) : router_(router), logger_(logger) {}
+AudioEncoder::AudioEncoder(PacketRouter& router, Logger& logger, std::uint8_t audio_track)
+    : router_(router), audio_track_(audio_track), logger_(logger) {}
 
 AudioEncoder::~AudioEncoder() noexcept { Shutdown(); }
 
@@ -145,7 +146,7 @@ void AudioEncoder::Drain(std::int64_t fallback_pts) noexcept {
       return;
     }
     Normalize(packet.get(), fallback_pts);
-    router_.Publish(packet.get(), StreamKind::kAudio, codec_->time_base);
+    router_.Publish(packet.get(), StreamKind::kAudio, codec_->time_base, audio_track_);
     av_packet_unref(packet.get());
   }
 }

@@ -31,6 +31,8 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (config.obs_display_method < 0 || config.obs_display_method > 2)
     issues.push_back({"obs_display_method", "must be an OBS display capture method (0-2)"});
   if (config.obs_encoder_id.empty()) issues.push_back({"obs_encoder_id", "must not be empty"});
+  if (config.output_container != "mkv" && config.output_container != "mp4")
+    issues.push_back({"output_container", "must be mkv or mp4"});
   if (config.obs_filename_format.empty() || config.obs_filename_format.size() > 200 ||
       config.obs_filename_format.find_first_of("/\\:\r\n") != std::string::npos ||
       config.obs_filename_format.find("..") != std::string::npos)
@@ -42,8 +44,8 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (!std::isfinite(config.clip_duration_seconds) || config.clip_duration_seconds <= 0.0 || config.clip_duration_seconds > 600.0) {
     reject("clip_duration_seconds", "must be in (0, 600]");
   }
-  if (config.target_fps != 30 && config.target_fps != 60 && config.target_fps != 120) {
-    reject("target_fps", "must be 30, 60, or 120");
+  if (config.target_fps != 30 && config.target_fps != 60 && config.target_fps != 120 && config.target_fps != 240) {
+    reject("target_fps", "must be 30, 60, 120, or 240");
   }
   if ((config.output_width == 0) != (config.output_height == 0)) {
     reject("output_resolution", "width and height must both be zero or both be set");
@@ -61,6 +63,10 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (!std::isfinite(config.desktop_audio_gain) || config.desktop_audio_gain < 0.0 ||
       config.desktop_audio_gain > 2.0) {
     reject("desktop_audio_gain", "must be between 0.0 and 2.0");
+  }
+  if (!std::isfinite(config.game_audio_gain) || config.game_audio_gain < 0.0 ||
+      config.game_audio_gain > 2.0) {
+    reject("game_audio_gain", "must be between 0.0 and 2.0");
   }
   if (!std::isfinite(config.microphone_audio_gain) || config.microphone_audio_gain < 0.0 ||
       config.microphone_audio_gain > 2.0) {
@@ -243,6 +249,10 @@ bool RequiresMediaPipelineReconfigure(const AppConfig& current, const AppConfig&
          current.obs_limit_game_capture_fps != updated.obs_limit_game_capture_fps ||
          current.obs_filename_format != updated.obs_filename_format ||
          current.obs_separate_audio_tracks != updated.obs_separate_audio_tracks ||
+         current.game_audio_window != updated.game_audio_window ||
+         current.discord_audio_window != updated.discord_audio_window ||
+         current.music_audio_window != updated.music_audio_window ||
+         current.output_container != updated.output_container ||
          current.target_fps != updated.target_fps ||
          current.output_width != updated.output_width ||
          current.output_height != updated.output_height ||

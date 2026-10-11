@@ -3,7 +3,9 @@ param(
   [ValidateSet('Debug','Release')][string]$Configuration='Release',
   [ValidatePattern('^[a-zA-Z0-9_-]{0,50}$')][string]$BuildSuffix='',
   [string]$Executable='',
-  [ValidateSet(60,120)][int]$Fps=60,
+  [ValidateSet(30,60,120)][int]$Fps=60,
+  [ValidateRange(320,3840)][int]$OutputWidth=1920,
+  [ValidateRange(240,2160)][int]$OutputHeight=1080,
   [ValidateSet(60,120,240)][int]$SourceFps=60,
   [ValidateSet('balanced','performance','quality')][string]$EncoderQuality='balanced',
   [switch]$LimitGameCapture,
@@ -32,7 +34,7 @@ $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $root=Join-Path $repo "work/$Name"
 if(Test-Path $root){throw "Use a fresh test name to preserve evidence: $root"}
 New-Item -ItemType Directory $root | Out-Null
-$bin=Join-Path (Get-ChildItem "$repo/work/validation-tools/ffmpeg-8.1.2" -Directory | Select-Object -First 1).FullName 'bin'
+$bin=Join-Path (Get-ChildItem "$repo/work/validation-tools/ffmpeg-8.1" -Directory | Select-Object -First 1).FullName 'bin'
 $overlayImage=Join-Path $root 'overlay-white.png'
 if($Overlay -eq 'static'){
   # Deterministic test asset, not an application artwork or a captured user image.
@@ -41,9 +43,13 @@ if($Overlay -eq 'static'){
 }
 $modeSetting=if($Mode -eq 'game'){'game_window'}else{'display'}
 @("capture_mode=$modeSetting",'preferred_game_title="Klip cadence test scene"',
-  $(if($NativeResolution){'output_width=0'}else{'output_width=1920'}),$(if($NativeResolution){'output_height=0'}else{'output_height=1080'}),"target_fps=$Fps",$(if($ReplayDurationTest){"clip_duration_seconds=$ReplaySeconds"}else{'clip_duration_seconds=15'}),
+  $(if($NativeResolution){'output_width=0'}else{"output_width=$OutputWidth"}),$(if($NativeResolution){'output_height=0'}else{"output_height=$OutputHeight"}),"target_fps=$Fps",$(if($ReplayDurationTest){"clip_duration_seconds=$ReplaySeconds"}else{'clip_duration_seconds=15'}),
   "rolling_buffer_seconds=$($ReplaySeconds+15)","rolling_buffer_bytes=$([long]$ReplayMemoryMiB*1024*1024)",'desktop_audio_enabled=true',
-  'microphone_enabled=false',"obs_encoder_id=`"$Encoder`"",'obs_cq=18',
+  'microphone_enabled=false',
+  'obs_separate_audio_tracks=true',
+  'game_audio_window="::klip_game_audio.exe"',
+  'discord_audio_window="::klip_discord_audio.exe"',
+  'music_audio_window="::klip_music_audio.exe"',"obs_encoder_id=`"$Encoder`"",'obs_cq=18',
   "obs_duration_priority=$((!$ConstantQuality).ToString().ToLowerInvariant())",
   "encoder_quality=$EncoderQuality","obs_display_method=$DisplayMethod",
   "obs_limit_game_capture_fps=$($LimitGameCapture.IsPresent.ToString().ToLowerInvariant())",
@@ -59,6 +65,8 @@ $modeSetting=if($Mode -eq 'game'){'game_window'}else{'display'}
   'hotkey_toggle_ui_virtual_key=135') | Set-Content "$root/settings.ini"
 $previousRoot=$env:KLIP_DATA_ROOT
 $previousPath=$env:PATH
+$audioProcesses = @()
+$audioFixtureAvailable = $true
 try {
   $llvm=(Get-ChildItem "$repo/work/validation-tools/llvm" -Directory | Select-Object -First 1).FullName
   $env:PATH="$llvm/bin;$env:PATH"
@@ -66,6 +74,37 @@ try {
   $scene=Join-Path $repo 'work/cadence_scene.exe'
   & "$llvm/bin/clang++.exe" -std=c++20 -O2 "-I$repo/include" "$PSScriptRoot/cadence_scene.cpp" -o $scene -ld3d11 -ldxgi -luser32 -lwinmm -ld3dcompiler
   if($LASTEXITCODE){throw 'Native scene build failed'}
+
+  $audioSpecs = @(
+    [pscustomobject]@{Name='klip_game_audio';Frequency=440},
+    [pscustomobject]@{Name='klip_discord_audio';Frequency=660},
+    [pscustomobject]@{Name='klip_music_audio';Frequency=880}
+  )
+  foreach($spec in $audioSpecs){
+    $audioExe = Join-Path $root ($spec.Name + '.exe')
+    & "$llvm/bin/clang++.exe" -std=c++20 -O2 "$PSScriptRoot/audio_loop.cpp" -o $audioExe -lwinmm
+    if($LASTEXITCODE){throw "Synthetic audio source build failed: $($spec.Name)"}
+    $process = Start-Process -FilePath $audioExe -ArgumentList ([string]$spec.Frequency) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $root ($spec.Name + '.stdout.log')) -RedirectStandardError (Join-Path $root ($spec.Name + '.stderr.log'))
+    $audioProcesses += [pscustomobject]@{Name=$spec.Name;Process=$process;Executable=$audioExe}
+  }
+  Start-Sleep -Milliseconds 1000
+  $unavailableEndpoint = @($audioProcesses | Where-Object {
+    $_.Process.HasExited -and $_.Process.ExitCode -eq 2
+  })
+  if($unavailableEndpoint.Count -gt 0){
+    $audioFixtureAvailable = $false
+    Write-Warning "This Windows runner has no audio render endpoint; CI will verify all five named streams and decoded video. The full signal-isolation check runs when an audio endpoint is available."
+    foreach($audio in $audioProcesses){
+      if(-not $audio.Process.HasExited){
+        Stop-Process -Id $audio.Process.Id -Force -ErrorAction SilentlyContinue
+      }
+    }
+    $audioProcesses = @()
+  } else {
+    foreach($audio in $audioProcesses){
+      if($audio.Process.HasExited){throw "Synthetic audio source exited early: $($audio.Name) ($($audio.Process.ExitCode))"}
+    }
+  }
   if($Overlay -eq 'live' -and -not $OverlaySourceLate){
     $overlaySource=Start-Process $scene -ArgumentList '40 --fps=60 --overlay-window' -WindowStyle Hidden -RedirectStandardOutput "$root/overlay-source.log" -PassThru
     Start-Sleep -Milliseconds 500
@@ -111,8 +150,14 @@ try {
     }
     $minimum=$Fps*0.97
     if($a.unique_transitions_per_second -lt $minimum -or $a.nonmonotonic_presentation_timestamps -ne 0){throw "Decoded motion failed: $($file.Name), unique=$($a.unique_transitions_per_second)/s"}
-    $expectedTracks=if($SeparateAudioTracks){3}else{1}
-    if(@($a.streams | Where-Object codec_type -eq audio).Count -ne $expectedTracks){throw 'Missing configured AAC audio tracks'}
+    $expectedTracks=5
+    if(@($a.streams | Where-Object codec_type -eq audio).Count -ne $expectedTracks){throw "Expected five separate AAC audio tracks in $($file.Name)"}
+    if($audioFixtureAvailable){
+      & python "$PSScriptRoot/check-audio-tracks.py" $file.FullName $bin > ($file.FullName+'.audio.json')
+    } else {
+      & python "$PSScriptRoot/check-audio-tracks.py" $file.FullName $bin --streams-only > ($file.FullName+'.audio.json')
+    }
+    if($LASTEXITCODE){throw "Five-track audio separation or activity test failed: $($file.Name)"}
     if($AvMarkers){
       $offsets=@($a.audio_minus_video_ms)
       if($offsets.Count -lt 3 -or @($offsets|Where-Object {[math]::Abs($_) -gt 40}).Count -gt 0){throw "A/V marker sync exceeded 40 ms: $($file.Name), offsets=$($offsets -join ',')"}
@@ -126,6 +171,11 @@ try {
   }
   if($source -and -not $source.HasExited){$source.CloseMainWindow() | Out-Null}
   if($overlaySource -and -not $overlaySource.HasExited){$overlaySource.CloseMainWindow() | Out-Null}
+  foreach($audio in $audioProcesses){
+    if($audio.Process -and -not $audio.Process.HasExited){
+      Stop-Process -Id $audio.Process.Id -Force -ErrorAction SilentlyContinue
+    }
+  }
   $env:KLIP_DATA_ROOT=$previousRoot
   $env:PATH=$previousPath
 }

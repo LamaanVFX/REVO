@@ -1,0 +1,32 @@
+name: Native capture engine validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: ["feature/five-audio-tracks-mp4"]
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Prepare pinned toolchain
+        shell: pwsh
+        run: '& tools/bootstrap-validation.ps1'
+      - name: Build and test native engine
+        shell: pwsh
+        run: '& tools/build-native.ps1 -Configuration Release -BuildSuffix ci'
+      - name: Upload native build for inspection
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Klip-native-capture-experiment-${{ github.run_number }}
+          path: |
+            build-native-Release-ci/Klip.exe
+            build-native-Release-ci/*.dll
+            build-native-Release-ci/fonts/**
+          if-no-files-found: error

@@ -65,6 +65,7 @@ struct ApplicationSnapshot {
   float microphone_level = 0.0F;
   std::vector<std::string> microphones;
   std::vector<AudioApplicationOption> audio_applications;
+  std::string detected_game_audio_application;
   int selected_microphone_index = -1;
   std::filesystem::path last_saved_clip;
   bool recording = false;
@@ -103,6 +104,7 @@ class ApplicationState {
   void SetMicrophoneEnabled(bool enabled);
   void SetMicrophones(std::vector<std::string> microphones, int selected_index);
   void SetAudioApplications(std::vector<AudioApplicationOption> applications);
+  void SetDetectedGameAudioApplication(std::string executable);
   void SetMetrics(const MetricsSnapshot& metrics);
   void SetCaptureMetrics(double fps, double source_fps, std::uint64_t captured_frames,
                          std::uint64_t dropped_raw_frames, std::uint64_t dropped_encode_frames,

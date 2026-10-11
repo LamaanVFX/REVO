@@ -24,7 +24,8 @@ class RollingMediaBuffer {
   RollingMediaBuffer(const RollingMediaBuffer&) = delete;
   RollingMediaBuffer& operator=(const RollingMediaBuffer&) = delete;
 
-  bool Push(const AVPacket* packet, StreamKind kind, AVRational time_base, Error& error);
+  bool Push(const AVPacket* packet, StreamKind kind, AVRational time_base, Error& error,
+            std::uint8_t audio_track = 0);
   [[nodiscard]] bool Snapshot(double seconds, std::vector<EncodedPacket>& packets,
                               Error& error) const;
   [[nodiscard]] RollingBufferStats Stats() const;

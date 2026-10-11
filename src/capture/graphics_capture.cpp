@@ -20,6 +20,8 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
+#include <string_view>
 #include <cmath>
 #include <exception>
 #include <iomanip>
@@ -50,6 +52,35 @@ bool MatchesPreferredWindow(const std::string& label, const std::string& preferr
   if (label == preferred) return true;
   const auto executable = preferred.rfind("  [");
   return executable != std::string::npos && label.ends_with(preferred.substr(executable));
+}
+
+// WGC has no game-process API of its own. Recognize common game executables from
+// the process suffix appended to each enumerated window label, rather than
+// silently choosing the first arbitrary desktop window. javaw.exe is deliberately
+// first because Klip's Minecraft profile is tied to that process.
+int GameExecutablePriority(const std::string& label) {
+  const auto open = label.rfind("  [");
+  const auto close = label.rfind(']');
+  if (open == std::string::npos || close == std::string::npos || close <= open + 3) return 0;
+  std::string executable = label.substr(open + 3, close - open - 3);
+  std::transform(executable.begin(), executable.end(), executable.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (executable == "javaw.exe") return 100;
+  static constexpr std::string_view known_games[] = {
+      "minecraft.windows.exe", "fortniteclient-win64-shipping.exe",
+      "fortniteclient-win64-shipping_eac_eos.exe", "fortnite.exe",
+      "valorant-win64-shipping.exe", "valorant.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
+      "rocketleague.exe", "gta5.exe", "gta5_enhanced.exe", "playgtav.exe",
+      "fivem_gtaprocess.exe", "robloxplayerbeta.exe", "eldenring.exe",
+      "helldivers2.exe", "deadbydaylight-win64-shipping.exe", "destiny2.exe",
+      "rainbowsix.exe", "rainbowsix_vulkan.exe", "rainbow6.exe", "league of legends.exe",
+      "leagueclient.exe", "dota2.exe", "pubg.exe", "tslgame.exe", "thefinals.exe",
+      "discovery.exe", "marvel-rivals.exe", "marvel-win64-shipping.exe", "battlefield.exe",
+      "bf2042.exe", "escape from tarkov.exe"};
+  for (std::size_t i = 0; i < sizeof(known_games) / sizeof(known_games[0]); ++i) {
+    if (executable == known_games[i]) return 80 - static_cast<int>(i);
+  }
+  return 0;
 }
 
 }  // namespace
@@ -176,6 +207,12 @@ void GraphicsCapture::Stop() noexcept {
   recycle_enabled_.store(false, std::memory_order_release);
   if (raw_queue_) raw_queue_->Clear();
   if (encode_queue_) encode_queue_->Clear();
+  {
+    std::scoped_lock lock(capture_texture_pool_mutex_);
+    capture_texture_pool_.clear();
+    capture_texture_pool_width_ = 0;
+    capture_texture_pool_height_ = 0;
+  }
   {
     std::scoped_lock lock(texture_pool_mutex_);
     texture_pool_.clear();
@@ -410,6 +447,47 @@ void GraphicsCapture::RefreshSourceOptions() {
     }
   }
 
+  // Follow the foreground supported game when the user switches games. If a
+  // game is temporarily unfocused, retain the previous valid game target instead
+  // of switching capture to a browser, launcher, or the Klip settings window.
+  if (target_mode_.load(std::memory_order_acquire) == CaptureTargetMode::kGameWindow) {
+    const HWND foreground = GetForegroundWindow();
+    if (foreground != nullptr && foreground != application_window_) {
+      const auto foreground_id =
+          static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(foreground));
+      const auto foreground_option = std::find_if(windows.begin(), windows.end(),
+          [&](const auto& option) { return option.id == foreground_id; });
+      if (foreground_option != windows.end() && GameExecutablePriority(foreground_option->label) > 0 &&
+          selected_window != foreground_id) {
+        selected_window = foreground_id;
+        selected_window_.store(static_cast<std::uintptr_t>(foreground_id),
+                               std::memory_order_release);
+        logger_.Info("Following focused game capture target: " + foreground_option->label);
+      }
+    }
+  }
+
+  // Automatically choose a known game when no saved/explicit window is available.
+  // Prefer Minecraft over other games so its dedicated high-FPS profile can be
+  // applied by the application layer; never auto-select an arbitrary utility window.
+  if (selected_window == 0 && target_mode_.load(std::memory_order_acquire) ==
+                                   CaptureTargetMode::kGameWindow) {
+    const CaptureSourceOption* best = nullptr;
+    int best_priority = 0;
+    for (const auto& option : windows) {
+      const int priority = GameExecutablePriority(option.label);
+      if (priority > best_priority) {
+        best = &option;
+        best_priority = priority;
+      }
+    }
+    if (best != nullptr) {
+      selected_window = best->id;
+      selected_window_.store(static_cast<std::uintptr_t>(best->id), std::memory_order_release);
+      logger_.Info("Automatically detected game capture target: " + best->label);
+    }
+  }
+
   auto selected_monitor = selected_monitor_.load(std::memory_order_acquire);
   const auto monitor_match = [&](const CaptureSourceOption& option) {
     return option.id == selected_monitor;
@@ -484,101 +562,278 @@ bool GraphicsCapture::IsWindowCandidate(HWND window) const {
 
 bool GraphicsCapture::StartSessionLocked(const CaptureTarget& target, Error& error) {
   StopSessionLocked();
+  if (target.kind == TargetKind::kNone) return false;
   last_enqueued_pts_.store(-1, std::memory_order_relaxed);
   wgc_clock_trace_ = {};
   frame_clock_mode_ = FrameClockMode::kUndetermined;
-  try {
-    const auto monitor = target.kind == TargetKind::kMonitor ? target.monitor
-                         : target.kind == TargetKind::kWindow
-                             ? MonitorFromWindow(target.window, MONITOR_DEFAULTTONEAREST)
-                             : nullptr;
-    LogTargetAdapter(monitor, target.kind == TargetKind::kMonitor);
-    item_ = target.kind == TargetKind::kWindow ? CreateForWindow(target.window)
-                                               : CreateForMonitor(target.monitor);
-    const auto size = item_.Size();
-    if (size.Width <= 0 || size.Height <= 0 || size.Width > 8192 || size.Height > 8192) {
-      error = Error{ErrorComponent::kCapture, "inspect capture target",
-                    "capture target dimensions must be between 1 and 8192 pixels"};
+  const HMONITOR monitor = target.kind == TargetKind::kWindow
+                               ? MonitorFromWindow(target.window, MONITOR_DEFAULTTONEAREST)
+                               : target.monitor;
+  LogTargetAdapter(monitor, target.kind == TargetKind::kMonitor);
+  if (!CreateDesktopDuplication(monitor, error)) {
+    capture_target_active_.store(false, std::memory_order_release);
+    return false;
+  }
+
+  RECT crop{};
+  const auto desktop = duplication_output_desc_.DesktopCoordinates;
+  if (target.kind == TargetKind::kWindow) {
+    if (!IsWindow(target.window) || !GetClientRect(target.window, &crop)) {
+      error = MakeWin32Error(ErrorComponent::kCapture, "inspect selected game window", GetLastError());
+      duplication_ = nullptr;
       return false;
     }
-    current_width_ = static_cast<std::uint32_t>(size.Width);
-    current_height_ = static_cast<std::uint32_t>(size.Height);
-    if (output_width_ == 0 && output_height_ == 0) {
-      output_width_ = EvenNv12Dimension(current_width_);
-      output_height_ = EvenNv12Dimension(current_height_);
-      logger_.Info("Source-sized video output locked to " + std::to_string(output_width_) + "x" +
-                   std::to_string(output_height_) + " for this media pipeline" +
-                   (output_width_ != current_width_ || output_height_ != current_height_
-                        ? " (rounded to even NV12 dimensions)"
-                        : ""));
+    POINT top_left{crop.left, crop.top};
+    POINT bottom_right{crop.right, crop.bottom};
+    if (!ClientToScreen(target.window, &top_left) || !ClientToScreen(target.window, &bottom_right)) {
+      error = MakeWin32Error(ErrorComponent::kCapture, "convert game bounds to screen coordinates", GetLastError());
+      duplication_ = nullptr;
+      return false;
     }
-    frame_pool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
-        interop_device_,
-        winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized, 3, size);
-    frame_token_ = frame_pool_.FrameArrived({this, &GraphicsCapture::OnFrameArrived});
-    closed_token_ = item_.Closed({this, &GraphicsCapture::OnTargetClosed});
-    session_ = frame_pool_.CreateCaptureSession(item_);
-    // Recent Windows builds default WGC to 60 updates/s even on a high-refresh
-    // monitor. Request input headroom; the output scheduler still sets file FPS.
-    // The dependent requires expression keeps older Windows SDK builds working.
-    bool interval_configured = false;
-    try {
-      const auto configure_interval = [&](auto& session) {
-        const winrt::Windows::Foundation::TimeSpan interval{
-            FixedVideoTimestamp100ns(0, 1, config_.target_fps * 2)};
-        if constexpr (requires { session.MinUpdateInterval(interval); }) {
-          session.MinUpdateInterval(interval);
-          return true;
-        }
-        return false;
-      };
-      interval_configured = configure_interval(session_);
-    } catch (const winrt::hresult_error&) {
-      // Older Windows versions have no update-interval interface.
+    crop = RECT{top_left.x, top_left.y, bottom_right.x, bottom_right.y};
+    crop.left = std::max(crop.left, desktop.left);
+    crop.top = std::max(crop.top, desktop.top);
+    crop.right = std::min(crop.right, desktop.right);
+    crop.bottom = std::min(crop.bottom, desktop.bottom);
+    crop.left -= desktop.left;
+    crop.right -= desktop.left;
+    crop.top -= desktop.top;
+    crop.bottom -= desktop.top;
+  } else {
+    crop = RECT{0, 0, desktop.right - desktop.left, desktop.bottom - desktop.top};
+  }
+  const auto width = crop.right - crop.left;
+  const auto height = crop.bottom - crop.top;
+  if (width < 2 || height < 2 || width > 8192 || height > 8192) {
+    error = Error{ErrorComponent::kCapture, "inspect capture crop",
+                  "the selected window or display has invalid capture dimensions"};
+    duplication_ = nullptr;
+    return false;
+  }
+  current_width_ = EvenNv12Dimension(static_cast<std::uint32_t>(width));
+  current_height_ = EvenNv12Dimension(static_cast<std::uint32_t>(height));
+  if (output_width_ == 0 && output_height_ == 0) {
+    output_width_ = current_width_;
+    output_height_ = current_height_;
+    logger_.Info("Source-sized video output locked to " + std::to_string(output_width_) + "x" +
+                 std::to_string(output_height_));
+  }
+  active_target_ = target;
+  capture_target_active_.store(true, std::memory_order_release);
+  capture_generation_.fetch_add(1, std::memory_order_acq_rel);
+  const auto requested_mode = target_mode_.load(std::memory_order_acquire);
+  const bool window = target.kind == TargetKind::kWindow;
+  const auto source_id = window
+      ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.window))
+      : static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.monitor));
+  const auto description = window
+      ? WindowLabel(target.window)
+      : (requested_mode == CaptureTargetMode::kGameWindow ? "Choose a game or window"
+                                                          : MonitorLabel(target.monitor));
+  state_.SetTarget(requested_mode, description,
+                   requested_mode == CaptureTargetMode::kGameWindow && !window ? 0 : source_id);
+  state_.SetStatus(CaptureStatus::kBuffering, "Capturing without WGC / capture highlight");
+  logger_.Info("DXGI Desktop Duplication capture target: " + description);
+  duplication_thread_ = std::jthread([this](std::stop_token token) { DesktopDuplicationLoop(token); });
+  return true;
+}
+bool GraphicsCapture::CreateDesktopDuplication(HMONITOR monitor, Error& error) {
+  duplication_ = nullptr;
+  duplication_output_desc_ = {};
+  if (monitor == nullptr) {
+    error = Error{ErrorComponent::kCapture, "select duplication output", "no monitor is selected"};
+    return false;
+  }
+  winrt::com_ptr<IDXGIDevice> dxgi_device;
+  winrt::com_ptr<IDXGIAdapter> adapter;
+  auto result = device_->QueryInterface(IID_PPV_ARGS(dxgi_device.put()));
+  if (SUCCEEDED(result)) result = dxgi_device->GetAdapter(adapter.put());
+  if (FAILED(result)) {
+    error = MakeHresultError(ErrorComponent::kCapture, "query Direct3D display adapter", result);
+    return false;
+  }
+  for (UINT index = 0;; ++index) {
+    winrt::com_ptr<IDXGIOutput> output;
+    result = adapter->EnumOutputs(index, output.put());
+    if (result == DXGI_ERROR_NOT_FOUND) break;
+    if (FAILED(result)) {
+      error = MakeHresultError(ErrorComponent::kCapture, "enumerate Direct3D outputs", result);
+      return false;
     }
-    if (interval_configured)
-      logger_.Info("WGC minimum update interval configured for " +
-                   std::to_string(config_.target_fps * 2) + " Hz input headroom");
-    else if (config_.target_fps > 60)
-      logger_.Warning(
-          "Windows capture update-rate control is unavailable; 120 FPS output "
-          "may repeat a 60 FPS source. Check source FPS in the dashboard");
-    try {
-      session_.IsCursorCaptureEnabled(config_.capture_cursor);
-    } catch (const winrt::hresult_error&) {
-      logger_.Warning("Cursor capture control is unavailable on this Windows build");
+    DXGI_OUTPUT_DESC desc{};
+    if (FAILED(output->GetDesc(&desc)) || desc.Monitor != monitor) continue;
+    winrt::com_ptr<IDXGIOutput1> output1;
+    result = output->QueryInterface(IID_PPV_ARGS(output1.put()));
+    if (FAILED(result)) {
+      error = MakeHresultError(ErrorComponent::kCapture, "query desktop duplication output", result);
+      return false;
     }
-    try {
-      session_.IsBorderRequired(config_.capture_border);
-    } catch (const winrt::hresult_error&) {
-      logger_.Warning("Capture highlight control is unavailable on this Windows build");
+    result = output1->DuplicateOutput(device_.get(), duplication_.put());
+    if (FAILED(result)) {
+      error = MakeHresultError(ErrorComponent::kCapture, "start DXGI Desktop Duplication", result, MonitorLabel(monitor));
+      return false;
     }
-    session_.StartCapture();
-    active_target_ = target;
-    capture_target_active_.store(true, std::memory_order_release);
-    const auto requested_mode = target_mode_.load(std::memory_order_acquire);
-    const bool window = target.kind == TargetKind::kWindow;
-    const auto source_id =
-        window ? static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.window))
-               : static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(target.monitor));
-    const auto description =
-        window ? WindowLabel(target.window)
-               : (requested_mode == CaptureTargetMode::kGameWindow ? "Choose a game or window"
-                                                                   : MonitorLabel(target.monitor));
-    state_.SetTarget(requested_mode, description,
-                     requested_mode == CaptureTargetMode::kGameWindow && !window ? 0 : source_id);
-    state_.SetStatus(CaptureStatus::kBuffering, "Capturing");
-    logger_.Info("Capture target: " + description);
+    duplication_output_desc_ = desc;
     return true;
-  } catch (const winrt::hresult_error& exception) {
-    capture_target_active_.store(false, std::memory_order_release);
-    error =
-        MakeHresultError(ErrorComponent::kCapture, "start capture session", exception.code().value);
-    return false;
-  } catch (const std::exception& exception) {
-    capture_target_active_.store(false, std::memory_order_release);
-    error = Error{ErrorComponent::kCapture, "start capture session", exception.what()};
-    return false;
+  }
+  error = Error{ErrorComponent::kCapture, "select duplication output",
+                "the selected monitor is not attached to Klip's Direct3D adapter. Select a monitor connected to the active GPU."};
+  return false;
+}
+
+winrt::com_ptr<ID3D11Texture2D> GraphicsCapture::AcquireCaptureTexture(std::uint32_t width,
+                                                                        std::uint32_t height) {
+  std::scoped_lock lock(capture_texture_pool_mutex_);
+  if (width != capture_texture_pool_width_ || height != capture_texture_pool_height_) {
+    capture_texture_pool_.clear();
+    capture_texture_pool_width_ = width;
+    capture_texture_pool_height_ = height;
+  }
+  if (!capture_texture_pool_.empty()) {
+    auto texture = std::move(capture_texture_pool_.back());
+    capture_texture_pool_.pop_back();
+    return texture;
+  }
+  D3D11_TEXTURE2D_DESC desc{};
+  desc.Width = width; desc.Height = height;
+  desc.MipLevels = 1; desc.ArraySize = 1;
+  desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  desc.SampleDesc.Count = 1;
+  desc.Usage = D3D11_USAGE_DEFAULT;
+  desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+  winrt::com_ptr<ID3D11Texture2D> texture;
+  if (FAILED(device_->CreateTexture2D(&desc, nullptr, texture.put()))) return nullptr;
+  return texture;
+}
+
+void GraphicsCapture::RecycleCaptureTexture(ID3D11Texture2D* texture, std::uint32_t width,
+                                            std::uint32_t height) noexcept {
+  if (texture == nullptr || !recycle_enabled_.load(std::memory_order_acquire)) return;
+  try {
+    D3D11_TEXTURE2D_DESC desc{}; texture->GetDesc(&desc);
+    if (desc.Width != width || desc.Height != height) return;
+    winrt::com_ptr<ID3D11Texture2D> retained; retained.copy_from(texture);
+    std::scoped_lock lock(capture_texture_pool_mutex_);
+    if (capture_texture_pool_.size() < 5 && width == capture_texture_pool_width_ &&
+        height == capture_texture_pool_height_) capture_texture_pool_.push_back(std::move(retained));
+  } catch (...) {}
+}
+
+void GraphicsCapture::DesktopDuplicationLoop(std::stop_token stop_token) noexcept {
+  SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+  const auto target = active_target_;
+  while (!stop_token.stop_requested() && running_.load(std::memory_order_acquire)) {
+    if (target.kind == TargetKind::kWindow &&
+        (!IsWindowCandidate(target.window) || MonitorFromWindow(target.window, MONITOR_DEFAULTTONEAREST) != duplication_output_desc_.Monitor)) {
+      target_dirty_.store(true, std::memory_order_release);
+      break;
+    }
+    DXGI_OUTDUPL_FRAME_INFO frame_info{};
+    winrt::com_ptr<IDXGIResource> resource;
+    const auto acquired = duplication_->AcquireNextFrame(50, &frame_info, resource.put());
+    if (acquired == DXGI_ERROR_WAIT_TIMEOUT) continue;
+    if (acquired == DXGI_ERROR_ACCESS_LOST) {
+      logger_.Warning("DXGI Desktop Duplication access was lost; reopening the capture output");
+      target_dirty_.store(true, std::memory_order_release);
+      break;
+    }
+    if (FAILED(acquired)) {
+      if (!stop_token.stop_requested()) {
+        state_.SetError(MakeHresultError(ErrorComponent::kCapture, "acquire desktop frame", acquired));
+        target_dirty_.store(true, std::memory_order_release);
+      }
+      break;
+    }
+    bool released = false;
+    const auto release_frame = [&] { if (!released) { duplication_->ReleaseFrame(); released = true; } };
+    winrt::com_ptr<ID3D11Texture2D> desktop_texture;
+    auto result = resource->QueryInterface(IID_PPV_ARGS(desktop_texture.put()));
+    if (FAILED(result)) { release_frame(); continue; }
+
+    // Desktop Duplication separates the hardware pointer on some adapters. Fetch the
+    // pointer shape only when Windows reports a shape update and keep it as its own
+    // GPU surface; this avoids CPU readback of every game frame.
+    if (frame_info.PointerShapeBufferSize != 0) {
+      cursor_shape_buffer_.resize(frame_info.PointerShapeBufferSize);
+      UINT required_size = 0;
+      DXGI_OUTDUPL_POINTER_SHAPE_INFO shape{};
+      const auto shape_result = duplication_->GetFramePointerShape(
+          frame_info.PointerShapeBufferSize, cursor_shape_buffer_.data(), &required_size, &shape);
+      if (SUCCEEDED(shape_result) && required_size <= cursor_shape_buffer_.size() &&
+          shape.Type == DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR && shape.Width > 0 && shape.Height > 0) {
+        D3D11_TEXTURE2D_DESC cursor_desc{};
+        cursor_desc.Width = shape.Width;
+        cursor_desc.Height = shape.Height;
+        cursor_desc.MipLevels = 1;
+        cursor_desc.ArraySize = 1;
+        cursor_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        cursor_desc.SampleDesc.Count = 1;
+        cursor_desc.Usage = D3D11_USAGE_DEFAULT;
+        cursor_desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        D3D11_SUBRESOURCE_DATA initial{};
+        initial.pSysMem = cursor_shape_buffer_.data();
+        initial.SysMemPitch = shape.Pitch;
+        winrt::com_ptr<ID3D11Texture2D> texture;
+        if (SUCCEEDED(device_->CreateTexture2D(&cursor_desc, &initial, texture.put()))) {
+          cursor_shape_info_ = shape;
+          cursor_shape_texture_ = std::move(texture);
+        }
+      } else {
+        // Unknown monochrome/masked cursors cannot be blended as ordinary alpha surfaces.
+        cursor_shape_texture_ = nullptr;
+        cursor_shape_info_ = shape;
+      }
+    }
+
+    RECT crop{};
+    const auto desktop = duplication_output_desc_.DesktopCoordinates;
+    if (target.kind == TargetKind::kWindow) {
+      RECT client{}; POINT tl{}, br{};
+      if (!GetClientRect(target.window, &client)) { release_frame(); continue; }
+      tl = POINT{client.left, client.top}; br = POINT{client.right, client.bottom};
+      if (!ClientToScreen(target.window, &tl) || !ClientToScreen(target.window, &br)) { release_frame(); continue; }
+      crop = RECT{tl.x, tl.y, br.x, br.y};
+      crop.left = std::max(crop.left, desktop.left); crop.top = std::max(crop.top, desktop.top);
+      crop.right = std::min(crop.right, desktop.right); crop.bottom = std::min(crop.bottom, desktop.bottom);
+      crop.left -= desktop.left; crop.right -= desktop.left;
+      crop.top -= desktop.top; crop.bottom -= desktop.top;
+    } else crop = RECT{0, 0, desktop.right - desktop.left, desktop.bottom - desktop.top};
+    if (crop.right - crop.left < 2 || crop.bottom - crop.top < 2) { release_frame(); continue; }
+    const auto width = EvenNv12Dimension(static_cast<std::uint32_t>(crop.right - crop.left));
+    const auto height = EvenNv12Dimension(static_cast<std::uint32_t>(crop.bottom - crop.top));
+    auto cropped = AcquireCaptureTexture(width, height);
+    if (!cropped) { release_frame(); continue; }
+    D3D11_BOX box{};
+    box.left = static_cast<UINT>(crop.left); box.top = static_cast<UINT>(crop.top); box.front = 0;
+    box.right = box.left + width; box.bottom = box.top + height; box.back = 1;
+    context_->CopySubresourceRegion(cropped.get(), 0, 0, 0, 0, desktop_texture.get(), 0, &box);
+    release_frame(); resource = nullptr; desktop_texture = nullptr;
+    current_width_ = width; current_height_ = height;
+    source_frames_.fetch_add(1, std::memory_order_relaxed);
+    const auto pts = Timestamp100ns();
+    if (!CaptureFrameIsDue(pts, last_enqueued_pts_.load(std::memory_order_relaxed), config_.target_fps)) {
+      RecycleCaptureTexture(cropped.get(), width, height); continue;
+    }
+    last_enqueued_pts_.store(pts, std::memory_order_relaxed);
+    if (raw_queue_->Size() >= raw_queue_->Capacity()) {
+      RecycleCaptureTexture(cropped.get(), width, height);
+      coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed); continue;
+    }
+    const auto generation = capture_generation_.load(std::memory_order_acquire);
+    RawFrame raw{nullptr, std::move(cropped), width, height, pts, generation, true};
+    if (config_.capture_cursor && frame_info.PointerPosition.Visible && cursor_shape_texture_) {
+      const auto& pointer = frame_info.PointerPosition.Position;
+      const auto left = pointer.x - desktop.left - crop.left;
+      const auto top = pointer.y - desktop.top - crop.top;
+      raw.cursor_texture = cursor_shape_texture_;
+      raw.cursor_rect = RECT{left, top,
+          left + static_cast<LONG>(cursor_shape_info_.Width),
+          top + static_cast<LONG>(cursor_shape_info_.Height)};
+      raw.cursor_visible = true;
+    }
+    if (raw_queue_->TryPush(std::move(raw)))
+      captured_frames_.fetch_add(1, std::memory_order_relaxed);
+    else coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed);
   }
 }
 
@@ -648,6 +903,10 @@ void GraphicsCapture::LogTargetAdapter(HMONITOR monitor, bool is_display_capture
 }
 
 void GraphicsCapture::StopSessionLocked() noexcept {
+  duplication_thread_.request_stop();
+  duplication_thread_ = {};
+  duplication_ = nullptr;
+  duplication_output_desc_ = {};
   try {
     if (frame_pool_ != nullptr) frame_pool_.FrameArrived(frame_token_);
     if (item_ != nullptr) item_.Closed(closed_token_);
@@ -657,12 +916,14 @@ void GraphicsCapture::StopSessionLocked() noexcept {
   }
   frame_token_ = {};
   closed_token_ = {};
+  cursor_shape_texture_ = nullptr;
+  cursor_shape_buffer_.clear();
+  cursor_shape_info_ = {};
   session_ = nullptr;
   frame_pool_ = nullptr;
   item_ = nullptr;
   active_target_ = {};
 }
-
 bool GraphicsCapture::StartLiveOverlay(Error& error) {
   HWND target = nullptr;
   struct SearchContext {
@@ -1205,7 +1466,7 @@ bool GraphicsCapture::Convert(const RawFrame& input, ConvertedFrame& output, Err
   video_context_->VideoProcessorSetOutputTargetRect(processor_.get(), TRUE, &output_rect);
   video_context_->VideoProcessorSetStreamSourceRect(processor_.get(), 0, TRUE, &source);
   video_context_->VideoProcessorSetStreamDestRect(processor_.get(), 0, TRUE, &destination);
-  D3D11_VIDEO_PROCESSOR_STREAM streams[2]{};
+  D3D11_VIDEO_PROCESSOR_STREAM streams[3]{};
   streams[0].Enable = TRUE;
   streams[0].pInputSurface = input_view.get();
   UINT stream_count = 1;
@@ -1233,6 +1494,47 @@ bool GraphicsCapture::Convert(const RawFrame& input, ConvertedFrame& output, Err
     streams[1].Enable = TRUE;
     streams[1].pInputSurface = overlay_input_view.get();
     stream_count = 2;
+  }
+  bool cursor_ready = false;
+  winrt::com_ptr<ID3D11VideoProcessorInputView> cursor_input_view;
+  const UINT cursor_stream_index = overlay_ready ? 2U : 1U;
+  if (input.cursor_visible && input.cursor_texture) {
+    D3D11_VIDEO_PROCESSOR_CAPS capabilities{};
+    if (SUCCEEDED(processor_enumerator_->GetVideoProcessorCaps(&capabilities)) &&
+        capabilities.MaxInputStreams > cursor_stream_index) {
+      result = video_device_->CreateVideoProcessorInputView(input.cursor_texture.get(),
+                                                            processor_enumerator_.get(),
+                                                            &input_desc, cursor_input_view.put());
+      cursor_ready = SUCCEEDED(result);
+    }
+    if (cursor_ready) {
+      D3D11_TEXTURE2D_DESC cursor_desc{};
+      input.cursor_texture->GetDesc(&cursor_desc);
+      RECT cursor_source{0, 0, static_cast<LONG>(cursor_desc.Width),
+                         static_cast<LONG>(cursor_desc.Height)};
+      const double scale_x = static_cast<double>(destination.right - destination.left) /
+                             static_cast<double>(std::max<std::uint32_t>(1, input.width));
+      const double scale_y = static_cast<double>(destination.bottom - destination.top) /
+                             static_cast<double>(std::max<std::uint32_t>(1, input.height));
+      RECT cursor_destination{
+          destination.left + static_cast<LONG>(std::lround(input.cursor_rect.left * scale_x)),
+          destination.top + static_cast<LONG>(std::lround(input.cursor_rect.top * scale_y)),
+          destination.left + static_cast<LONG>(std::lround(input.cursor_rect.right * scale_x)),
+          destination.top + static_cast<LONG>(std::lround(input.cursor_rect.bottom * scale_y))};
+      video_context_->VideoProcessorSetStreamSourceRect(processor_.get(), cursor_stream_index,
+                                                        TRUE, &cursor_source);
+      video_context_->VideoProcessorSetStreamDestRect(processor_.get(), cursor_stream_index,
+                                                      TRUE, &cursor_destination);
+      video_context_->VideoProcessorSetStreamAlpha(processor_.get(), cursor_stream_index,
+                                                   TRUE, 1.0F);
+      video_context_->VideoProcessorSetStreamFrameFormat(processor_.get(), cursor_stream_index,
+                                                         D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+      video_context_->VideoProcessorSetStreamColorSpace(processor_.get(), cursor_stream_index,
+                                                        &input_color);
+      streams[cursor_stream_index].Enable = TRUE;
+      streams[cursor_stream_index].pInputSurface = cursor_input_view.get();
+      stream_count = cursor_stream_index + 1;
+    }
   }
   result = video_context_->VideoProcessorBlt(processor_.get(), output_view.get(), 0, stream_count,
                                              streams);
@@ -1396,15 +1698,19 @@ void GraphicsCapture::ProcessingLoop(std::stop_token stop_token) noexcept {
       RawFrame newer;
       while (raw_queue_->TryPop(newer)) {
         if (raw.frame != nullptr) {
-          try {
-            raw.frame.Close();
-          } catch (...) {
-          }
+          try { raw.frame.Close(); } catch (...) {}
         }
+        if (raw.recyclable && raw.texture)
+          RecycleCaptureTexture(raw.texture.get(), raw.width, raw.height);
         raw = std::move(newer);
         coalesced_raw_frames_.fetch_add(1, std::memory_order_relaxed);
       }
-      if (raw.generation != capture_generation_.load(std::memory_order_acquire)) continue;
+      if (raw.generation != capture_generation_.load(std::memory_order_acquire)) {
+        if (raw.frame != nullptr) { try { raw.frame.Close(); } catch (...) {} }
+        if (raw.recyclable && raw.texture)
+          RecycleCaptureTexture(raw.texture.get(), raw.width, raw.height);
+        continue;
+      }
       UpdatePreview(raw);
       ConvertedFrame converted;
       Error error;
@@ -1418,6 +1724,8 @@ void GraphicsCapture::ProcessingLoop(std::stop_token stop_token) noexcept {
                               .ToString());
         }
       }
+      if (raw.recyclable && raw.texture)
+        RecycleCaptureTexture(raw.texture.get(), raw.width, raw.height);
       if (!converted_ok) {
         state_.SetError(error);
         logger_.ErrorMessage(error);

@@ -4,7 +4,11 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <exception>
+#include <iomanip>
+#include <sstream>
+#include <string_view>
 
 #include "klip/media/mp4_muxer.h"
 #include "klip/core/path_text.h"
@@ -28,6 +32,7 @@ ClipWriter::~ClipWriter() noexcept { Stop(); }
 
 bool ClipWriter::Start(AppConfig config, SnapshotProvider video, SnapshotProvider audio,
                        Error& error) {
+  audio_tracks_snapshot_ = {};
   if (running_.exchange(true, std::memory_order_acq_rel)) return true;
   requests_.Reset();
   config_ = std::move(config);
@@ -38,14 +43,35 @@ bool ClipWriter::Start(AppConfig config, SnapshotProvider video, SnapshotProvide
   if (directory_error) {
     running_.store(false, std::memory_order_release);
     error = Error{ErrorComponent::kClipWriter, "create output directory",
-                  directory_error.message(),   directory_error.value(),
-                  directory_error.message(),   PathToUtf8(config_.output_directory)};
+                  directory_error.message(), directory_error.value(),
+                  directory_error.message(), PathToUtf8(config_.output_directory)};
     return false;
   }
   worker_ = std::jthread([this](std::stop_token token) { Worker(token); });
   return true;
 }
 
+bool ClipWriter::StartWithAudioTracks(AppConfig config, SnapshotProvider video,
+                                      AudioTracksSnapshotProvider audio, Error& error) {
+  if (running_.exchange(true, std::memory_order_acq_rel)) return true;
+  requests_.Reset();
+  config_ = std::move(config);
+  video_snapshot_ = std::move(video);
+  audio_snapshot_ = {};
+  audio_tracks_snapshot_ = {};
+  audio_tracks_snapshot_ = std::move(audio);
+  std::error_code directory_error;
+  std::filesystem::create_directories(config_.output_directory, directory_error);
+  if (directory_error) {
+    running_.store(false, std::memory_order_release);
+    error = Error{ErrorComponent::kClipWriter, "create output directory",
+                  directory_error.message(), directory_error.value(),
+                  directory_error.message(), PathToUtf8(config_.output_directory)};
+    return false;
+  }
+  worker_ = std::jthread([this](std::stop_token token) { Worker(token); });
+  return true;
+}
 void ClipWriter::Stop() noexcept {
   if (!running_.exchange(false, std::memory_order_acq_rel)) return;
   requests_.Close();
@@ -57,7 +83,7 @@ void ClipWriter::Stop() noexcept {
 
 bool ClipWriter::RequestClip() {
   if (!running_.load(std::memory_order_acquire)) return false;
-  Request request{BuildOutputPath(config_.output_directory), config_.clip_duration_seconds};
+  Request request{BuildOutputPath(), config_.clip_duration_seconds};
   const auto accepted = requests_.TryPush(std::move(request));
   if (accepted)
     logger_.Info("Clip save requested");
@@ -79,13 +105,23 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
       state_.SetStatus(CaptureStatus::kSaving, "Saving clip");
       const auto started = std::chrono::steady_clock::now();
       CodecSnapshot video;
-      CodecSnapshot audio;
+      std::vector<CodecSnapshot> audio_tracks;
       Error error;
       if (!video_snapshot_ || !video_snapshot_(video)) {
         error = Error{ErrorComponent::kClipWriter, "snapshot video codec",
                       "video encoder is not ready"};
       } else {
-        const auto has_audio = audio_snapshot_ && audio_snapshot_(audio);
+        bool audio_tracks_ready = true;
+        if (audio_tracks_snapshot_) {
+          audio_tracks_ready = audio_tracks_snapshot_(audio_tracks) && audio_tracks.size() == 5;
+        } else if (audio_snapshot_) {
+          CodecSnapshot audio;
+          if (audio_snapshot_(audio)) audio_tracks.push_back(std::move(audio));
+        }
+        if (!audio_tracks_ready) {
+          error = Error{ErrorComponent::kClipWriter, "snapshot audio tracks",
+                        "all five independent audio encoders must be ready before saving a clip"};
+        } else {
         // A clip requested immediately after capture starts can arrive before the
         // encoder has emitted its first keyframe. Give the rolling buffer a short
         // warm-up window instead of failing the user-visible clip operation.
@@ -103,7 +139,7 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
         } else if (packets.empty()) {
           error = Error{ErrorComponent::kClipWriter, "select clip range",
                         "the rolling buffer does not yet contain a keyframe"};
-        } else if (Write(request, packets, video, has_audio ? &audio : nullptr, error)) {
+        } else if (Write(request, packets, video, audio_tracks, error)) {
           const auto duration =
               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
                   .count();
@@ -112,6 +148,7 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
           logger_.Info("Clip saved: " + PathToUtf8(request.output_path));
           restore_status();
           continue;
+        }
         }
       }
       state_.SetError(error);
@@ -126,7 +163,8 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
 }
 
 bool ClipWriter::Write(const Request& request, const std::vector<EncodedPacket>& packets,
-                       const CodecSnapshot& video, const CodecSnapshot* audio, Error& error) {
+                       const CodecSnapshot& video,
+                       const std::vector<CodecSnapshot>& audio_tracks, Error& error) {
   std::int64_t base = INT64_MAX;
   for (const auto& encoded : packets) {
     if (!encoded.packet) continue;
@@ -139,7 +177,8 @@ bool ClipWriter::Write(const Request& request, const std::vector<EncodedPacket>&
   if (base == INT64_MAX) base = 0;
 
   Mp4Muxer muxer;
-  if (!muxer.Open(request.output_path, video, audio, ErrorComponent::kClipWriter, error))
+  if (!muxer.OpenMultiAudio(request.output_path, video, audio_tracks,
+                            ErrorComponent::kClipWriter, error))
     return false;
   for (const auto& encoded : packets) {
     if (!muxer.Write(encoded, base, error)) return false;
@@ -147,13 +186,122 @@ bool ClipWriter::Write(const Request& request, const std::vector<EncodedPacket>&
   return muxer.Finalize(error);
 }
 
-std::filesystem::path ClipWriter::BuildOutputPath(const std::filesystem::path& directory) {
+std::filesystem::path ClipWriter::BuildOutputPath() const {
   SYSTEMTIME time{};
   GetLocalTime(&time);
-  wchar_t filename[128]{};
-  swprintf_s(filename, L"clip_%04u%02u%02u_%02u%02u%02u_%03u.mp4", time.wYear, time.wMonth,
-             time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds);
-  return directory / filename;
+
+  const auto snapshot = state_.Snapshot();
+  std::string game_folder;
+  std::string filename_prefix = "clip";
+  const auto target = snapshot.capture_target;
+  std::string lower = target;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  const auto set_game = [&](const char* folder, const char* prefix) {
+    game_folder = folder;
+    filename_prefix = prefix;
+  };
+  if (lower.find("javaw.exe") != std::string::npos ||
+      lower.find("minecraft.windows.exe") != std::string::npos) {
+    set_game("minecraft", "minecraft");
+  } else if (lower.find("fortniteclient") != std::string::npos ||
+             lower.find("fortnite.exe") != std::string::npos) {
+    set_game("fortnite", "fortnite");
+  } else if (lower.find("valorant") != std::string::npos) {
+    set_game("valorant", "valorant");
+  } else if (lower.find("gta5") != std::string::npos ||
+             lower.find("fivem") != std::string::npos) {
+    set_game("gta5", "gta5");
+  } else if (lower.find("cs2.exe") != std::string::npos) {
+    set_game("cs2", "cs2");
+  } else if (lower.find("r5apex.exe") != std::string::npos) {
+    set_game("apex", "apex");
+  } else if (lower.find("robloxplayerbeta.exe") != std::string::npos) {
+    set_game("roblox", "roblox");
+  } else if (lower.find("overwatch.exe") != std::string::npos) {
+    set_game("overwatch", "overwatch");
+  } else if (lower.find("rocketleague.exe") != std::string::npos) {
+    set_game("rocket-league", "rocket-league");
+  } else if (lower.find("eldenring.exe") != std::string::npos) {
+    set_game("elden-ring", "elden-ring");
+  } else if (lower.find("helldivers2.exe") != std::string::npos) {
+    set_game("helldivers2", "helldivers2");
+  } else if (lower.find("deadbydaylight-win64-shipping.exe") != std::string::npos) {
+    set_game("dead-by-daylight", "dead-by-daylight");
+  } else if (lower.find("destiny2.exe") != std::string::npos) {
+    set_game("destiny2", "destiny2");
+  } else if (lower.find("rainbowsix.exe") != std::string::npos ||
+             lower.find("rainbowsix_vulkan.exe") != std::string::npos ||
+             lower.find("rainbow6.exe") != std::string::npos) {
+    set_game("rainbow-six", "rainbow-six");
+  } else if (lower.find("dota2.exe") != std::string::npos) {
+    set_game("dota2", "dota2");
+  } else if (lower.find("tslgame.exe") != std::string::npos ||
+             lower.find("pubg.exe") != std::string::npos) {
+    set_game("pubg", "pubg");
+  } else if (lower.find("discovery.exe") != std::string::npos ||
+             lower.find("thefinals.exe") != std::string::npos) {
+    set_game("the-finals", "the-finals");
+  } else if (lower.find("marvel-win64-shipping.exe") != std::string::npos ||
+             lower.find("marvel-rivals.exe") != std::string::npos) {
+    set_game("marvel-rivals", "marvel-rivals");
+  } else if (lower.find("bf2042.exe") != std::string::npos ||
+             lower.find("battlefield.exe") != std::string::npos) {
+    set_game("battlefield-2042", "battlefield-2042");
+  } else if (lower.find("league of legends.exe") != std::string::npos ||
+             lower.find("leagueclient.exe") != std::string::npos) {
+    set_game("league-of-legends", "league-of-legends");
+  } else if (lower.find("escape from tarkov.exe") != std::string::npos ||
+             lower.find("escapefromtarkov.exe") != std::string::npos) {
+    set_game("escape-from-tarkov", "escape-from-tarkov");
+  }
+
+  auto directory = config_.output_directory;
+  if (!game_folder.empty()) directory /= game_folder;
+
+  std::string pattern = config_.obs_filename_format.empty()
+                            ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
+                            : config_.obs_filename_format;
+  if (!game_folder.empty() && pattern.starts_with("clip_")) {
+    pattern.replace(0, 4, filename_prefix);
+  }
+  const auto replace_all = [&](std::string_view token, const std::string& value) {
+    std::size_t position = 0;
+    while ((position = pattern.find(token, position)) != std::string::npos) {
+      pattern.replace(position, token.size(), value);
+      position += value.size();
+    }
+  };
+  const auto number = [](unsigned value, int width) {
+    std::ostringstream out;
+    out << std::setw(width) << std::setfill('0') << value;
+    return out.str();
+  };
+  replace_all("%CCYY", number(time.wYear, 4));
+  replace_all("%YY", number(time.wYear % 100, 2));
+  replace_all("%MM", number(time.wMonth, 2));
+  replace_all("%DD", number(time.wDay, 2));
+  replace_all("%hh", number(time.wHour, 2));
+  replace_all("%mm", number(time.wMinute, 2));
+  replace_all("%ss", number(time.wSecond, 2));
+  replace_all("%ms", number(time.wMilliseconds, 3));
+
+  std::string extension = config_.output_container;
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (extension != "mp4" && extension != "mkv") extension = "mp4";
+
+  std::error_code ignored;
+  std::filesystem::create_directories(directory, ignored);
+  const auto stem = std::filesystem::path(pattern).filename().string();
+  for (unsigned suffix = 0; suffix < 1000; ++suffix) {
+    const auto filename = stem + (suffix ? "_" + std::to_string(suffix + 1) : "") +
+                          "." + extension;
+    const auto candidate = directory / filename;
+    if (!std::filesystem::exists(candidate, ignored)) return candidate;
+    ignored.clear();
+  }
+  return directory / (stem + "_" + std::to_string(time.wMilliseconds) + "." + extension);
 }
 
 }  // namespace klip

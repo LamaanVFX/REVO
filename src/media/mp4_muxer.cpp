@@ -1,6 +1,8 @@
 #include "klip/media/mp4_muxer.h"
 
 #include <algorithm>
+#include <iterator>
+#include <string_view>
 
 #include "klip/core/path_text.h"
 
@@ -21,12 +23,29 @@ Mp4Muxer::~Mp4Muxer() noexcept { Abort(); }
 
 bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapshot& video,
                     const CodecSnapshot* audio, ErrorComponent component, Error& error) {
+  std::vector<CodecSnapshot> tracks;
+  if (audio && audio->parameters) {
+    CodecSnapshot copy;
+    copy.parameters.reset(avcodec_parameters_alloc());
+    if (!copy.parameters || avcodec_parameters_copy(copy.parameters.get(), audio->parameters.get()) < 0) {
+      error = Error{component, "copy audio codec snapshot", "could not copy audio codec parameters"};
+      return false;
+    }
+    copy.time_base = audio->time_base;
+    tracks.push_back(std::move(copy));
+  }
+  return OpenMultiAudio(output_path, video, tracks, component, error);
+}
+
+bool Mp4Muxer::OpenMultiAudio(const std::filesystem::path& output_path,
+                              const CodecSnapshot& video,
+                              const std::vector<CodecSnapshot>& audio, ErrorComponent component,
+                              Error& error) {
   Abort();
   if (!video.parameters) {
-    error = Error{component, "open MP4", "video codec parameters are unavailable"};
+    error = Error{component, "open recording", "video codec parameters are unavailable"};
     return false;
   }
-
   component_ = component;
   output_path_ = output_path;
   temporary_path_ = output_path;
@@ -35,7 +54,9 @@ bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapsho
   std::filesystem::remove(temporary_path_, ignored);
 
   const auto utf8 = PathToUtf8(temporary_path_);
-  auto result = avformat_alloc_output_context2(&format_, nullptr, "mp4", utf8.c_str());
+  const auto extension = output_path.extension().string();
+  const char* format_name = extension == ".mkv" || extension == ".MKV" ? "matroska" : "mp4";
+  auto result = avformat_alloc_output_context2(&format_, nullptr, format_name, utf8.c_str());
   if (result < 0 || format_ == nullptr) {
     error = MakeFfmpegError(component_, "allocate MP4 output", result, utf8);
     Abort();
@@ -53,19 +74,27 @@ bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapsho
   video_stream_->codecpar->codec_tag = 0;
   video_stream_->time_base = video.time_base;
 
-  if (audio != nullptr && audio->parameters) {
-    audio_stream_ = avformat_new_stream(format_, nullptr);
-    if (audio_stream_ == nullptr ||
-        avcodec_parameters_copy(audio_stream_->codecpar, audio->parameters.get()) < 0) {
-      error = Error{component_, "create MP4 audio stream",
-                    "failed to copy audio codec parameters"};
+  static constexpr const char* kTrackNames[] = {
+      "Desktop audio", "Game audio", "Microphone", "Discord audio", "Music audio"};
+  audio_streams_.reserve(audio.size());
+  last_audio_dts_.assign(audio.size(), -1);
+  for (std::size_t index = 0; index < audio.size(); ++index) {
+    if (!audio[index].parameters) {
+      error = Error{component, "create audio stream", "an audio track has no codec parameters"};
       Abort();
       return false;
     }
-    audio_stream_->codecpar->codec_tag = 0;
-    audio_stream_->time_base = audio->time_base;
+    auto* stream = avformat_new_stream(format_, nullptr);
+    if (!stream || avcodec_parameters_copy(stream->codecpar, audio[index].parameters.get()) < 0) {
+      error = Error{component, "create audio stream", "failed to copy audio codec parameters"};
+      Abort();
+      return false;
+    }
+    stream->codecpar->codec_tag = 0;
+    stream->time_base = audio[index].time_base;
+    if (index < std::size(kTrackNames)) av_dict_set(&stream->metadata, "title", kTrackNames[index], 0);
+    audio_streams_.push_back(stream);
   }
-
   if ((format_->oformat->flags & AVFMT_NOFILE) == 0) {
     result = avio_open(&format_->pb, utf8.c_str(), AVIO_FLAG_WRITE);
     if (result < 0) {
@@ -76,7 +105,7 @@ bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapsho
   }
 
   AVDictionary* options = nullptr;
-  av_dict_set(&options, "movflags", "+faststart", 0);
+  if (format_name == std::string_view("mp4")) av_dict_set(&options, "movflags", "+faststart", 0);
   result = avformat_write_header(format_, &options);
   av_dict_free(&options);
   if (result < 0) {
@@ -90,7 +119,9 @@ bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapsho
 
 bool Mp4Muxer::Write(const EncodedPacket& encoded, std::int64_t base_timestamp_100ns,
                      Error& error) {
-  AVStream* stream = encoded.kind == StreamKind::kVideo ? video_stream_ : audio_stream_;
+  AVStream* stream = nullptr;
+  if (encoded.kind == StreamKind::kVideo) stream = video_stream_;
+  else if (encoded.audio_track < audio_streams_.size()) stream = audio_streams_[encoded.audio_track];
   if (format_ == nullptr || !encoded.packet || stream == nullptr) return true;
 
   PacketPtr packet(av_packet_clone(encoded.packet.get()));
@@ -108,10 +139,16 @@ bool Mp4Muxer::Write(const EncodedPacket& encoded, std::int64_t base_timestamp_1
   if (packet->pts == AV_NOPTS_VALUE) packet->pts = packet->dts;
   if (packet->dts == AV_NOPTS_VALUE) packet->dts = packet->pts;
 
-  auto& last_dts = encoded.kind == StreamKind::kVideo ? last_video_dts_ : last_audio_dts_;
-  if (packet->dts <= last_dts) packet->dts = last_dts + 1;
-  if (packet->pts < packet->dts) packet->pts = packet->dts;
-  last_dts = packet->dts;
+  if (encoded.kind == StreamKind::kVideo) {
+    if (packet->dts <= last_video_dts_) packet->dts = last_video_dts_ + 1;
+    if (packet->pts < packet->dts) packet->pts = packet->dts;
+    last_video_dts_ = packet->dts;
+  } else {
+    auto& last_dts = last_audio_dts_[encoded.audio_track];
+    if (packet->dts <= last_dts) packet->dts = last_dts + 1;
+    if (packet->pts < packet->dts) packet->pts = packet->dts;
+    last_dts = packet->dts;
+  }
   packet->stream_index = stream->index;
   packet->pos = -1;
 
@@ -160,7 +197,7 @@ void Mp4Muxer::Abort() noexcept {
   }
   format_ = nullptr;
   video_stream_ = nullptr;
-  audio_stream_ = nullptr;
+  audio_streams_.clear();
   header_written_ = false;
   if (!published_ && !temporary_path_.empty()) {
     std::error_code ignored;
@@ -169,7 +206,7 @@ void Mp4Muxer::Abort() noexcept {
   output_path_.clear();
   temporary_path_.clear();
   last_video_dts_ = -1;
-  last_audio_dts_ = -1;
+  last_audio_dts_.clear();
   published_ = false;
 }
 
@@ -181,7 +218,7 @@ bool Mp4Muxer::CloseFile(Error& error) {
   avformat_free_context(format_);
   format_ = nullptr;
   video_stream_ = nullptr;
-  audio_stream_ = nullptr;
+  audio_streams_.clear();
   if (result < 0) {
     error = MakeFfmpegError(component_, "close MP4 file", result, PathToUtf8(temporary_path_));
     return false;

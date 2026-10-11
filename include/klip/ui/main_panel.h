@@ -30,6 +30,8 @@ struct UiCommands {
   std::function<void(bool)> set_microphone_enabled;
   std::function<void(float)> set_desktop_audio_gain;
   std::function<void(float)> set_microphone_audio_gain;
+  std::function<void(float)> set_discord_audio_gain;
+  std::function<void(float)> set_music_audio_gain;
   std::function<void()> persist_audio_gains;
   std::function<void(int)> select_microphone;
   std::function<bool(const AppConfig&)> save_settings;

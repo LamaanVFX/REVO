@@ -108,6 +108,11 @@ void ApplicationState::SetAudioApplications(std::vector<AudioApplicationOption> 
   snapshot_.audio_applications = std::move(applications);
 }
 
+void ApplicationState::SetDetectedGameAudioApplication(std::string executable) {
+  std::scoped_lock lock(mutex_);
+  snapshot_.detected_game_audio_application = std::move(executable);
+}
+
 void ApplicationState::SetMetrics(const MetricsSnapshot& metrics) {
   std::scoped_lock lock(mutex_);
   snapshot_.metrics = metrics;

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <thread>
 
@@ -75,6 +76,36 @@ std::string FeatureLevelName(D3D_FEATURE_LEVEL level) {
   }
 }
 
+struct AutomaticGameProfile {
+  std::string name;
+  std::uint32_t fps = 60;
+  std::int64_t bitrate = 20'000'000;
+};
+
+std::optional<AutomaticGameProfile> DetectGameProfile(std::string label) {
+  std::transform(label.begin(), label.end(), label.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (label.find("javaw.exe") != std::string::npos ||
+      label.find("minecraft.windows.exe") != std::string::npos)
+    return AutomaticGameProfile{"Minecraft", 240, 35'000'000};
+  static constexpr const char* other_games[] = {
+      "fortnite.exe", "fortniteclient-win64-shipping.exe",
+      "fortniteclient-win64-shipping_eac_eos.exe", "valorant.exe",
+      "valorant-win64-shipping.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
+      "rocketleague.exe", "gta5.exe", "gta5_enhanced.exe", "playgtav.exe",
+      "fivem_gtaprocess.exe", "robloxplayerbeta.exe", "eldenring.exe", "helldivers2.exe",
+      "deadbydaylight-win64-shipping.exe", "destiny2.exe", "rainbowsix.exe",
+      "rainbowsix_vulkan.exe", "rainbow6.exe", "dota2.exe", "pubg.exe", "tslgame.exe",
+      "discovery.exe", "thefinals.exe", "marvel-rivals.exe", "marvel-win64-shipping.exe",
+      "bf2042.exe", "battlefield.exe", "league of legends.exe", "leagueclient.exe",
+      "escape from tarkov.exe", "escapefromtarkov.exe"};
+  for (const auto* executable : other_games) {
+    if (label.find(executable) != std::string::npos)
+      return AutomaticGameProfile{"Other game", 60, 20'000'000};
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 KlipApplication::KlipApplication(AppConfig config, std::filesystem::path settings_path)
@@ -83,10 +114,16 @@ KlipApplication::KlipApplication(AppConfig config, std::filesystem::path setting
       media_buffer_(config_.rolling_buffer_seconds, config_.rolling_buffer_bytes),
       recording_writer_(state_, logger_),
       packet_router_(media_buffer_, recording_writer_, state_, logger_),
-      audio_encoder_(packet_router_, logger_),
+      audio_encoder_(packet_router_, logger_, 0),
+      game_audio_encoder_(packet_router_, logger_, 1),
+      microphone_audio_encoder_(packet_router_, logger_, 2),
+      discord_audio_encoder_(packet_router_, logger_, 3),
+      music_audio_encoder_(packet_router_, logger_, 4),
       video_encoder_(packet_router_, state_, logger_),
       capture_(video_encoder_, state_, logger_),
-      audio_(audio_encoder_, state_, logger_),
+      audio_(std::array<AudioEncoder*, 5>{&audio_encoder_, &game_audio_encoder_,
+                                          &microphone_audio_encoder_, &discord_audio_encoder_,
+                                          &music_audio_encoder_}, state_, logger_),
       clip_writer_(media_buffer_, state_, logger_, config_.clip_request_queue_capacity) {}
 
 KlipApplication::~KlipApplication() noexcept { Shutdown(); }
@@ -176,9 +213,46 @@ int KlipApplication::Run() {
   const auto commands = BuildUiCommands();
   auto next_hotkey_retry = std::chrono::steady_clock::now();
   auto next_metrics_update = std::chrono::steady_clock::now();
+  auto next_profile_check = std::chrono::steady_clock::now();
+  std::string active_automatic_profile;
   while (window_.PumpMessages()) {
     const auto ui_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(33);
     const auto now = std::chrono::steady_clock::now();
+    if (now >= next_profile_check) {
+      next_profile_check = now + std::chrono::milliseconds(500);
+      const auto profile_snapshot = state_.Snapshot();
+      const auto detected = profile_snapshot.target_mode == CaptureTargetMode::kGameWindow
+                                ? DetectGameProfile(profile_snapshot.capture_target)
+                                : std::nullopt;
+      const AutomaticGameProfile desired_profile =
+          detected.value_or(AutomaticGameProfile{"Default", 60, 20'000'000});
+      if (desired_profile.name != active_automatic_profile) {
+        // Never tear down the encoders while a recording is active. Retry the profile
+        // transition on the next poll after recording finalization completes.
+        if (!profile_snapshot.recording && !profile_snapshot.finalizing_recording &&
+            profile_snapshot.status != CaptureStatus::kSaving) {
+          active_automatic_profile = desired_profile.name;
+          if (config_.target_fps != desired_profile.fps ||
+              config_.video_bitrate != desired_profile.bitrate) {
+            AppConfig profiled = config_;
+            profiled.target_fps = desired_profile.fps;
+            profiled.video_bitrate = desired_profile.bitrate;
+            Error profile_error;
+            if (RestartMediaPipeline(profiled, profile_error)) {
+              config_ = profiled;
+              logger_.Info("Automatic game profile applied: " + desired_profile.name +
+                           " (" + std::to_string(profiled.target_fps) + " FPS, " +
+                           std::to_string(profiled.video_bitrate / 1000) + " kbps)");
+              state_.SetSettingsStatus(false, "Automatic game profile: " + desired_profile.name);
+            } else {
+              active_automatic_profile.clear();
+              state_.SetError(profile_error);
+              logger_.ErrorMessage(profile_error);
+            }
+          }
+        }
+      }
+    }
     if (now >= next_metrics_update) {
       UpdateRollingMetrics();
       next_metrics_update = now + std::chrono::milliseconds(250);
@@ -540,8 +614,11 @@ void KlipApplication::HandleHotkey(int id) {
   } else if (id == Hotkeys::kToggleRecording) {
     Error error;
     if (recording_writer_.IsRecording()) {
-      packet_router_.RequestRecordingStop(video_encoder_.SubmittedFrames(),
-                                          audio_encoder_.SubmittedFrames());
+      packet_router_.RequestRecordingStop(
+          video_encoder_.SubmittedFrames(),
+          audio_encoder_.SubmittedFrames() + game_audio_encoder_.SubmittedFrames() +
+              microphone_audio_encoder_.SubmittedFrames() + discord_audio_encoder_.SubmittedFrames() +
+              music_audio_encoder_.SubmittedFrames());
     } else if (state_.Snapshot().status != CaptureStatus::kBuffering) {
       return;
     } else if (!StartRecording(error)) {
@@ -560,8 +637,11 @@ UiCommands KlipApplication::BuildUiCommands() {
           [this] {
             Error error;
             if (recording_writer_.IsRecording()) {
-              packet_router_.RequestRecordingStop(video_encoder_.SubmittedFrames(),
-                                                  audio_encoder_.SubmittedFrames());
+              packet_router_.RequestRecordingStop(
+                  video_encoder_.SubmittedFrames(),
+                  audio_encoder_.SubmittedFrames() + game_audio_encoder_.SubmittedFrames() +
+                      microphone_audio_encoder_.SubmittedFrames() + discord_audio_encoder_.SubmittedFrames() +
+                      music_audio_encoder_.SubmittedFrames());
             } else if (state_.Snapshot().status != CaptureStatus::kBuffering) {
               return;
             } else if (!StartRecording(error)) {
@@ -620,6 +700,16 @@ UiCommands KlipApplication::BuildUiCommands() {
           [this](float gain) {
             config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
             audio_.SetMicrophoneGain(gain);
+          },
+      .set_discord_audio_gain =
+          [this](float gain) {
+            config_.discord_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            audio_.SetDiscordGain(gain);
+          },
+      .set_music_audio_gain =
+          [this](float gain) {
+            config_.music_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            audio_.SetMusicGain(gain);
           },
       .persist_audio_gains = [this] { PersistSettings(config_, false); },
       .select_microphone =
@@ -720,6 +810,9 @@ bool KlipApplication::ApplySettings(const AppConfig& updated) {
   if (previous.excluded_audio_process != desired.excluded_audio_process)
     audio_.SetExcludedApplication(desired.excluded_audio_process);
   audio_.SetMicrophoneGain(static_cast<float>(desired.microphone_audio_gain));
+  audio_.SetGameGain(static_cast<float>(desired.game_audio_gain));
+  audio_.SetDiscordGain(static_cast<float>(desired.discord_audio_gain));
+  audio_.SetMusicGain(static_cast<float>(desired.music_audio_gain));
   audio_.SetMicrophoneEnabled(desired.microphone_enabled);
   capture_.SetPreviewEnabled(desired.capture_preview_enabled);
   capture_.SetBorderRequired(desired.capture_border);
@@ -760,16 +853,34 @@ bool KlipApplication::StartMediaPipeline(const AppConfig& config, Error& error) 
       !capture_.Initialize(graphics_.Device(), graphics_.Context(), window_.Handle(), config, error,
                            force_event_query_sync_) ||
       !audio_.Initialize(capture_.QpcOrigin(), capture_.QpcFrequency(), config, error) ||
-      !clip_writer_.Start(
+      !clip_writer_.StartWithAudioTracks(
           config,
           [this](CodecSnapshot& snapshot) { return video_encoder_.SnapshotCodec(snapshot); },
-          [this](CodecSnapshot& snapshot) { return audio_encoder_.SnapshotCodec(snapshot); },
-          error) ||
-      !recording_writer_.Initialize(
+          [this](std::vector<CodecSnapshot>& snapshots) {
+            snapshots.clear();
+            for (auto* encoder : std::array<AudioEncoder*, 5>{
+                     &audio_encoder_, &game_audio_encoder_, &microphone_audio_encoder_,
+                     &discord_audio_encoder_, &music_audio_encoder_}) {
+              CodecSnapshot snapshot;
+              if (!encoder->SnapshotCodec(snapshot)) { snapshots.clear(); return false; }
+              snapshots.push_back(std::move(snapshot));
+            }
+            return true;
+          }, error) ||
+      !recording_writer_.InitializeWithAudioTracks(
           config,
           [this](CodecSnapshot& snapshot) { return video_encoder_.SnapshotCodec(snapshot); },
-          [this](CodecSnapshot& snapshot) { return audio_encoder_.SnapshotCodec(snapshot); },
-          error) ||
+          [this](std::vector<CodecSnapshot>& snapshots) {
+            snapshots.clear();
+            for (auto* encoder : std::array<AudioEncoder*, 5>{
+                     &audio_encoder_, &game_audio_encoder_, &microphone_audio_encoder_,
+                     &discord_audio_encoder_, &music_audio_encoder_}) {
+              CodecSnapshot snapshot;
+              if (!encoder->SnapshotCodec(snapshot)) { snapshots.clear(); return false; }
+              snapshots.push_back(std::move(snapshot));
+            }
+            return true;
+          }, error) ||
       !capture_.Start(error)) {
     StopMediaPipeline();
     return false;
@@ -782,6 +893,10 @@ void KlipApplication::StopMediaPipeline() noexcept {
   audio_.StopCapture();
   video_encoder_.Flush();
   audio_encoder_.Flush();
+  game_audio_encoder_.Flush();
+  microphone_audio_encoder_.Flush();
+  discord_audio_encoder_.Flush();
+  music_audio_encoder_.Flush();
   recording_writer_.StopRecording();
   clip_writer_.Stop();
   recording_writer_.Shutdown();

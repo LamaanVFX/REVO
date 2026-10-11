@@ -4,7 +4,8 @@
 
 namespace klip {
 
-void PacketRouter::Publish(const AVPacket* packet, StreamKind kind, AVRational time_base) noexcept {
+void PacketRouter::Publish(const AVPacket* packet, StreamKind kind, AVRational time_base,
+                           std::uint8_t audio_track) noexcept {
   if (packet == nullptr) return;
   {
     std::scoped_lock lock(replay_mutex_);
@@ -22,7 +23,7 @@ void PacketRouter::Publish(const AVPacket* packet, StreamKind kind, AVRational t
         }
       }
       Error error;
-      if (!buffer_.Push(packet, kind, time_base, error)) {
+      if (!buffer_.Push(packet, kind, time_base, error, audio_track)) {
         // A missing compressed packet can invalidate dependent pictures. Drop the
         // replay history, then wait for a fresh keyframe before accepting packets.
         buffer_.Clear();
@@ -39,7 +40,7 @@ void PacketRouter::Publish(const AVPacket* packet, StreamKind kind, AVRational t
     video_packets = routed_video_packets_.fetch_add(1, std::memory_order_release) + 1;
   else
     audio_packets = routed_audio_packets_.fetch_add(1, std::memory_order_release) + 1;
-  recording_.Publish(packet, kind, time_base, video_packets, audio_packets);
+  recording_.Publish(packet, kind, time_base, video_packets, audio_packets, audio_track);
 }
 
 void PacketRouter::RequestRecordingStop(std::uint64_t video_frame_target,

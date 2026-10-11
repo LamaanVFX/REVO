@@ -120,6 +120,10 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   if (key == "obs_display_method") return ParseInteger(value, config.obs_display_method);
   if (key == "obs_limit_game_capture_fps") return ParseBool(value, config.obs_limit_game_capture_fps);
   if (key == "obs_separate_audio_tracks") return ParseBool(value, config.obs_separate_audio_tracks);
+  if (key == "game_audio_window") { config.game_audio_window = ParseString(value); return true; }
+  if (key == "discord_audio_window") { config.discord_audio_window = ParseString(value); return true; }
+  if (key == "music_audio_window") { config.music_audio_window = ParseString(value); return true; }
+  if (key == "output_container") { config.output_container = ParseString(value); return true; }
   if (key == "obs_encoder_id") { config.obs_encoder_id = ParseString(value); return true; }
   if (key == "obs_filename_format") { config.obs_filename_format = ParseString(value); return true; }
   if (key == "clip_duration_seconds") return ParseDouble(value, config.clip_duration_seconds);
@@ -135,7 +139,10 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   if (key == "audio_bitrate") return ParseInteger(value, config.audio_bitrate);
   if (key == "desktop_audio_enabled") return ParseBool(value, config.desktop_audio_enabled);
   if (key == "desktop_audio_gain") return ParseDouble(value, config.desktop_audio_gain);
+  if (key == "game_audio_gain") return ParseDouble(value, config.game_audio_gain);
   if (key == "microphone_audio_gain") return ParseDouble(value, config.microphone_audio_gain);
+  if (key == "discord_audio_gain") return ParseDouble(value, config.discord_audio_gain);
+  if (key == "music_audio_gain") return ParseDouble(value, config.music_audio_gain);
   if (key == "rolling_buffer_seconds") return ParseDouble(value, config.rolling_buffer_seconds);
   if (key == "rolling_buffer_bytes") return ParseInteger(value, config.rolling_buffer_bytes);
   if (key == "microphone_enabled") return ParseBool(value, config.microphone_enabled);
@@ -284,6 +291,16 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
     else loaded.obs_encoder_id = legacy;  // Unsupported choices must fail visibly, not silently become auto.
   }
 
+  // Migrate older settings to the requested five-track recording layout.
+  loaded.obs_separate_audio_tracks = true;
+  loaded.capture_border = false;
+  loaded.obs_display_method = 1;
+  loaded.obs_limit_game_capture_fps = true;
+  if (loaded.discord_audio_window.empty()) loaded.discord_audio_window = "::Discord.exe";
+  if (loaded.music_audio_window.empty()) loaded.music_audio_window = "::Spotify.exe";
+  // Preserve explicit audio mute choices. Fresh installs default to enabled
+  // tracks; saved user choices must survive restart.
+
   const auto issues = ValidateConfig(loaded);
   if (!issues.empty()) {
     diagnostic = "Invalid saved setting '" + issues.front().field + "': " +
@@ -328,6 +345,10 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "obs_limit_game_capture_fps=" << (config.obs_limit_game_capture_fps ? "true" : "false") << '\n';
   output << "obs_filename_format=" << std::quoted(config.obs_filename_format) << '\n';
   output << "obs_separate_audio_tracks=" << (config.obs_separate_audio_tracks ? "true" : "false") << '\n';
+  output << "game_audio_window=" << std::quoted(config.game_audio_window) << '\n';
+  output << "discord_audio_window=" << std::quoted(config.discord_audio_window) << '\n';
+  output << "music_audio_window=" << std::quoted(config.music_audio_window) << '\n';
+  output << "output_container=" << std::quoted(config.output_container) << '\n';
   output << "clip_duration_seconds=" << config.clip_duration_seconds << '\n';
   output << "target_fps=" << config.target_fps << '\n';
   output << "output_width=" << config.output_width << '\n';
@@ -337,7 +358,10 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "desktop_audio_enabled=" << (config.desktop_audio_enabled ? "true" : "false")
          << '\n';
   output << "desktop_audio_gain=" << config.desktop_audio_gain << '\n';
+  output << "game_audio_gain=" << config.game_audio_gain << '\n';
   output << "microphone_audio_gain=" << config.microphone_audio_gain << '\n';
+  output << "discord_audio_gain=" << config.discord_audio_gain << '\n';
+  output << "music_audio_gain=" << config.music_audio_gain << '\n';
   output << "rolling_buffer_seconds=" << config.rolling_buffer_seconds << '\n';
   output << "rolling_buffer_bytes=" << config.rolling_buffer_bytes << '\n';
   output << "microphone_enabled=" << (config.microphone_enabled ? "true" : "false") << '\n';
