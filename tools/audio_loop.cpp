@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 namespace {
@@ -19,8 +20,8 @@ BOOL WINAPI ConsoleHandler(DWORD event) {
 }
 }  // namespace
 
-int wmain(int argc, wchar_t** argv) {
-  const auto frequency = argc > 1 ? _wtoi(argv[1]) : 440;
+int main(int argc, char** argv) {
+  const auto frequency = argc > 1 ? std::atoi(argv[1]) : 440;
   if (frequency < 100 || frequency > 2000) return 9;
 
   WAVEFORMATEX format{};
