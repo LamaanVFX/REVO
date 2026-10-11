@@ -40,14 +40,18 @@ void DrawAudioWindowSelector(const char* label, std::string& selected) {
   obs_properties_t* props = obs_get_source_properties("wasapi_process_output_capture");
   if (!props) { ImGui::TextDisabled("Application audio capture is unavailable."); return; }
   obs_property_t* window = obs_properties_get(props, "window");
-  const char* preview = selected.empty() ? "Choose an application executable" : "Selected executable (may be closed)";
+  std::string selected_preview = selected.empty()
+      ? "Choose an application executable"
+      : "Selected: " + selected.substr(2) + " (may be closed)";
   if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i) {
     const char* value = obs_property_list_item_string(window, i);
     if (value && ExecutableAudioSelector(value) == selected) {
-      preview = obs_property_list_item_name(window, i);
+      selected_preview = std::string(obs_property_list_item_name(window, i)) +
+          "  (" + selected.substr(2) + ")";
       break;
     }
   }
+  const char* preview = selected_preview.c_str();
   if (ImGui::BeginCombo(label, preview)) {
     if (ImGui::Selectable("Not selected", selected.empty())) selected.clear();
     if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i) {
