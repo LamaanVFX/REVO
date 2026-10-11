@@ -948,16 +948,49 @@ void ObsEngine::Tick() {
           }
         } while (Process32NextW(snapshot, &process));
       }
-      // Pass 2: if focus is not on a supported game, retain the existing
-      // automatic detection fallback for a game running in the background.
+      // Pass 2: KlipEdit itself may be foreground while a game is visible
+      // beside it. Prefer supported game processes with a real visible top-level
+      // window, and explicitly prefer non-Java games over stale/background Java
+      // processes. Toolhelp enumeration order is not a meaningful priority.
       if (detected_game.empty()) {
+        std::vector<DWORD> visible_window_pids;
+        EnumWindows([](HWND hwnd, LPARAM parameter) -> BOOL {
+          if (!IsWindowVisible(hwnd)) return TRUE;
+          DWORD pid = 0;
+          GetWindowThreadProcessId(hwnd, &pid);
+          if (pid) reinterpret_cast<std::vector<DWORD>*>(parameter)->push_back(pid);
+          return TRUE;
+        }, reinterpret_cast<LPARAM>(&visible_window_pids));
+
+        struct Candidate {
+          PROCESSENTRY32W process{};
+          int score = -1;
+        } best;
         process = {};
         process.dwSize = sizeof(process);
         if (Process32FirstW(snapshot, &process)) {
           do {
-            if (consider_process(process)) break;
+            std::wstring exe = process.szExeFile;
+            std::transform(exe.begin(), exe.end(), exe.begin(),
+                           [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+            int score = -1;
+            if (exe == L"javaw.exe") score = 10;
+            else if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") score = 50;
+            else if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
+                     exe == L"fortniteclient-win64-shipping_eac_eos.exe") score = 50;
+            else if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") score = 50;
+
+            if (score >= 0 &&
+                std::find(visible_window_pids.begin(), visible_window_pids.end(),
+                          process.th32ProcessID) != visible_window_pids.end())
+              score += 100;
+            if (score > best.score) {
+              best.process = process;
+              best.score = score;
+            }
           } while (Process32NextW(snapshot, &process));
         }
+        if (best.score >= 0) consider_process(best.process);
       }
       CloseHandle(snapshot);
     }
