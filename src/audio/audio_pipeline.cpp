@@ -118,6 +118,8 @@ HRESULT ActivateProcessLoopback(DWORD process_id, bool include_process,
   return result;
 }
 
+std::string ProcessName(DWORD process_id);
+
 DWORD FindRunningProcessId(const std::string& executable_name) {
   if (executable_name.empty()) return 0;
   const auto matches = [&](DWORD pid) {
@@ -136,8 +138,7 @@ DWORD FindRunningProcessId(const std::string& executable_name) {
   process.dwSize = sizeof(process);
   if (Process32FirstW(snapshot, &process)) {
     do {
-      const auto filename = WideToUtf8(std::wstring(process.szExeFile));
-      if (_stricmp(filename.c_str(), executable_name.c_str()) != 0) continue;
+      if (!matches(process.th32ProcessID)) continue;
       if (first_match == 0) first_match = process.th32ProcessID;
       if (foreground_pid == process.th32ProcessID) {
         CloseHandle(snapshot);
