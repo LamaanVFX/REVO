@@ -128,6 +128,19 @@ bool ReserveOutputFilename(const std::filesystem::path& directory, const std::st
 bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   Shutdown();
   config_ = config;
+  // Start with the non-Minecraft profile; detection upgrades to Minecraft's
+  // 240 FPS / 35 Mbps profile if javaw.exe is running.
+  config_.target_fps = 60;
+  config_.obs_replay_bitrate_kbps = 20'000;
+  {
+    const double retained_seconds = std::max(1.0, config_.clip_duration_seconds) + 15.0;
+    const double audio_kbps = static_cast<double>(config_.audio_bitrate) / 1000.0 *
+        (config_.obs_separate_audio_tracks ? 5.0 : 1.0);
+    const double required_bytes = std::ceil(
+        (20'000.0 + audio_kbps) * 1000.0 / 8.0 * retained_seconds * 1.25);
+    config_.rolling_buffer_bytes = static_cast<std::size_t>(
+        std::max(32.0 * 1024.0 * 1024.0, required_bytes));
+  }
   clips_root_ = config.output_directory;
   active_game_.clear();
   next_game_detection_ = std::chrono::steady_clock::now();
