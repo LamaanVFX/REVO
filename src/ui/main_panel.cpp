@@ -1422,15 +1422,15 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 #endif
 
       SectionLabel("video / quality");
-      int fps = draft_.target_fps == 30 ? 0 : draft_.target_fps == 120 ? 2 : 1;
+      int fps = draft_.target_fps == 30 ? 0 : draft_.target_fps == 60 ? 1 : draft_.target_fps == 120 ? 2 : 3;
       constexpr const char* frame_rates[] = {"30 fps / lightest", "60 fps / recommended",
-                                             "120 fps / high load"};
+                                             "120 fps / high load", "240 fps / very high load"};
       if (ImGui::Combo("frame rate", &fps, frame_rates, IM_ARRAYSIZE(frame_rates)))
-        draft_.target_fps = fps == 0 ? 30U : fps == 2 ? 120U : 60U;
-      if (draft_.target_fps == 120)
+        draft_.target_fps = fps == 0 ? 30U : fps == 1 ? 60U : fps == 2 ? 120U : 240U;
+      if (draft_.target_fps >= 120)
         ImGui::TextColored(
             kMuted,
-            "Use a 120 Hz+ source. A hardware encoder is recommended; software fallback can use much more CPU.");
+            "Use a source and display pipeline that can sustain this rate. Hardware encoding is strongly recommended; 240 fps at high resolution is very demanding.");
 
       int resolution = draft_.output_width == 1280 ? 2 : draft_.output_width == 1920 ? 1 : 0;
       constexpr const char* resolutions[] = {"source resolution", "1920 x 1080", "1280 x 720"};
@@ -2029,7 +2029,7 @@ void MainPanel::RenderDiagnosticsPreview(const ApplicationSnapshot& snapshot,
 
 void MainPanel::ResetDraft(const AppConfig& config) {
   draft_ = config;
-  if (draft_.target_fps != 30 && draft_.target_fps != 60 && draft_.target_fps != 120) {
+  if (draft_.target_fps != 30 && draft_.target_fps != 60 && draft_.target_fps != 120 && draft_.target_fps != 240) {
     draft_.target_fps = 60;
     ResizeReplayBudget(draft_);
   }

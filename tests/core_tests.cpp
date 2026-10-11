@@ -60,6 +60,8 @@ void TestConfig() {
   klip::AppConfig high_frame_rate;
   high_frame_rate.target_fps = 120;
   CHECK(klip::ValidateConfig(high_frame_rate).empty());
+  high_frame_rate.target_fps = 240;
+  CHECK(klip::ValidateConfig(high_frame_rate).empty());
   high_frame_rate.target_fps = 144;
   CHECK(!klip::ValidateConfig(high_frame_rate).empty());
 
@@ -167,7 +169,7 @@ void TestConfigRoundTrip() {
   saved.obs_filename_format = "klip_%CCYY-%MM-%DD_%hh-%mm-%ss";
   saved.obs_separate_audio_tracks = true;
   saved.clip_duration_seconds = 42.0;
-  saved.target_fps = 30;
+  saved.target_fps = 240;
   saved.video_bitrate = 8'000'000;
   saved.audio_bitrate = 128'000;
   saved.desktop_audio_enabled = false;
@@ -216,7 +218,7 @@ void TestConfigRoundTrip() {
   CHECK(loaded.obs_filename_format == saved.obs_filename_format);
   CHECK(loaded.obs_separate_audio_tracks);
   CHECK(loaded.clip_duration_seconds == 42.0);
-  CHECK(loaded.target_fps == 30);
+  CHECK(loaded.target_fps == 240);
   CHECK(loaded.video_bitrate == 8'000'000);
   CHECK(loaded.audio_bitrate == 128'000);
   CHECK(!loaded.desktop_audio_enabled);

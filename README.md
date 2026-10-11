@@ -16,7 +16,7 @@ live microphone and clean-machine testing remain incomplete.
 - Save recent gameplay with Alt+C or your custom shortcut.
 - Record full sessions and save clips while recording using one shared encoder.
 - Route game, microphone, Discord and music to dedicated audio tracks plus a combined track.
-- Select 60 or 120 FPS and a supported hardware encoder; unavailable selections
+- Select 30, 60, 120 or 240 FPS and a supported hardware encoder; unavailable selections
   fail visibly rather than silently changing quality.
 - Use explicit NVENC Performance tuning when its quality/compression tradeoff
   suits you. Balanced remains unchanged. The optional game-copy limiter is not
