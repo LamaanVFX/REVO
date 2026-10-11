@@ -40,7 +40,7 @@ class ClipWriter {
   void Worker(std::stop_token stop_token) noexcept;
   bool Write(const Request& request, const std::vector<EncodedPacket>& packets,
              const CodecSnapshot& video, const CodecSnapshot* audio, Error& error);
-  static std::filesystem::path BuildOutputPath(const std::filesystem::path& directory);
+  std::filesystem::path BuildOutputPath() const;
 
   RollingMediaBuffer& buffer_;
   ApplicationState& state_;
