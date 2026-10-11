@@ -31,6 +31,12 @@ std::string ExecutableAudioSelector(std::string_view window_value) {
 }
 
 void DrawAudioWindowSelector(const char* label, std::string& selected) {
+  // Migrate settings saved by earlier builds, which stored the whole changing
+  // title:class:executable window value.
+  if (!selected.empty() && !selected.starts_with("::")) {
+    const auto stable = ExecutableAudioSelector(selected);
+    if (!stable.empty()) selected = stable;
+  }
   obs_properties_t* props = obs_get_source_properties("wasapi_process_output_capture");
   if (!props) { ImGui::TextDisabled("Application audio capture is unavailable."); return; }
   obs_property_t* window = obs_properties_get(props, "window");
