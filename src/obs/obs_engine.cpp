@@ -939,6 +939,22 @@ void ObsEngine::Tick() {
       release_encoder(music_encoder_);
 
       active_game_ = detected_game;
+
+      // Keep game audio paired with the same automatically detected game as
+      // video capture. The WASAPI process source accepts the stable executable
+      // selector format used by the Audio settings UI ("::process.exe").
+      if (detected_game.empty()) {
+        config_.game_audio_window.clear();
+      } else if (!executables.empty()) {
+        config_.game_audio_window = "::" + executables.front();
+      }
+      try {
+        ConfigureAudio(config_);
+      } catch (const std::exception& audio_exception) {
+        logger_.Warning(std::string("Could not update automatic game audio source: ") +
+                        audio_exception.what());
+      }
+
       config_.target_fps = profile_fps;
       config_.obs_replay_bitrate_kbps = profile_bitrate_kbps;
       config_.obs_duration_priority = true;
