@@ -700,6 +700,16 @@ UiCommands KlipApplication::BuildUiCommands() {
             config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
             audio_.SetMicrophoneGain(gain);
           },
+      .set_discord_audio_gain =
+          [this](float gain) {
+            config_.discord_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            audio_.SetDiscordGain(gain);
+          },
+      .set_music_audio_gain =
+          [this](float gain) {
+            config_.music_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            audio_.SetMusicGain(gain);
+          },
       .persist_audio_gains = [this] { PersistSettings(config_, false); },
       .select_microphone =
           [this](int index) {
