@@ -49,7 +49,7 @@ struct AppConfig {
   bool obs_duration_priority = true;
   int obs_replay_bitrate_kbps = 40000;
   std::string obs_filename_format = "clip_%CCYY-%MM-%DD_%hh-%mm-%ss";
-  bool obs_separate_audio_tracks = true;
+  bool obs_separate_audio_tracks = false;
   std::string game_audio_window;
   std::string discord_audio_window;
   std::string music_audio_window;
