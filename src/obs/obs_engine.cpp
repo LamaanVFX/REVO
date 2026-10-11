@@ -962,6 +962,28 @@ void ObsEngine::Tick() {
       CloseHandle(snapshot);
     }
 
+    // Keep the game-audio source synchronized independently of profile changes.
+    // A previous ConfigureAudio failure must not permanently pin audio to an
+    // old executable just because active_game_ already matches the detected game.
+    if (!detected_executable.empty()) {
+      const std::string desired_audio_selector = "::" + detected_executable;
+      if (config_.game_audio_window != desired_audio_selector) {
+        config_.game_audio_window = desired_audio_selector;
+        if (game_audio_) {
+          obs_set_output_source(1, nullptr);
+          obs_source_release(game_audio_);
+          game_audio_ = nullptr;
+        }
+        try {
+          ConfigureAudio(config_);
+          logger_.Info("Automatic game audio selector switched to " + desired_audio_selector);
+        } catch (const std::exception& audio_exception) {
+          logger_.Warning(std::string("Automatic game audio reconfiguration failed: ") +
+                          audio_exception.what());
+        }
+      }
+    }
+
     // Never switch a profile while a clip save or manual recording owns the output.
     bool output_busy = false;
     { std::scoped_lock lock(save_mutex_); output_busy = saving_ || queued_saves_; }
@@ -1001,23 +1023,6 @@ void ObsEngine::Tick() {
       release_encoder(music_encoder_);
 
       active_game_ = detected_game;
-
-      // Keep game audio paired with the same automatically detected game as
-      // video capture. The WASAPI process source accepts the stable executable
-      // selector format used by the Audio settings UI ("::process.exe").
-      if (detected_game.empty()) {
-        config_.game_audio_window.clear();
-      } else if (!detected_executable.empty()) {
-        // Use the exact process that was detected, not the first alias in the
-        // game's executable list (which may not be the process producing audio).
-        config_.game_audio_window = "::" + detected_executable;
-      }
-      try {
-        ConfigureAudio(config_);
-      } catch (const std::exception& audio_exception) {
-        logger_.Warning(std::string("Could not update automatic game audio source: ") +
-                        audio_exception.what());
-      }
 
       config_.target_fps = profile_fps;
       config_.obs_replay_bitrate_kbps = profile_bitrate_kbps;
