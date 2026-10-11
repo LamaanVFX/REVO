@@ -1058,9 +1058,11 @@ void ObsEngine::Tick() {
               std::find(visible_window_pids.begin(), visible_window_pids.end(),
                         process.th32ProcessID) != visible_window_pids.end();
           if (score >= 0 && has_visible_window) score += 100;
-          // The foreground process is a useful tie-breaker, but never let a
-          // launcher outrank the visible game executable.
-          if (score >= 0 && process.th32ProcessID == foreground_pid) score += 5;
+          // Prefer the focused game itself, but do not let a launcher
+          // outrank a visible game executable such as VALORANT-Win64-Shipping.exe.
+          if (process.th32ProcessID == foreground_pid) {
+            score += score >= 60 ? 40 : 5;
+          }
           if (score > best.score) {
             best.process = process;
             best.score = score;
