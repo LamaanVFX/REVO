@@ -52,6 +52,32 @@ bool MatchesPreferredWindow(const std::string& label, const std::string& preferr
   return executable != std::string::npos && label.ends_with(preferred.substr(executable));
 }
 
+// WGC has no game-process API of its own. Recognize common game executables from
+// the process suffix appended to each enumerated window label, rather than
+// silently choosing the first arbitrary desktop window. javaw.exe is deliberately
+// first because Klip's Minecraft profile is tied to that process.
+int GameExecutablePriority(const std::string& label) {
+  const auto open = label.rfind("  [");
+  const auto close = label.rfind(']');
+  if (open == std::string::npos || close == std::string::npos || close <= open + 3) return 0;
+  std::string executable = label.substr(open + 3, close - open - 3);
+  std::transform(executable.begin(), executable.end(), executable.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (executable == "javaw.exe") return 100;
+  static constexpr std::string_view known_games[] = {
+      "minecraft.windows.exe", "fortniteclient-win64-shipping.exe",
+      "valorant-win64-shipping.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
+      "rocketleague.exe", "gta5.exe", "fivem_gtaprocess.exe", "robloxplayerbeta.exe",
+      "eldenring.exe", "eldenring.exe", "helldivers2.exe", "deadbydaylight-win64-shipping.exe",
+      "destiny2.exe", "rainbowsix.exe", "rainbow6.exe", "league of legends.exe",
+      "leagueclient.exe", "dota2.exe", "pubg.exe", "tslgame.exe", "thefinals.exe",
+      "marvel-rivals.exe", "battlefield.exe", "bf2042.exe", "escape from tarkov.exe"};
+  for (std::size_t i = 0; i < std::size(known_games); ++i) {
+    if (executable == known_games[i]) return 80 - static_cast<int>(i);
+  }
+  return 0;
+}
+
 }  // namespace
 
 GraphicsCapture::GraphicsCapture(VideoEncoder& encoder, ApplicationState& state, Logger& logger)
@@ -407,6 +433,27 @@ void GraphicsCapture::RefreshSourceOptions() {
     if (preferred != windows.end()) {
       selected_window = preferred->id;
       selected_window_.store(static_cast<std::uintptr_t>(preferred->id), std::memory_order_release);
+    }
+  }
+
+  // Automatically choose a known game when no saved/explicit window is available.
+  // Prefer Minecraft over other games so its dedicated high-FPS profile can be
+  // applied by the application layer; never auto-select an arbitrary utility window.
+  if (selected_window == 0 && target_mode_.load(std::memory_order_acquire) ==
+                                   CaptureTargetMode::kGameWindow) {
+    const CaptureSourceOption* best = nullptr;
+    int best_priority = 0;
+    for (const auto& option : windows) {
+      const int priority = GameExecutablePriority(option.label);
+      if (priority > best_priority) {
+        best = &option;
+        best_priority = priority;
+      }
+    }
+    if (best != nullptr) {
+      selected_window = best->id;
+      selected_window_.store(static_cast<std::uintptr_t>(best->id), std::memory_order_release);
+      logger_.Info("Automatically detected game capture target: " + best->label);
     }
   }
 
