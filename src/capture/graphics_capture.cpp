@@ -1463,7 +1463,7 @@ bool GraphicsCapture::Convert(const RawFrame& input, ConvertedFrame& output, Err
   video_context_->VideoProcessorSetOutputTargetRect(processor_.get(), TRUE, &output_rect);
   video_context_->VideoProcessorSetStreamSourceRect(processor_.get(), 0, TRUE, &source);
   video_context_->VideoProcessorSetStreamDestRect(processor_.get(), 0, TRUE, &destination);
-  D3D11_VIDEO_PROCESSOR_STREAM streams[2]{};
+  D3D11_VIDEO_PROCESSOR_STREAM streams[3]{};
   streams[0].Enable = TRUE;
   streams[0].pInputSurface = input_view.get();
   UINT stream_count = 1;
@@ -1491,6 +1491,47 @@ bool GraphicsCapture::Convert(const RawFrame& input, ConvertedFrame& output, Err
     streams[1].Enable = TRUE;
     streams[1].pInputSurface = overlay_input_view.get();
     stream_count = 2;
+  }
+  bool cursor_ready = false;
+  winrt::com_ptr<ID3D11VideoProcessorInputView> cursor_input_view;
+  const UINT cursor_stream_index = overlay_ready ? 2U : 1U;
+  if (input.cursor_visible && input.cursor_texture) {
+    D3D11_VIDEO_PROCESSOR_CAPS capabilities{};
+    if (SUCCEEDED(processor_enumerator_->GetVideoProcessorCaps(&capabilities)) &&
+        capabilities.MaxInputStreams > cursor_stream_index) {
+      result = video_device_->CreateVideoProcessorInputView(input.cursor_texture.get(),
+                                                            processor_enumerator_.get(),
+                                                            &input_desc, cursor_input_view.put());
+      cursor_ready = SUCCEEDED(result);
+    }
+    if (cursor_ready) {
+      D3D11_TEXTURE2D_DESC cursor_desc{};
+      input.cursor_texture->GetDesc(&cursor_desc);
+      RECT cursor_source{0, 0, static_cast<LONG>(cursor_desc.Width),
+                         static_cast<LONG>(cursor_desc.Height)};
+      const double scale_x = static_cast<double>(destination.right - destination.left) /
+                             static_cast<double>(std::max<std::uint32_t>(1, input.width));
+      const double scale_y = static_cast<double>(destination.bottom - destination.top) /
+                             static_cast<double>(std::max<std::uint32_t>(1, input.height));
+      RECT cursor_destination{
+          destination.left + static_cast<LONG>(std::lround(input.cursor_rect.left * scale_x)),
+          destination.top + static_cast<LONG>(std::lround(input.cursor_rect.top * scale_y)),
+          destination.left + static_cast<LONG>(std::lround(input.cursor_rect.right * scale_x)),
+          destination.top + static_cast<LONG>(std::lround(input.cursor_rect.bottom * scale_y))};
+      video_context_->VideoProcessorSetStreamSourceRect(processor_.get(), cursor_stream_index,
+                                                        TRUE, &cursor_source);
+      video_context_->VideoProcessorSetStreamDestRect(processor_.get(), cursor_stream_index,
+                                                      TRUE, &cursor_destination);
+      video_context_->VideoProcessorSetStreamAlpha(processor_.get(), cursor_stream_index,
+                                                   TRUE, 1.0F);
+      video_context_->VideoProcessorSetStreamFrameFormat(processor_.get(), cursor_stream_index,
+                                                         D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+      video_context_->VideoProcessorSetStreamColorSpace(processor_.get(), cursor_stream_index,
+                                                        &input_color);
+      streams[cursor_stream_index].Enable = TRUE;
+      streams[cursor_stream_index].pInputSurface = cursor_input_view.get();
+      stream_count = cursor_stream_index + 1;
+    }
   }
   result = video_context_->VideoProcessorBlt(processor_.get(), output_view.get(), 0, stream_count,
                                              streams);
