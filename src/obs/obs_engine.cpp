@@ -3,6 +3,7 @@
 #include <obs.h>
 #include <obs-module.h>
 #include <obs-audio-controls.h>
+#include <tlhelp32.h>
 #include <util/base.h>
 #include <util/platform.h>
 
