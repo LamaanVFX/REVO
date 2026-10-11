@@ -293,15 +293,13 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
 
   // Migrate older settings to the requested five-track recording layout.
   loaded.obs_separate_audio_tracks = true;
-  loaded.desktop_audio_enabled = true;
-  loaded.microphone_enabled = true;
   loaded.capture_border = false;
   loaded.obs_display_method = 1;
   loaded.obs_limit_game_capture_fps = true;
   if (loaded.discord_audio_window.empty()) loaded.discord_audio_window = "::Discord.exe";
   if (loaded.music_audio_window.empty()) loaded.music_audio_window = "::Spotify.exe";
-  // The app owns the default capture profile: borderless DXGI and rate-limited
-  // OBS capture copies. These settings never limit the game's own frame rate.
+  // Preserve explicit audio mute choices. Fresh installs default to enabled
+  // tracks; saved user choices must survive restart.
 
   const auto issues = ValidateConfig(loaded);
   if (!issues.empty()) {

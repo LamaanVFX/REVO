@@ -223,7 +223,7 @@ void TestConfigRoundTrip() {
   CHECK(loaded.target_fps == 240);
   CHECK(loaded.video_bitrate == 8'000'000);
   CHECK(loaded.audio_bitrate == 128'000);
-  CHECK(loaded.desktop_audio_enabled);
+  CHECK(!loaded.desktop_audio_enabled);
   CHECK(loaded.microphone_enabled);
   CHECK(loaded.game_audio_gain == 1.0);
   CHECK(loaded.desktop_audio_gain == 0.65);
