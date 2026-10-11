@@ -1004,6 +1004,7 @@ void ObsEngine::Tick() {
     // A previous ConfigureAudio failure must not permanently pin audio to an
     // old executable just because active_game_ already matches the detected game.
     if (!detected_executable.empty()) {
+      state_.SetDetectedGameAudioApplication(detected_executable);
       const std::string desired_audio_selector = "::" + detected_executable;
       if (config_.game_audio_window != desired_audio_selector) {
         config_.game_audio_window = desired_audio_selector;
