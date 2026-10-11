@@ -1585,7 +1585,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       ImGui::TextColored(kMuted,
                          "preview refreshes at 15 fps and does not change recorded frame rate.");
 #else
-      ImGui::TextWrapped("No capture preview runs in this build. Windows manages the capture border; stock OBS does not expose a border toggle.");
+      ImGui::TextWrapped("OBS game capture is borderless. DXGI display capture is preferred to avoid the yellow Windows Graphics Capture border.");
 #endif
 
       SectionLabel("studio / map cover or handcam");
@@ -1667,10 +1667,10 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 
     if (begin_settings_tab("audio", 3)) {
       SectionLabel("clips / audio");
-      ImGui::Checkbox("enable selected application audio", &draft_.desktop_audio_enabled);
+      ImGui::Checkbox("enable desktop audio track", &draft_.desktop_audio_enabled);
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::Checkbox("save five separate audio tracks", &draft_.obs_separate_audio_tracks);
-      ImGui::TextColored(kMuted, "1 combined / 2 game / 3 microphone / 4 Discord / 5 music");
+      ImGui::TextColored(kMuted, "Five separate audio tracks are always enabled.");
+      ImGui::TextColored(kMuted, "Tracks: 1 desktop / 2 game / 3 mic / 4 Discord / 5 music");
       DrawAudioWindowSelector("game audio application", draft_.game_audio_window);
       DrawAudioWindowSelector("Discord audio application", draft_.discord_audio_window);
       DrawAudioWindowSelector("music audio application", draft_.music_audio_window);
@@ -1707,8 +1707,11 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       int desktop_volume = static_cast<int>(draft_.desktop_audio_gain * 100.0 + 0.5);
       if (ImGui::SliderInt("desktop volume", &desktop_volume, 0, 200, "%d%%"))
         draft_.desktop_audio_gain = static_cast<double>(desktop_volume) / 100.0;
+      int game_volume = static_cast<int>(draft_.game_audio_gain * 100.0 + 0.5);
+      if (ImGui::SliderInt("game volume", &game_volume, 0, 200, "%d%%"))
+        draft_.game_audio_gain = static_cast<double>(game_volume) / 100.0;
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::TextWrapped("Choose each application above. Only selected game, Discord, and music streams are included in the combined track; microphone is separate.");
+      ImGui::TextWrapped("Track 1 captures system output. Game, microphone, Discord, and Spotify are routed to separate tracks. Choose application executables above; game audio is selected automatically when a supported game launches.");
       if (!draft_.excluded_audio_process.empty()) {
         ImGui::Text("Previous exclusion: %s", draft_.excluded_audio_process.c_str());
         if (ImGui::Button("clear previous exclusion / record all desktop audio")) draft_.excluded_audio_process.clear();

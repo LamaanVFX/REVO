@@ -85,6 +85,7 @@ class ObsEngine {
   obs_source* overlay_ = nullptr;
   obs_scene_item* overlay_item_ = nullptr;
   std::uint32_t layout_width_ = 0, layout_height_ = 0;
+  obs_source* desktop_audio_ = nullptr;
   obs_source* game_audio_ = nullptr;
   obs_source* discord_audio_ = nullptr;
   obs_source* music_audio_ = nullptr;
@@ -95,9 +96,10 @@ class ObsEngine {
   obs_encoder* microphone_encoder_ = nullptr;
   obs_encoder* discord_encoder_ = nullptr;
   obs_encoder* music_encoder_ = nullptr;
+  obs_volmeter* desktop_audio_meter_ = nullptr;
   obs_volmeter* game_audio_meter_ = nullptr;
   obs_volmeter* microphone_meter_ = nullptr;
-  std::atomic<float> game_audio_level_{0.0F}, microphone_level_{0.0F};
+  std::atomic<float> desktop_audio_level_{0.0F}, game_audio_level_{0.0F}, microphone_level_{0.0F};
   obs_output* replay_ = nullptr;
   obs_output* recording_ = nullptr;
   std::vector<SourceChoice> games_, displays_, microphones_, overlay_windows_;

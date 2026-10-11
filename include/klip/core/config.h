@@ -49,10 +49,10 @@ struct AppConfig {
   bool obs_duration_priority = true;
   int obs_replay_bitrate_kbps = 40000;
   std::string obs_filename_format = "clip_%CCYY-%MM-%DD_%hh-%mm-%ss";
-  bool obs_separate_audio_tracks = false;
+  bool obs_separate_audio_tracks = true;
   std::string game_audio_window;
-  std::string discord_audio_window;
-  std::string music_audio_window;
+  std::string discord_audio_window = "::Discord.exe";
+  std::string music_audio_window = "::Spotify.exe";
   std::string output_container = "mkv";
   int obs_display_method = 0; // OBS monitor_capture: auto=0, DXGI=1, WGC=2.
   bool obs_limit_game_capture_fps = false; // Opt-in OBS hook copy limiter; never caps the game itself.
@@ -69,13 +69,14 @@ struct AppConfig {
   std::int64_t audio_bitrate = 192'000;
   bool desktop_audio_enabled = true;
   double desktop_audio_gain = 1.0;
+  double game_audio_gain = 1.0;
   double microphone_audio_gain = 1.0;
   double discord_audio_gain = 1.0;
   double music_audio_gain = 1.0;
   std::filesystem::path output_directory = "clips";
   std::filesystem::path recording_directory = "recordings";
   std::filesystem::path log_path = "klip.log";
-  bool microphone_enabled = false;
+  bool microphone_enabled = true;
   bool capture_cursor = true;
   bool capture_border = false;
   bool capture_preview_enabled = false;

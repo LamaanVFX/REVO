@@ -33,6 +33,11 @@ void TestNativeCaptureDefaults() {
   CHECK(!config.capture_border);
   CHECK(config.capture_cursor);
   CHECK(config.output_container == "mkv");
+  CHECK(config.obs_separate_audio_tracks);
+  CHECK(config.desktop_audio_enabled);
+  CHECK(config.microphone_enabled);
+  CHECK(config.discord_audio_window == "::Discord.exe");
+  CHECK(config.music_audio_window == "::Spotify.exe");
 }
 
 void TestWaveFormats() {

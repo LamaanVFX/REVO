@@ -128,8 +128,11 @@ bool ReserveOutputFilename(const std::filesystem::path& directory, const std::st
 bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   Shutdown();
   config_ = config;
+  config_.obs_separate_audio_tracks = true;
+  if (!config_.capture_border && config_.obs_display_method == 0)
+    config_.obs_display_method = 1;
   // Start with the non-Minecraft profile; detection upgrades to Minecraft's
-  // 240 FPS / 35 Mbps profile if javaw.exe is running.
+  // 240 FPS / 30 Mbps profile if javaw.exe is running.
   config_.target_fps = 60;
   config_.obs_replay_bitrate_kbps = 20'000;
   config_.obs_duration_priority = true;  // Profiles require a fixed CBR bitrate.
@@ -503,9 +506,13 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     const Error error{ErrorComponent::kAudio, "select microphone", "The configured microphone is disconnected. Choose an available device.", {}, {}, config.preferred_microphone_name};
     state_.SetError(error); logger_.ErrorMessage(error);
   }
+  configure(desktop_audio_, desktop_audio_meter_, desktop_audio_level_,
+            config.obs_separate_audio_tracks && config.desktop_audio_enabled,
+            "wasapi_output_capture", "Klip desktop audio", 5, "default",
+            static_cast<float>(config.desktop_audio_gain), 1U);
   const auto configure_process = [&](obs_source_t*& source, const char* name, const std::string& window,
                                      std::uint32_t channel, std::uint32_t dedicated_mix) {
-    if (!config.desktop_audio_enabled || window.empty()) {
+    if (window.empty()) {
       obs_set_output_source(channel, nullptr);
       if (source) obs_source_release(source);
       source = nullptr;
@@ -542,19 +549,19 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     if (!source) source = obs_source_create("wasapi_process_output_capture", name, settings.get(), nullptr);
     else obs_source_update(source, settings.get());
     if (!source) throw std::runtime_error(std::string("OBS application-audio capture is unavailable for ") + name);
-    obs_source_set_audio_mixers(source, config.obs_separate_audio_tracks ? (1U | dedicated_mix) : 1U);
+    obs_source_set_audio_mixers(source, config.obs_separate_audio_tracks ? dedicated_mix : 1U);
     const float gain = std::string_view(name) == "Klip Discord audio"
                            ? static_cast<float>(config.discord_audio_gain)
                            : std::string_view(name) == "Klip music audio"
                                  ? static_cast<float>(config.music_audio_gain)
-                                 : static_cast<float>(config.desktop_audio_gain);
+                                 : static_cast<float>(config.game_audio_gain);
     obs_source_set_volume(source, gain);
     obs_set_output_source(channel, source);
   };
   configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 1);
   configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available,
             "wasapi_input_capture", "Klip microphone", 2, device,
-            static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? 5 : 1);
+            static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? (1U << 2) : 1U);
   configure_process(discord_audio_, "Klip Discord audio", config.discord_audio_window, 3, 1U << 3);
   configure_process(music_audio_, "Klip music audio", config.music_audio_window, 4, 1U << 4);
   config_.desktop_audio_enabled = config.desktop_audio_enabled;
@@ -589,6 +596,7 @@ void ObsEngine::UpdateAudioMeters() {
       }
     }
   };
+  update(desktop_audio_, desktop_audio_meter_, desktop_audio_level_);
   update(game_audio_, game_audio_meter_, game_audio_level_);
   update(microphone_, microphone_meter_, microphone_level_);
 }
@@ -660,7 +668,7 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     obs_encoder_set_video(video_encoder_, obs_get_video());
     auto audio = MakeData();
     obs_data_set_int(audio.get(), "bitrate", config_.audio_bitrate / 1000);
-    audio_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip shared AAC encoder", audio.get(), 0, nullptr);
+    audio_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip desktop AAC", audio.get(), 0, nullptr);
     if (!audio_encoder_) throw std::runtime_error("OBS AAC encoder creation failed");
     obs_encoder_set_audio(audio_encoder_, obs_get_audio());
     if (config_.obs_separate_audio_tracks) {
@@ -1047,7 +1055,7 @@ void ObsEngine::Tick() {
       // no-game fallback use 60 FPS. Bitrate values are kbps, as expected by OBS.
       const bool minecraft_profile = detected_game == "Minecraft";
       const std::uint32_t profile_fps = minecraft_profile ? 240U : 60U;
-      const int profile_bitrate_kbps = minecraft_profile ? 35'000 : 20'000;
+      const int profile_bitrate_kbps = minecraft_profile ? 30'000 : 20'000;
 
       StopOutput(replay_);
       if (replay_) { obs_output_release(replay_); replay_ = nullptr; }
@@ -1171,7 +1179,7 @@ void ObsEngine::Tick() {
   }
   if (refresh_pending_sources) next_source_refresh_ = std::chrono::steady_clock::now() + std::chrono::seconds(3);
   if (capture_ && config_.target_mode == CaptureTargetMode::kDisplay &&
-      config_.obs_display_method == 0 && !display_fallback_attempted_ &&
+      config_.obs_display_method == 0 && config_.capture_border && !display_fallback_attempted_ &&
       obs_source_get_width(capture_) == 0 &&
       std::chrono::steady_clock::now() - capture_started_ > std::chrono::seconds(3)) {
     display_fallback_attempted_ = true;
@@ -1221,8 +1229,10 @@ void ObsEngine::Tick() {
   ProcessSaveQueue();
   state_.SetCaptureMetrics(obs_get_active_fps(), 0.0, obs_get_total_frames(),
                            obs_get_lagged_frames(), video_output_get_skipped_frames(obs_get_video()), 0, 0, 0.0);
-  state_.SetAudio(game_audio_ && obs_source_audio_active(game_audio_), microphone_ && obs_source_audio_active(microphone_),
-                  game_audio_level_.load(std::memory_order_relaxed), microphone_level_.load(std::memory_order_relaxed));
+  state_.SetAudio(desktop_audio_ && obs_source_audio_active(desktop_audio_),
+                  microphone_ && obs_source_audio_active(microphone_),
+                  desktop_audio_level_.load(std::memory_order_relaxed),
+                  microphone_level_.load(std::memory_order_relaxed));
   const auto buffered = obs_output_active(replay_) ? std::chrono::duration<double>(std::chrono::steady_clock::now() - replay_started_).count() : 0.0;
   state_.SetRollingMetrics(std::min(buffered, config_.clip_duration_seconds), 0, 0);
   if (IsRecording()) state_.SetRecording(true, false, recording_path_,
@@ -1279,12 +1289,14 @@ void ObsEngine::Shutdown() noexcept {
   if (microphone_encoder_) { obs_encoder_release(microphone_encoder_); microphone_encoder_ = nullptr; }
   if (discord_encoder_) { obs_encoder_release(discord_encoder_); discord_encoder_ = nullptr; }
   if (music_encoder_) { obs_encoder_release(music_encoder_); music_encoder_ = nullptr; }
+  if (desktop_audio_meter_) { obs_volmeter_destroy(desktop_audio_meter_); desktop_audio_meter_ = nullptr; }
   if (game_audio_meter_) { obs_volmeter_destroy(game_audio_meter_); game_audio_meter_ = nullptr; }
   if (microphone_meter_) { obs_volmeter_destroy(microphone_meter_); microphone_meter_ = nullptr; }
-  if (initialized_) for (std::uint32_t i = 0; i < 5; ++i) obs_set_output_source(i, nullptr);
+  if (initialized_) for (std::uint32_t i = 0; i < 6; ++i) obs_set_output_source(i, nullptr);
   if (scene_) { obs_scene_release(scene_); scene_ = nullptr; capture_item_ = nullptr; overlay_item_ = nullptr; }
   if (capture_) { obs_source_release(capture_); capture_ = nullptr; }
   if (overlay_) { obs_source_release(overlay_); overlay_ = nullptr; }
+  if (desktop_audio_) { obs_source_release(desktop_audio_); desktop_audio_ = nullptr; }
   if (game_audio_) { obs_source_release(game_audio_); game_audio_ = nullptr; }
   if (discord_audio_) { obs_source_release(discord_audio_); discord_audio_ = nullptr; }
   if (music_audio_) { obs_source_release(music_audio_); music_audio_ = nullptr; }

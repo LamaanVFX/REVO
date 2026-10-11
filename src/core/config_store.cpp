@@ -139,6 +139,7 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   if (key == "audio_bitrate") return ParseInteger(value, config.audio_bitrate);
   if (key == "desktop_audio_enabled") return ParseBool(value, config.desktop_audio_enabled);
   if (key == "desktop_audio_gain") return ParseDouble(value, config.desktop_audio_gain);
+  if (key == "game_audio_gain") return ParseDouble(value, config.game_audio_gain);
   if (key == "microphone_audio_gain") return ParseDouble(value, config.microphone_audio_gain);
   if (key == "discord_audio_gain") return ParseDouble(value, config.discord_audio_gain);
   if (key == "music_audio_gain") return ParseDouble(value, config.music_audio_gain);
@@ -290,6 +291,16 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
     else loaded.obs_encoder_id = legacy;  // Unsupported choices must fail visibly, not silently become auto.
   }
 
+  // Migrate older settings to the requested five-track recording layout.
+  loaded.obs_separate_audio_tracks = true;
+  loaded.desktop_audio_enabled = true;
+  loaded.microphone_enabled = true;
+  if (loaded.discord_audio_window.empty()) loaded.discord_audio_window = "::Discord.exe";
+  if (loaded.music_audio_window.empty()) loaded.music_audio_window = "::Spotify.exe";
+  // The automatic display fallback can switch to Windows Graphics Capture and
+  // show the yellow system border. Prefer borderless DXGI for old "automatic" settings.
+  if (loaded.obs_display_method == 0) loaded.obs_display_method = 1;
+
   const auto issues = ValidateConfig(loaded);
   if (!issues.empty()) {
     diagnostic = "Invalid saved setting '" + issues.front().field + "': " +
@@ -347,6 +358,7 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "desktop_audio_enabled=" << (config.desktop_audio_enabled ? "true" : "false")
          << '\n';
   output << "desktop_audio_gain=" << config.desktop_audio_gain << '\n';
+  output << "game_audio_gain=" << config.game_audio_gain << '\n';
   output << "microphone_audio_gain=" << config.microphone_audio_gain << '\n';
   output << "discord_audio_gain=" << config.discord_audio_gain << '\n';
   output << "music_audio_gain=" << config.music_audio_gain << '\n';

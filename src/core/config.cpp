@@ -64,6 +64,10 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
       config.desktop_audio_gain > 2.0) {
     reject("desktop_audio_gain", "must be between 0.0 and 2.0");
   }
+  if (!std::isfinite(config.game_audio_gain) || config.game_audio_gain < 0.0 ||
+      config.game_audio_gain > 2.0) {
+    reject("game_audio_gain", "must be between 0.0 and 2.0");
+  }
   if (!std::isfinite(config.microphone_audio_gain) || config.microphone_audio_gain < 0.0 ||
       config.microphone_audio_gain > 2.0) {
     reject("microphone_audio_gain", "must be between 0.0 and 2.0");
