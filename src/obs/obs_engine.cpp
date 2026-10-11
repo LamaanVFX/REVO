@@ -130,8 +130,11 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   Shutdown();
   config_ = config;
   config_.obs_separate_audio_tracks = true;
-  if (!config_.capture_border && config_.obs_display_method == 0)
-    config_.obs_display_method = 1;
+  // Display capture must not silently select DXGI: this build defaults to
+  // Windows Graphics Capture, and a failed WGC session is reported rather than
+  // switching to a different backend behind the user's back.
+  if (config_.target_mode == CaptureTargetMode::kDisplay)
+    config_.obs_display_method = 2;
   // Start with the non-Minecraft profile; detection upgrades to Minecraft's
   // 240 FPS / 35 Mbps profile if javaw.exe is running.
   config_.target_fps = 60;
@@ -1243,26 +1246,9 @@ void ObsEngine::Tick() {
     }
   }
   if (refresh_pending_sources) next_source_refresh_ = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-  if (capture_ && config_.target_mode == CaptureTargetMode::kDisplay &&
-      config_.obs_display_method == 0 && config_.capture_border && !display_fallback_attempted_ &&
-      obs_source_get_width(capture_) == 0 &&
-      std::chrono::steady_clock::now() - capture_started_ > std::chrono::seconds(3)) {
-    display_fallback_attempted_ = true;
-    Properties properties(obs_source_properties(capture_), obs_properties_destroy);
-    auto* method = properties ? obs_properties_get(properties.get(), "method") : nullptr;
-    bool wgc_supported = false;
-    if (method) for (std::size_t i = 0; i < obs_property_list_item_count(method); ++i)
-      if (!obs_property_list_item_disabled(method, i) && obs_property_list_item_int(method, i) == 2) wgc_supported = true;
-    if (wgc_supported) {
-      Data settings(obs_source_get_settings(capture_), obs_data_release);
-      obs_data_set_int(settings.get(), "method", 2);
-      obs_source_update(capture_, settings.get());
-      const std::string notice = "OBS display capture fallback: DXGI supplied no frames; Windows Graphics Capture is active";
-      logger_.Warning(notice);
-      state_.SetCaptureAdapter("OBS win-capture", notice);
-      state_.SetEncoderStatus(notice + "; encoder quality unchanged");
-    }
-  }
+  // Do not switch display-capture backends at runtime. WGC is selected when
+  // the source is created; an unsupported WGC source remains visibly unready
+  // instead of silently changing to DXGI.
   const bool source_ready = capture_ && obs_source_get_width(capture_) > 0;
   if (capture_was_ready_ && !source_ready && config_.target_mode == CaptureTargetMode::kGameWindow) {
     StopOutput(replay_);
