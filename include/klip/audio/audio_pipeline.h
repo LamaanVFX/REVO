@@ -5,6 +5,7 @@
 #include <mmdeviceapi.h>
 #include <winrt/base.h>
 
+#include <array>
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
@@ -35,7 +36,7 @@ bool ConvertPackedPcm24ToS32(const WAVEFORMATEX* format, const std::uint8_t* inp
 
 class AudioPipeline {
  public:
-  AudioPipeline(AudioEncoder& encoder, ApplicationState& state, Logger& logger);
+  AudioPipeline(std::array<AudioEncoder*, 5> encoders, ApplicationState& state, Logger& logger);
   ~AudioPipeline() noexcept;
 
   AudioPipeline(const AudioPipeline&) = delete;
@@ -50,10 +51,13 @@ class AudioPipeline {
   void SetExcludedApplication(std::string executable_name);
   void SetDesktopGain(float gain) noexcept;
   void SetMicrophoneGain(float gain) noexcept;
+  void SetGameGain(float gain) noexcept;
+  void SetDiscordGain(float gain) noexcept;
+  void SetMusicGain(float gain) noexcept;
   void SelectMicrophone(int index);
 
  private:
-  enum class SourceKind { kDesktop, kMicrophone };
+  enum class SourceKind { kDesktop = 0, kGame = 1, kMicrophone = 2, kDiscord = 3, kMusic = 4 };
   struct Microphone {
     std::wstring id;
     std::string name;
@@ -75,6 +79,7 @@ class AudioPipeline {
     SwrContext* resampler = nullptr;
     ScopedHandle ready_event;
     std::atomic<bool> failed{false};
+    std::atomic<DWORD> process_id{0};
     std::vector<float> converted;
     std::jthread thread;
   };
@@ -82,15 +87,18 @@ class AudioPipeline {
   bool EnumerateMicrophones(Error& error);
   bool EnumerateAudioApplications(Error& error);
   bool OpenContext(CaptureContext& context, const std::wstring& device_id, DWORD flags,
-                   Error& error, DWORD excluded_process_id = 0);
+                   Error& error, DWORD process_id = 0, bool include_process = false);
   bool StartDesktop(Error& error);
   bool StartMicrophone(int index, Error& error);
+  bool StartProcessAudio(CaptureContext& context, SourceBuffer& buffer, SourceKind kind,
+                         DWORD process_id, Error& error);
   void StopContext(CaptureContext& context) noexcept;
   void CaptureLoop(CaptureContext& context, SourceBuffer& buffer,
                    std::stop_token stop_token) noexcept;
   void ApplicationAudioLoop(std::stop_token stop_token) noexcept;
-  void MixerLoop(std::stop_token stop_token) noexcept;
-  bool MixFrame(std::vector<float>& output, int frame_count, std::int64_t& pts);
+  void MixerLoop(std::size_t track_index, std::stop_token stop_token) noexcept;
+  bool ReadFrame(SourceBuffer& source, std::vector<float>& output, int frame_count,
+                 std::int64_t pts, bool enabled, float gain);
   void Append(SourceBuffer& buffer, std::int64_t pts, const float* samples, int frames,
               bool discontinuity);
   float Level(const SourceBuffer& buffer) const;
@@ -100,7 +108,7 @@ class AudioPipeline {
   static std::int64_t FramesTo100ns(int frames);
   static int PtsToFrames(std::int64_t pts);
 
-  AudioEncoder& encoder_;
+  std::array<AudioEncoder*, 5> encoders_;
   ApplicationState& state_;
   Logger& logger_;
   AppConfig config_;
@@ -113,6 +121,9 @@ class AudioPipeline {
   std::chrono::steady_clock::time_point microphone_retry_after_{};
   std::atomic<float> desktop_gain_{1.0F};
   std::atomic<float> microphone_gain_{1.0F};
+  std::atomic<float> game_gain_{1.0F};
+  std::atomic<float> discord_gain_{1.0F};
+  std::atomic<float> music_gain_{1.0F};
   std::atomic<std::uint64_t> sample_generation_{0};
   std::atomic<DWORD> excluded_process_candidate_id_{0};
   std::atomic<bool> excluded_process_active_{false};
@@ -123,9 +134,15 @@ class AudioPipeline {
   winrt::com_ptr<IMMDeviceEnumerator> enumerator_;
   CaptureContext desktop_;
   CaptureContext microphone_;
+  CaptureContext game_;
+  CaptureContext discord_;
+  CaptureContext music_;
   SourceBuffer desktop_buffer_;
   SourceBuffer microphone_buffer_;
-  std::jthread mixer_thread_;
+  SourceBuffer game_buffer_;
+  SourceBuffer discord_buffer_;
+  SourceBuffer music_buffer_;
+  std::array<std::jthread, 5> mixer_threads_;
   std::jthread application_audio_thread_;
   mutable std::mutex mixer_mutex_;
   std::condition_variable mixer_cv_;
