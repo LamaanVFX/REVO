@@ -132,6 +132,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   // 240 FPS / 35 Mbps profile if javaw.exe is running.
   config_.target_fps = 60;
   config_.obs_replay_bitrate_kbps = 20'000;
+  config_.obs_duration_priority = true;  // Profiles require a fixed CBR bitrate.
   {
     const double retained_seconds = std::max(1.0, config_.clip_duration_seconds) + 15.0;
     const double audio_kbps = static_cast<double>(config_.audio_bitrate) / 1000.0 *
@@ -940,6 +941,7 @@ void ObsEngine::Tick() {
       active_game_ = detected_game;
       config_.target_fps = profile_fps;
       config_.obs_replay_bitrate_kbps = profile_bitrate_kbps;
+      config_.obs_duration_priority = true;
       const double retained_seconds = std::max(1.0, config_.clip_duration_seconds) + 15.0;
       const double audio_kbps = static_cast<double>(config_.audio_bitrate) / 1000.0 *
           (config_.obs_separate_audio_tracks ? 5.0 : 1.0);
