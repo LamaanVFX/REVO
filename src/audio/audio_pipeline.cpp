@@ -93,10 +93,12 @@ class AudioActivationHandler final : public IActivateAudioInterfaceCompletionHan
   IAudioClient* client_ = nullptr;
 };
 
-HRESULT ActivateProcessLoopback(DWORD process_id, winrt::com_ptr<IAudioClient>& client) {
+HRESULT ActivateProcessLoopback(DWORD process_id, bool include_process,
+                                winrt::com_ptr<IAudioClient>& client) {
   AudioActivationParameters parameters{};
   parameters.process_loopback.target_process_id = process_id;
-  parameters.process_loopback.mode = ProcessLoopbackMode::kExclude;
+  parameters.process_loopback.mode = include_process ? ProcessLoopbackMode::kInclude
+                                                      : ProcessLoopbackMode::kExclude;
   PROPVARIANT activation{};
   activation.vt = VT_BLOB;
   activation.blob.cbSize = sizeof(parameters);
@@ -136,8 +138,9 @@ std::string ProcessName(DWORD process_id) {
 
 }  // namespace
 
-AudioPipeline::AudioPipeline(AudioEncoder& encoder, ApplicationState& state, Logger& logger)
-    : encoder_(encoder), state_(state), logger_(logger) {}
+AudioPipeline::AudioPipeline(std::array<AudioEncoder*, 5> encoders, ApplicationState& state,
+                             Logger& logger)
+    : encoders_(encoders), state_(state), logger_(logger) {}
 
 AudioPipeline::~AudioPipeline() noexcept { Shutdown(); }
 
@@ -153,6 +156,12 @@ bool AudioPipeline::Initialize(std::int64_t qpc_origin, std::int64_t qpc_frequen
                       std::memory_order_release);
   microphone_gain_.store(static_cast<float>(std::clamp(config.microphone_audio_gain, 0.0, 2.0)),
                          std::memory_order_release);
+  game_gain_.store(static_cast<float>(std::clamp(config.game_audio_gain, 0.0, 2.0)),
+                   std::memory_order_release);
+  discord_gain_.store(static_cast<float>(std::clamp(config.discord_audio_gain, 0.0, 2.0)),
+                      std::memory_order_release);
+  music_gain_.store(static_cast<float>(std::clamp(config.music_audio_gain, 0.0, 2.0)),
+                    std::memory_order_release);
   qpc_frequency_ = qpc_frequency;
   qpc_origin_ = av_rescale(qpc_origin, 10'000'000LL, qpc_frequency);
   const auto result = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
@@ -165,7 +174,12 @@ bool AudioPipeline::Initialize(std::int64_t qpc_origin, std::int64_t qpc_frequen
   Error applications_error;
   if (!EnumerateAudioApplications(applications_error))
     logger_.Warning(applications_error.ToString());
-  if (!encoder_.Initialize(config.audio_bitrate, error)) return false;
+  for (auto* encoder : encoders_) {
+    if (encoder == nullptr || !encoder->Initialize(config.audio_bitrate, error)) {
+      for (auto* initialized : encoders_) if (initialized) initialized->Shutdown();
+      return false;
+    }
+  }
   running_.store(true, std::memory_order_release);
   if (config.desktop_audio_enabled) {
     if (!StartDesktop(error)) {
@@ -187,7 +201,10 @@ bool AudioPipeline::Initialize(std::int64_t qpc_origin, std::int64_t qpc_frequen
     }
   }
   state_.SetMicrophoneEnabled(microphone_running_.load(std::memory_order_acquire));
-  mixer_thread_ = std::jthread([this](std::stop_token token) { MixerLoop(token); });
+  for (std::size_t track = 0; track < mixer_threads_.size(); ++track)
+    mixer_threads_[track] = std::jthread([this, track](std::stop_token token) {
+      MixerLoop(track, token);
+    });
   application_audio_thread_ =
       std::jthread([this](std::stop_token token) { ApplicationAudioLoop(token); });
   logger_.Info("WASAPI audio pipeline started");
@@ -196,7 +213,7 @@ bool AudioPipeline::Initialize(std::int64_t qpc_origin, std::int64_t qpc_frequen
 
 void AudioPipeline::Shutdown() noexcept {
   StopCapture();
-  encoder_.Shutdown();
+  for (auto* encoder : encoders_) if (encoder) encoder->Shutdown();
   enumerator_ = nullptr;
   logger_.Info("WASAPI audio pipeline stopped");
 }
@@ -204,28 +221,30 @@ void AudioPipeline::Shutdown() noexcept {
 void AudioPipeline::StopCapture() noexcept {
   running_.store(false, std::memory_order_release);
   microphone_running_.store(false, std::memory_order_release);
-  mixer_thread_.request_stop();
+  for (auto& mixer : mixer_threads_) mixer.request_stop();
   application_audio_thread_.request_stop();
   sample_generation_.fetch_add(1, std::memory_order_release);
   mixer_cv_.notify_all();
   application_audio_thread_ = {};
   StopContext(desktop_);
   StopContext(microphone_);
-  mixer_thread_ = {};
-  encoder_.Flush();
-  {
-    std::scoped_lock lock(desktop_buffer_.mutex);
-    desktop_buffer_.samples.clear();
-    desktop_buffer_.read_pts = AV_NOPTS_VALUE;
-  }
-  {
-    std::scoped_lock lock(microphone_buffer_.mutex);
-    microphone_buffer_.samples.clear();
-    microphone_buffer_.read_pts = AV_NOPTS_VALUE;
-  }
+  StopContext(game_);
+  StopContext(discord_);
+  StopContext(music_);
+  for (auto& mixer : mixer_threads_) mixer = {};
+  for (auto* encoder : encoders_) if (encoder) encoder->Flush();
+  auto clear_buffer = [](SourceBuffer& source) {
+    std::scoped_lock lock(source.mutex);
+    source.samples.clear();
+    source.read_pts = AV_NOPTS_VALUE;
+  };
+  clear_buffer(desktop_buffer_);
+  clear_buffer(microphone_buffer_);
+  clear_buffer(game_buffer_);
+  clear_buffer(discord_buffer_);
+  clear_buffer(music_buffer_);
   next_pts_ = AV_NOPTS_VALUE;
 }
-
 void AudioPipeline::SetMicrophoneEnabled(bool enabled) {
   std::scoped_lock lock(control_mutex_);
   if (!running_.load(std::memory_order_acquire)) return;
@@ -302,6 +321,16 @@ void AudioPipeline::SetExcludedApplication(std::string executable_name) {
 
 void AudioPipeline::SetMicrophoneGain(float gain) noexcept {
   microphone_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+}
+
+void AudioPipeline::SetGameGain(float gain) noexcept {
+  game_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+}
+void AudioPipeline::SetDiscordGain(float gain) noexcept {
+  discord_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+}
+void AudioPipeline::SetMusicGain(float gain) noexcept {
+  music_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
 }
 
 void AudioPipeline::SelectMicrophone(int index) {
@@ -418,11 +447,11 @@ bool AudioPipeline::EnumerateAudioApplications(Error& error) {
 }
 
 bool AudioPipeline::OpenContext(CaptureContext& context, const std::wstring& device_id, DWORD flags,
-                                Error& error, DWORD excluded_process_id) {
+                                Error& error, DWORD process_id, bool include_process) {
   StopContext(context);
   HRESULT result = S_OK;
-  if (excluded_process_id != 0) {
-    result = ActivateProcessLoopback(excluded_process_id, context.client);
+  if (process_id != 0) {
+    result = ActivateProcessLoopback(process_id, include_process, context.client);
   } else {
     result = device_id.empty()
                  ? enumerator_->GetDefaultAudioEndpoint(eRender, eMultimedia, context.device.put())
@@ -430,7 +459,7 @@ bool AudioPipeline::OpenContext(CaptureContext& context, const std::wstring& dev
   }
   // Some systems do not assign a separate multimedia endpoint. Fall back to the
   // console role so loopback capture remains available instead of failing startup.
-  if (FAILED(result) && excluded_process_id == 0 && device_id.empty()) {
+  if (FAILED(result) && process_id == 0 && device_id.empty()) {
     context.device = nullptr;
     result = enumerator_->GetDefaultAudioEndpoint(eRender, eConsole, context.device.put());
   }
@@ -438,14 +467,14 @@ bool AudioPipeline::OpenContext(CaptureContext& context, const std::wstring& dev
     error = MakeHresultError(ErrorComponent::kAudio, "open audio device", result);
     return false;
   }
-  if (excluded_process_id == 0)
+  if (process_id == 0)
     result = context.device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
                                       context.client.put_void());
   if (FAILED(result)) {
     error = MakeHresultError(ErrorComponent::kAudio, "activate IAudioClient", result);
     return false;
   }
-  if (excluded_process_id != 0) {
+  if (process_id != 0) {
     // The process-loopback virtual device does not reliably expose GetMixFormat. Microsoft's
     // ApplicationLoopback sample supplies an explicit shared-mode format and asks WASAPI to
     // convert. Use Klip's native mixer format so this path avoids an extra libswresample pass.
@@ -488,7 +517,7 @@ bool AudioPipeline::OpenContext(CaptureContext& context, const std::wstring& dev
     return false;
   }
   DWORD initialize_flags = flags | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
-  if (excluded_process_id != 0)
+  if (process_id != 0)
     initialize_flags |=
         AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY;
   result = context.client->Initialize(AUDCLNT_SHAREMODE_SHARED, initialize_flags, 0, 0,
@@ -686,6 +715,20 @@ bool AudioPipeline::StartMicrophone(int index, Error& error) {
   return true;
 }
 
+bool AudioPipeline::StartProcessAudio(CaptureContext& context, SourceBuffer& buffer,
+                                      SourceKind kind, DWORD process_id, Error& error) {
+  if (process_id == 0) return false;
+  context.kind = kind;
+  context.failed.store(false, std::memory_order_release);
+  context.process_id.store(process_id, std::memory_order_release);
+  if (!OpenContext(context, L"", 0, error, process_id, true)) return false;
+  context.process_id.store(process_id, std::memory_order_release);
+  context.thread = std::jthread([this, &context, &buffer](std::stop_token token) {
+    CaptureLoop(context, buffer, token);
+  });
+  return true;
+}
+
 void AudioPipeline::StopContext(CaptureContext& context) noexcept {
   context.thread.request_stop();
   if (context.ready_event) SetEvent(context.ready_event.Get());
@@ -701,6 +744,7 @@ void AudioPipeline::StopContext(CaptureContext& context) noexcept {
   context.capture = nullptr;
   context.client = nullptr;
   context.device = nullptr;
+  context.process_id.store(0, std::memory_order_release);
 }
 
 void AudioPipeline::CaptureLoop(CaptureContext& context, SourceBuffer& buffer,
@@ -837,152 +881,96 @@ void AudioPipeline::CaptureLoop(CaptureContext& context, SourceBuffer& buffer,
   if (SUCCEEDED(com_result)) CoUninitialize();
 }
 
-void AudioPipeline::MixerLoop(std::stop_token stop_token) noexcept {
+void AudioPipeline::MixerLoop(std::size_t track_index, std::stop_token stop_token) noexcept {
   try {
-    std::vector<float> mixed;
+    if (track_index >= encoders_.size() || encoders_[track_index] == nullptr) return;
+    auto& encoder = *encoders_[track_index];
+    SourceBuffer* source = nullptr;
+    SourceKind kind = SourceKind::kDesktop;
+    switch (track_index) {
+      case 0: source = &desktop_buffer_; kind = SourceKind::kDesktop; break;
+      case 1: source = &game_buffer_; kind = SourceKind::kGame; break;
+      case 2: source = &microphone_buffer_; kind = SourceKind::kMicrophone; break;
+      case 3: source = &discord_buffer_; kind = SourceKind::kDiscord; break;
+      case 4: source = &music_buffer_; kind = SourceKind::kMusic; break;
+      default: return;
+    }
+    std::vector<float> frame;
+    std::int64_t next_pts = Now100ns();
     while (!stop_token.stop_requested() && running_.load(std::memory_order_acquire)) {
-      const auto frame_count = encoder_.FrameSize();
+      const auto frame_count = encoder.FrameSize();
       const auto frame_duration = FramesTo100ns(frame_count);
-      if (next_pts_ == AV_NOPTS_VALUE) next_pts_ = Now100ns();
-
-      // Keep the encoder on a real-time clock even when an event-driven WASAPI source is idle.
-      // A short look-behind gives active endpoints time to deliver the samples for this frame;
-      // any source that still has no data is mixed as silence instead of starving every source.
-      constexpr std::int64_t kMixLookBehind = 500'000;  // 50 ms in 100-ns units.
-      auto now = Now100ns();
-      if (now - next_pts_ > 5'000'000) next_pts_ = now - frame_duration;
-      const auto due = next_pts_ + frame_duration + kMixLookBehind;
+      const auto now = Now100ns();
+      if (now - next_pts > 5'000'000) next_pts = now - frame_duration;
+      constexpr std::int64_t kMixLookBehind = 500'000;
+      const auto due = next_pts + frame_duration + kMixLookBehind;
       if (now < due) {
         const auto wait = std::chrono::nanoseconds((due - now) * 100);
         std::unique_lock lock(mixer_mutex_);
         std::stop_callback wake(stop_token, [this] { mixer_cv_.notify_all(); });
         mixer_cv_.wait_for(lock, wait, [&stop_token] { return stop_token.stop_requested(); });
-        const bool desktop_enabled = desktop_enabled_.load(std::memory_order_acquire);
-        state_.SetAudio(
-            desktop_enabled && Active(desktop_buffer_), Active(microphone_buffer_),
-            desktop_enabled
-                ? std::clamp(Level(desktop_buffer_) * desktop_gain_.load(std::memory_order_acquire),
-                             0.0F, 1.0F)
-                : 0.0F,
-            std::clamp(Level(microphone_buffer_) * microphone_gain_.load(std::memory_order_acquire),
-                       0.0F, 1.0F));
+        if (track_index == 0) {
+          const bool desktop_on = desktop_enabled_.load(std::memory_order_acquire);
+          state_.SetAudio(desktop_on && Active(desktop_buffer_), Active(microphone_buffer_),
+              desktop_on ? std::clamp(Level(desktop_buffer_) * desktop_gain_.load(), 0.0F, 1.0F) : 0.0F,
+              std::clamp(Level(microphone_buffer_) * microphone_gain_.load(), 0.0F, 1.0F));
+        }
         continue;
       }
-
-      std::int64_t pts = AV_NOPTS_VALUE;
-      if (!MixFrame(mixed, frame_count, pts)) {
-        next_pts_ += frame_duration;
-        continue;
+      bool enabled = false;
+      float gain = 1.0F;
+      switch (kind) {
+        case SourceKind::kDesktop: enabled = desktop_enabled_.load(std::memory_order_acquire); gain = desktop_gain_.load(std::memory_order_acquire); break;
+        case SourceKind::kGame: enabled = game_.process_id.load(std::memory_order_acquire) != 0 && !game_.failed.load(std::memory_order_acquire); gain = game_gain_.load(std::memory_order_acquire); break;
+        case SourceKind::kMicrophone: enabled = microphone_running_.load(std::memory_order_acquire); gain = microphone_gain_.load(std::memory_order_acquire); break;
+        case SourceKind::kDiscord: enabled = discord_.process_id.load(std::memory_order_acquire) != 0 && !discord_.failed.load(std::memory_order_acquire); gain = discord_gain_.load(std::memory_order_acquire); break;
+        case SourceKind::kMusic: enabled = music_.process_id.load(std::memory_order_acquire) != 0 && !music_.failed.load(std::memory_order_acquire); gain = music_gain_.load(std::memory_order_acquire); break;
       }
+      ReadFrame(*source, frame, frame_count, next_pts, enabled, gain);
       Error error;
-      if (!encoder_.Encode(mixed, frame_count, pts, error)) {
+      if (!encoder.Encode(frame, frame_count, next_pts, error)) {
         state_.SetError(error);
         logger_.ErrorMessage(error);
       }
-      const bool desktop_enabled = desktop_enabled_.load(std::memory_order_acquire);
-      state_.SetAudio(
-          desktop_enabled && Active(desktop_buffer_), Active(microphone_buffer_),
-          desktop_enabled
-              ? std::clamp(Level(desktop_buffer_) * desktop_gain_.load(std::memory_order_acquire),
-                           0.0F, 1.0F)
-              : 0.0F,
-          std::clamp(Level(microphone_buffer_) * microphone_gain_.load(std::memory_order_acquire),
-                     0.0F, 1.0F));
+      next_pts += frame_duration;
     }
   } catch (const std::exception& exception) {
-    Error error{ErrorComponent::kAudio, "audio mixer worker", exception.what(), {}, {}, {}};
+    Error error{ErrorComponent::kAudio, "separate audio track worker", exception.what(), {}, {}, {}};
     state_.SetError(error);
     logger_.ErrorMessage(error);
   }
 }
 
-bool AudioPipeline::MixFrame(std::vector<float>& output, int frame_count, std::int64_t& pts) {
-  if (frame_count <= 0 || next_pts_ == AV_NOPTS_VALUE) return false;
-  const bool desktop_required = desktop_enabled_.load(std::memory_order_acquire);
-  const bool microphone_required = microphone_running_.load(std::memory_order_acquire);
-  const auto frame_duration = FramesTo100ns(frame_count);
-  std::scoped_lock lock(desktop_buffer_.mutex, microphone_buffer_.mutex);
-  pts = next_pts_;
-
-  const auto discard_before = [&](SourceBuffer& source) {
-    if (source.read_pts >= pts || source.samples.empty()) return;
-    const auto available = static_cast<int>(source.samples.size() / AudioEncoder::kChannels);
-    const auto discard = std::min(
-        available, AudioFramesFrom100nsCeil(pts - source.read_pts, AudioEncoder::kSampleRate));
-    for (int frame = 0; frame < discard; ++frame) {
-      source.samples.pop_front();
-      source.samples.pop_front();
-    }
-    source.read_pts += FramesTo100ns(discard);
-  };
-  discard_before(desktop_buffer_);
-  if (microphone_required) discard_before(microphone_buffer_);
-
+bool AudioPipeline::ReadFrame(SourceBuffer& source, std::vector<float>& output, int frame_count,
+                              std::int64_t pts, bool enabled, float gain) {
+  if (frame_count <= 0) return false;
   output.assign(static_cast<std::size_t>(frame_count) * AudioEncoder::kChannels, 0.0F);
-  const auto mix = [&](SourceBuffer& source, float gain) {
-    if (source.read_pts == AV_NOPTS_VALUE || source.samples.empty()) return;
-    const int offset = std::max(0, PtsToFrames(source.read_pts - pts));
-    if (offset >= frame_count) return;
-    const int available = static_cast<int>(source.samples.size() / AudioEncoder::kChannels);
-    const int take = std::min(frame_count - offset, available);
-    for (int frame = 0; frame < take; ++frame) {
-      for (int channel = 0; channel < AudioEncoder::kChannels; ++channel) {
-        output[static_cast<std::size_t>(offset + frame) * AudioEncoder::kChannels + channel] +=
-            source.samples.front() * gain;
-        source.samples.pop_front();
-      }
-    }
-    source.read_pts += FramesTo100ns(take);
-  };
-  if (desktop_required) mix(desktop_buffer_, desktop_gain_.load(std::memory_order_acquire));
-  if (microphone_required)
-    mix(microphone_buffer_, microphone_gain_.load(std::memory_order_acquire));
-  for (auto& sample : output) sample = std::clamp(sample, -1.0F, 1.0F);
-  next_pts_ += frame_duration;
+  std::scoped_lock lock(source.mutex);
+  if (!enabled) {
+    source.samples.clear();
+    source.read_pts = AV_NOPTS_VALUE;
+    return true;
+  }
+  if (source.read_pts == AV_NOPTS_VALUE || source.samples.empty()) return true;
+  if (source.read_pts < pts) {
+    const auto available = static_cast<int>(source.samples.size() / AudioEncoder::kChannels);
+    const auto discard = std::min(available, AudioFramesFrom100nsCeil(pts - source.read_pts, AudioEncoder::kSampleRate));
+    for (int i = 0; i < discard * AudioEncoder::kChannels; ++i) source.samples.pop_front();
+    source.read_pts += FramesTo100ns(discard);
+  }
+  if (source.samples.empty() || source.read_pts == AV_NOPTS_VALUE) return true;
+  const int offset = std::max(0, PtsToFrames(source.read_pts - pts));
+  if (offset >= frame_count) return true;
+  const int available = static_cast<int>(source.samples.size() / AudioEncoder::kChannels);
+  const int take = std::min(frame_count - offset, available);
+  for (int index = 0; index < take * AudioEncoder::kChannels; ++index) {
+    output[static_cast<std::size_t>(offset) * AudioEncoder::kChannels + index] =
+        std::clamp(source.samples.front() * gain, -1.0F, 1.0F);
+    source.samples.pop_front();
+  }
+  source.read_pts += FramesTo100ns(take);
   return true;
 }
-
-void AudioPipeline::Append(SourceBuffer& buffer, std::int64_t pts, const float* samples, int frames,
-                           bool discontinuity) {
-  if (samples == nullptr || frames <= 0) return;
-  std::scoped_lock lock(buffer.mutex);
-  if (discontinuity) {
-    buffer.samples.clear();
-    buffer.read_pts = pts;
-  }
-  if (buffer.read_pts == AV_NOPTS_VALUE) buffer.read_pts = pts;
-  const auto queued_frames = static_cast<int>(buffer.samples.size() / 2);
-  const auto expected = buffer.read_pts + FramesTo100ns(queued_frames);
-  const auto delta = PtsToFrames(pts - expected);
-  int offset = 0;
-  if (std::abs(delta) > kMaximumBufferedFrames) {
-    buffer.samples.clear();
-    buffer.read_pts = pts;
-  } else if (delta > 0) {
-    buffer.samples.insert(buffer.samples.end(), static_cast<std::size_t>(delta) * 2, 0.0F);
-  } else if (delta < 0) {
-    const auto overlap = std::min(-delta, frames);
-    offset = overlap * 2;
-    frames -= overlap;
-  }
-  float peak = 0.0F;
-  for (int index = offset; index < offset + frames * 2; ++index) {
-    peak = std::max(peak, std::abs(samples[index]));
-    buffer.samples.push_back(samples[index]);
-  }
-  while (buffer.samples.size() > static_cast<std::size_t>(kMaximumBufferedFrames * 2)) {
-    buffer.samples.pop_front();
-    buffer.samples.pop_front();
-    buffer.read_pts += FramesTo100ns(1);
-  }
-  const auto activity = pts + FramesTo100ns(frames);
-  buffer.last_activity.store(activity, std::memory_order_release);
-  buffer.peak.store(peak, std::memory_order_release);
-  buffer.peak_time.store(activity, std::memory_order_release);
-  sample_generation_.fetch_add(1, std::memory_order_release);
-  mixer_cv_.notify_one();
-}
-
 float AudioPipeline::Level(const SourceBuffer& buffer) const {
   const auto age = Now100ns() - buffer.peak_time.load(std::memory_order_acquire);
   if (age >= 3'000'000) return 0.0F;
