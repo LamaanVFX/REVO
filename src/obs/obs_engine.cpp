@@ -886,8 +886,7 @@ void ObsEngine::Tick() {
       CloseHandle(snapshot);
     }
 
-    // Defer changing output/capture while accepted saves are queued or a manual
-    // recording is active; this avoids interrupting a clip or recording.
+    // Never switch a profile while a clip save or manual recording owns the output.
     bool output_busy = false;
     { std::scoped_lock lock(save_mutex_); output_busy = saving_ || queued_saves_; }
     if (!output_busy && !IsRecording() && detected_game != active_game_) {
@@ -907,34 +906,87 @@ void ObsEngine::Tick() {
         }
       }
 
-      if (detected_game.empty() || target) {
-        // Recreate the replay output so the new directory and filename pattern
-        // take effect. Existing saved clips remain untouched.
-        StopOutput(replay_);
-        if (replay_) { obs_output_release(replay_); replay_ = nullptr; }
-        active_game_ = detected_game;
-        config_.output_directory = clips_root_ / (folder_name.empty() ? std::filesystem::path{} : std::filesystem::path(folder_name));
-        config_.obs_filename_format = filename_prefix.empty()
-            ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
-            : filename_prefix + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
-        std::error_code directory_error;
-        std::filesystem::create_directories(config_.output_directory, directory_error);
-        if (directory_error) {
-          logger_.Warning("Automatic game folder could not be created: " + directory_error.message());
-        } else {
-          Error output_error;
-          if (!StartReplayBuffer(output_error)) {
-            state_.SetError(output_error);
-            logger_.ErrorMessage(output_error);
+      // Minecraft is the only 240 FPS profile. Other supported games and the
+      // no-game fallback use 60 FPS. Bitrate values are kbps, as expected by OBS.
+      const bool minecraft_profile = detected_game == "Minecraft";
+      const std::uint32_t profile_fps = minecraft_profile ? 240U : 60U;
+      const int profile_bitrate_kbps = minecraft_profile ? 35'000 : 20'000;
+
+      StopOutput(replay_);
+      if (replay_) { obs_output_release(replay_); replay_ = nullptr; }
+      auto release_encoder = [](obs_encoder_t*& encoder) {
+        if (encoder) { obs_encoder_release(encoder); encoder = nullptr; }
+      };
+      release_encoder(video_encoder_);
+      release_encoder(audio_encoder_);
+      release_encoder(game_encoder_);
+      release_encoder(microphone_encoder_);
+      release_encoder(discord_encoder_);
+      release_encoder(music_encoder_);
+
+      active_game_ = detected_game;
+      config_.target_fps = profile_fps;
+      config_.obs_replay_bitrate_kbps = profile_bitrate_kbps;
+      const double retained_seconds = std::max(1.0, config_.clip_duration_seconds) + 15.0;
+      const double audio_kbps = static_cast<double>(config_.audio_bitrate) / 1000.0 *
+          (config_.obs_separate_audio_tracks ? 5.0 : 1.0);
+      const double required_bytes = std::ceil(
+          (static_cast<double>(profile_bitrate_kbps) + audio_kbps) * 1000.0 / 8.0 *
+          retained_seconds * 1.25);
+      config_.rolling_buffer_bytes = static_cast<std::size_t>(
+          std::max(32.0 * 1024.0 * 1024.0, required_bytes));
+
+      config_.output_directory = clips_root_ /
+          (folder_name.empty() ? std::filesystem::path{} : std::filesystem::path(folder_name));
+      config_.obs_filename_format = filename_prefix.empty()
+          ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
+          : filename_prefix + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
+      std::error_code directory_error;
+      std::filesystem::create_directories(config_.output_directory, directory_error);
+      if (directory_error) {
+        logger_.Warning("Automatic game folder could not be created: " + directory_error.message());
+      } else {
+        if ((target && (config_.target_mode != CaptureTargetMode::kGameWindow ||
+                        selected_source_id_ != target->id)) ||
+            (detected_game.empty() && selected_source_id_ != 0)) {
+          Error capture_error;
+          if (!ConfigureCapture(CaptureTargetMode::kGameWindow,
+                                target ? target->label : std::string{}, capture_error)) {
+            state_.SetError(capture_error);
+            logger_.ErrorMessage(capture_error);
           }
-          logger_.Info("Automatic game profile: " + (active_game_.empty() ? std::string("default clips folder") : active_game_) +
-                       " -> " + PathToUtf8(config_.output_directory));
-          if ((target && (config_.target_mode != CaptureTargetMode::kGameWindow || selected_source_id_ != target->id)) ||
-              (detected_game.empty() && selected_source_id_ != 0)) {
-            Error capture_error;
-            if (!ConfigureCapture(CaptureTargetMode::kGameWindow, target ? target->label : std::string{}, capture_error)) {
-              state_.SetError(capture_error);
-              logger_.ErrorMessage(capture_error);
+        }
+
+        // Reconfigure libobs's video clock only after stopping the replay output
+        // and releasing its encoders; this changes clip FPS, not the game's FPS.
+        obs_video_info video{};
+        if (!obs_get_video_info(&video)) {
+          const Error video_error{ErrorComponent::kGraphics, "read OBS video profile",
+                                  "OBS video settings are unavailable during game profile switch"};
+          state_.SetError(video_error);
+          logger_.ErrorMessage(video_error);
+        } else {
+          const auto graphics_path = PathToUtf8(RuntimeRoot() / "bin/64bit/libobs-d3d11.dll");
+          video.graphics_module = graphics_path.c_str();
+          video.fps_num = profile_fps;
+          video.fps_den = 1;
+          if (obs_reset_video(&video) != OBS_VIDEO_SUCCESS) {
+            const Error video_error{ErrorComponent::kGraphics, "apply game FPS profile",
+                                    "OBS could not switch to the selected game's clip frame rate"};
+            state_.SetError(video_error);
+            logger_.ErrorMessage(video_error);
+          } else {
+            UpdateSceneLayout();
+            Error output_error;
+            if (!ConfigureEncoder(output_error) || !StartReplayBuffer(output_error)) {
+              state_.SetError(output_error);
+              logger_.ErrorMessage(output_error);
+            } else {
+              logger_.Info("Automatic game profile: " +
+                  (active_game_.empty() ? std::string("default") : active_game_) +
+                  " -> " + std::to_string(profile_fps) + " FPS, " +
+                  std::to_string(profile_bitrate_kbps) + " kbps, " +
+                  PathToUtf8(config_.output_directory));
             }
           }
         }
