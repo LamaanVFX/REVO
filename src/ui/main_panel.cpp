@@ -1121,6 +1121,46 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     microphone_enabled = !microphone_enabled;
     commands.set_microphone_enabled(microphone_enabled);
   }
+  const float discord_y = microphone_y + audio_row_height + audio_row_gap;
+  DrawCard(draw, {content.x, discord_y}, audio_row_size, false, kPanel, kPanelBorder, 7.0F);
+  DrawSpeakerIcon(draw, {content.x + 38.0F, discord_y + 26.0F},
+                  config.discord_audio_window.empty() ? kMutedU32 : kPurpleBright);
+  DrawText(draw, semibold, 13.0F, {content.x + 76.0F, discord_y + 18.0F},
+           config.discord_audio_window.empty() ? kMutedU32 : kTextU32, "Discord audio");
+  float discord_gain = static_cast<float>(config.discord_audio_gain);
+  if (GainSlider("##discord-gain", {level_x, discord_y + 15.0F}, gain_width, discord_gain) &&
+      commands.set_discord_audio_gain) {
+    microphone_gain_dirty_ = true;
+    commands.set_discord_audio_gain(discord_gain);
+  }
+  char discord_gain_text[16]{};
+  std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%d%%",
+                static_cast<int>(discord_gain * 100.0F + 0.5F));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, discord_y + 18.0F},
+           config.discord_audio_window.empty() ? kMutedU32 : kTextU32, discord_gain_text);
+  if (ImGui::IsItemHovered() && config.discord_audio_window.empty())
+    ImGui::SetTooltip("Select Discord's executable in Settings > Audio to enable this source.");
+
+  const float music_y = discord_y + audio_row_height + audio_row_gap;
+  DrawCard(draw, {content.x, music_y}, audio_row_size, false, kPanel, kPanelBorder, 7.0F);
+  DrawSpeakerIcon(draw, {content.x + 38.0F, music_y + 26.0F},
+                  config.music_audio_window.empty() ? kMutedU32 : kPurpleBright);
+  DrawText(draw, semibold, 13.0F, {content.x + 76.0F, music_y + 18.0F},
+           config.music_audio_window.empty() ? kMutedU32 : kTextU32, "Spotify audio");
+  float music_gain = static_cast<float>(config.music_audio_gain);
+  if (GainSlider("##spotify-gain", {level_x, music_y + 15.0F}, gain_width, music_gain) &&
+      commands.set_music_audio_gain) {
+    microphone_gain_dirty_ = true;
+    commands.set_music_audio_gain(music_gain);
+  }
+  char music_gain_text[16]{};
+  std::snprintf(music_gain_text, sizeof(music_gain_text), "%d%%",
+                static_cast<int>(music_gain * 100.0F + 0.5F));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, music_y + 18.0F},
+           config.music_audio_window.empty() ? kMutedU32 : kTextU32, music_gain_text);
+  if (ImGui::IsItemHovered() && config.music_audio_window.empty())
+    ImGui::SetTooltip("Select Spotify's executable in Settings > Audio to enable this source.");
+
   if ((desktop_gain_dirty_ || microphone_gain_dirty_) &&
       !ImGui::IsMouseDown(ImGuiMouseButton_Left) && commands.persist_audio_gains) {
     commands.persist_audio_gains();
