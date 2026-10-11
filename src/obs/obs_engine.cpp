@@ -125,6 +125,9 @@ bool ReserveOutputFilename(const std::filesystem::path& directory, const std::st
 bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   Shutdown();
   config_ = config;
+  clips_root_ = config.output_directory;
+  active_game_.clear();
+  next_game_detection_ = std::chrono::steady_clock::now();
   window_ = window;
   shutting_down_ = false;
   replay_stop_code_ = 0;
@@ -839,6 +842,94 @@ void ObsEngine::ProcessSaveQueue() {
 void ObsEngine::Tick() {
   if (!initialized_ || !replay_) return;
   ProcessOutputSignals();
+
+  // Automatically follow the first supported game process. The process list is
+  // sampled once per second, never on the capture/encoding thread.
+  const auto now_for_game = std::chrono::steady_clock::now();
+  if (now_for_game >= next_game_detection_ && !IsRecording()) {
+    next_game_detection_ = now_for_game + std::chrono::seconds(1);
+    std::string detected_game;
+    std::vector<std::string> executables;
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot != INVALID_HANDLE_VALUE) {
+      PROCESSENTRY32W process{};
+      process.dwSize = sizeof(process);
+      if (Process32FirstW(snapshot, &process)) {
+        do {
+          std::wstring exe = process.szExeFile;
+          std::transform(exe.begin(), exe.end(), exe.begin(), [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+          if (exe == L"javaw.exe") { detected_game = "Minecraft"; executables = {"javaw.exe"}; break; }
+          if (exe == L"fortnite.exe" || exe == L"fortniteclient-win64-shipping.exe" ||
+              exe == L"fortniteclient-win64-shipping_eac_eos.exe") {
+            detected_game = "Fortnite";
+            executables = {"fortnite.exe", "fortniteclient-win64-shipping.exe", "fortniteclient-win64-shipping_eac_eos.exe"};
+            break;
+          }
+          if (exe == L"valorant.exe" || exe == L"valorant-win64-shipping.exe") {
+            detected_game = "Valorant"; executables = {"valorant.exe", "valorant-win64-shipping.exe"}; break;
+          }
+          if (exe == L"gta5.exe" || exe == L"gta5_enhanced.exe" || exe == L"playgtav.exe") {
+            detected_game = "GTA 5"; executables = {"gta5.exe", "gta5_enhanced.exe", "playgtav.exe"}; break;
+          }
+        } while (Process32NextW(snapshot, &process));
+      }
+      CloseHandle(snapshot);
+    }
+
+    // Defer changing output/capture while accepted saves are queued or a manual
+    // recording is active; this avoids interrupting a clip or recording.
+    bool output_busy = false;
+    { std::scoped_lock lock(save_mutex_); output_busy = saving_ || queued_saves_; }
+    if (!output_busy && !IsRecording() && detected_game != active_game_) {
+      if (now_for_game >= next_source_refresh_) {
+        RefreshSources();
+        next_source_refresh_ = now_for_game + std::chrono::seconds(3);
+      }
+      const SourceChoice* target = nullptr;
+      if (!detected_game.empty()) {
+        for (const auto& choice : games_) {
+          std::string value = choice.value;
+          std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+          for (const auto& exe : executables) {
+            if (value.find(exe) != std::string::npos) { target = &choice; break; }
+          }
+          if (target) break;
+        }
+      }
+
+      if (detected_game.empty() || target) {
+        // Recreate the replay output so the new directory and filename pattern
+        // take effect. Existing saved clips remain untouched.
+        StopOutput(replay_);
+        if (replay_) { obs_output_release(replay_); replay_ = nullptr; }
+        active_game_ = detected_game;
+        config_.output_directory = clips_root_ / (active_game_.empty() ? std::filesystem::path{} : std::filesystem::path(active_game_));
+        config_.obs_filename_format = active_game_.empty()
+            ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
+            : active_game_ + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
+        std::error_code directory_error;
+        std::filesystem::create_directories(config_.output_directory, directory_error);
+        if (directory_error) {
+          logger_.Warning("Automatic game folder could not be created: " + directory_error.message());
+        } else {
+          Error output_error;
+          if (!StartReplayBuffer(output_error)) {
+            state_.SetError(output_error);
+            logger_.ErrorMessage(output_error);
+          }
+          logger_.Info("Automatic game profile: " + (active_game_.empty() ? std::string("default clips folder") : active_game_) +
+                       " -> " + PathToUtf8(config_.output_directory));
+          if (target && (config_.target_mode != CaptureTargetMode::kGameWindow || selected_source_id_ != target->id)) {
+            Error capture_error;
+            if (!ConfigureCapture(CaptureTargetMode::kGameWindow, target->label, capture_error)) {
+              state_.SetError(capture_error);
+              logger_.ErrorMessage(capture_error);
+            }
+          }
+        }
+      }
+    }
+  }
   const bool refresh_pending_sources = (!pending_game_label_.empty() || !pending_overlay_label_.empty()) &&
                                       std::chrono::steady_clock::now() >= next_source_refresh_;
   if (refresh_pending_sources) RefreshSources();
