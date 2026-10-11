@@ -120,6 +120,10 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   if (key == "obs_display_method") return ParseInteger(value, config.obs_display_method);
   if (key == "obs_limit_game_capture_fps") return ParseBool(value, config.obs_limit_game_capture_fps);
   if (key == "obs_separate_audio_tracks") return ParseBool(value, config.obs_separate_audio_tracks);
+  if (key == "game_audio_window") { config.game_audio_window = ParseString(value); return true; }
+  if (key == "discord_audio_window") { config.discord_audio_window = ParseString(value); return true; }
+  if (key == "music_audio_window") { config.music_audio_window = ParseString(value); return true; }
+  if (key == "output_container") { config.output_container = ParseString(value); return true; }
   if (key == "obs_encoder_id") { config.obs_encoder_id = ParseString(value); return true; }
   if (key == "obs_filename_format") { config.obs_filename_format = ParseString(value); return true; }
   if (key == "clip_duration_seconds") return ParseDouble(value, config.clip_duration_seconds);
@@ -328,6 +332,10 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "obs_limit_game_capture_fps=" << (config.obs_limit_game_capture_fps ? "true" : "false") << '\n';
   output << "obs_filename_format=" << std::quoted(config.obs_filename_format) << '\n';
   output << "obs_separate_audio_tracks=" << (config.obs_separate_audio_tracks ? "true" : "false") << '\n';
+  output << "game_audio_window=" << std::quoted(config.game_audio_window) << '\n';
+  output << "discord_audio_window=" << std::quoted(config.discord_audio_window) << '\n';
+  output << "music_audio_window=" << std::quoted(config.music_audio_window) << '\n';
+  output << "output_container=" << std::quoted(config.output_container) << '\n';
   output << "clip_duration_seconds=" << config.clip_duration_seconds << '\n';
   output << "target_fps=" << config.target_fps << '\n';
   output << "output_width=" << config.output_width << '\n';

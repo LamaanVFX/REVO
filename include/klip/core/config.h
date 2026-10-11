@@ -49,7 +49,11 @@ struct AppConfig {
   bool obs_duration_priority = true;
   int obs_replay_bitrate_kbps = 40000;
   std::string obs_filename_format = "clip_%CCYY-%MM-%DD_%hh-%mm-%ss";
-  bool obs_separate_audio_tracks = false;
+  bool obs_separate_audio_tracks = true;
+  std::string game_audio_window;
+  std::string discord_audio_window;
+  std::string music_audio_window;
+  std::string output_container = "mkv";
   int obs_display_method = 0; // OBS monitor_capture: auto=0, DXGI=1, WGC=2.
   bool obs_limit_game_capture_fps = false; // Opt-in OBS hook copy limiter; never caps the game itself.
   double clip_duration_seconds = 60.0;

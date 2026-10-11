@@ -5,6 +5,9 @@
 
 #include <Windows.h>
 #include <imgui.h>
+#if defined(KLIP_USE_LIBOBS)
+#include <obs.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -15,6 +18,31 @@
 
 namespace klip {
 namespace {
+#if defined(KLIP_USE_LIBOBS)
+void DrawAudioWindowSelector(const char* label, std::string& selected) {
+  obs_properties_t* props = obs_get_source_properties("wasapi_process_output_capture");
+  if (!props) { ImGui::TextDisabled("Application audio capture is unavailable."); return; }
+  obs_property_t* window = obs_properties_get(props, "window");
+  const char* preview = "Choose an application window";
+  if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i)
+    if (std::string_view(obs_property_list_item_string(window, i)) == selected)
+      preview = obs_property_list_item_name(window, i);
+  if (ImGui::BeginCombo(label, preview)) {
+    if (ImGui::Selectable("Not selected", selected.empty())) selected.clear();
+    if (window) for (std::size_t i = 0; i < obs_property_list_item_count(window); ++i) {
+      if (obs_property_list_item_disabled(window, i)) continue;
+      const char* value = obs_property_list_item_string(window, i);
+      if (!value || !*value) continue;
+      const bool active = selected == value;
+      if (ImGui::Selectable(obs_property_list_item_name(window, i), active)) selected = value;
+      if (active) ImGui::SetItemDefaultFocus();
+    }
+    ImGui::EndCombo();
+  }
+  obs_properties_destroy(props);
+}
+#endif
+
 
 constexpr ImVec4 kMuted{0.48F, 0.49F, 0.46F, 1.0F};
 constexpr ImVec4 kMint{0.30F, 0.80F, 0.49F, 1.0F};
@@ -1555,8 +1583,11 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       SectionLabel("clips / audio");
       ImGui::Checkbox("record desktop audio", &draft_.desktop_audio_enabled);
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::Checkbox("separate desktop and microphone tracks", &draft_.obs_separate_audio_tracks);
-      ImGui::TextColored(kMuted, "track 1: mixed / track 2: desktop / track 3: microphone");
+      ImGui::Checkbox("save five separate audio tracks", &draft_.obs_separate_audio_tracks);
+      ImGui::TextColored(kMuted, "1 combined / 2 game / 3 microphone / 4 Discord / 5 music");
+      DrawAudioWindowSelector("game audio application", draft_.game_audio_window);
+      DrawAudioWindowSelector("Discord audio application", draft_.discord_audio_window);
+      DrawAudioWindowSelector("music audio application", draft_.music_audio_window);
       constexpr int durations[] = {15, 30, 60, 120};
       constexpr const char* duration_names[] = {"15 seconds", "30 seconds", "60 seconds", "120 seconds"};
       int duration_index = -1;
@@ -1591,7 +1622,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       if (ImGui::SliderInt("desktop volume", &desktop_volume, 0, 200, "%d%%"))
         draft_.desktop_audio_gain = static_cast<double>(desktop_volume) / 100.0;
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::TextWrapped("Desktop audio records all applications. Excluding one application is not supported by stock OBS desktop audio.");
+      ImGui::TextWrapped("Choose each application above. Only selected game, Discord, and music streams are included in the combined track; microphone is separate.");
       if (!draft_.excluded_audio_process.empty()) {
         ImGui::Text("Previous exclusion: %s", draft_.excluded_audio_process.c_str());
         if (ImGui::Button("clear previous exclusion / record all desktop audio")) draft_.excluded_audio_process.clear();
@@ -1700,6 +1731,13 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 
     if (begin_settings_tab("storage", 5)) {
       SectionLabel("storage / local files");
+#if defined(KLIP_USE_LIBOBS)
+      const char* container_names[] = {"MKV (recommended / crash-safe)", "MP4"};
+      int container_index = draft_.output_container == "mp4" ? 1 : 0;
+      if (ImGui::Combo("clip and recording container", &container_index, container_names, 2))
+        draft_.output_container = container_index == 1 ? "mp4" : "mkv";
+      ImGui::TextColored(kMuted, "MKV is the safe default. MP4 is supported but may be less recoverable after an interrupted write.");
+#endif
       ImGui::InputText("clips folder", clips_path_.data(), clips_path_.size());
       ImGui::InputText("recordings folder", recordings_path_.data(), recordings_path_.size());
 #if defined(KLIP_USE_LIBOBS)

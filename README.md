@@ -15,7 +15,7 @@ live microphone and clean-machine testing remain incomplete.
 
 - Save recent gameplay with Alt+C or your custom shortcut.
 - Record full sessions and save clips while recording using one shared encoder.
-- Adjust desktop/microphone levels, devices and separate audio tracks.
+- Route game, microphone, Discord and music to dedicated audio tracks plus a combined track.
 - Select 60 or 120 FPS and a supported hardware encoder; unavailable selections
   fail visibly rather than silently changing quality.
 - Use explicit NVENC Performance tuning when its quality/compression tradeoff
@@ -25,7 +25,7 @@ live microphone and clean-machine testing remain incomplete.
   audio meters. Actual capture/audio continue.
 - Duration-first replay fits video bitrate to the chosen time and memory budget.
   Allow the buffer to warm up after starting/changing capture. Constant quality
-  is optional and can still shorten clips. Clips and recordings use MKV.
+  is optional and can still shorten clips. Clips and recordings default to MKV; MP4 is also selectable.
 
 ## Download and run
 

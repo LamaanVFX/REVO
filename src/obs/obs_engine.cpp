@@ -95,10 +95,11 @@ std::uint64_t ChoiceId(const std::string& value) {
   return hash;
 }
 
-bool ReserveOutputFilename(const std::filesystem::path& directory, const std::string& pattern,
-                           OutputReservation& reservation, std::string& format, Error& error,
+bool ReserveOutputFilename(const std::filesystem::path& directory, const std::string& extension,
+                           const std::string& pattern, OutputReservation& reservation,
+                           std::string& format, Error& error,
                            ErrorComponent component) {
-  char* generated = os_generate_formatted_filename("mkv", false, pattern.c_str());
+  char* generated = os_generate_formatted_filename(extension.c_str(), false, pattern.c_str());
   if (!generated) { error = Error{component, "format output filename", "OBS filename generation failed"}; return false; }
   const auto* utf8 = reinterpret_cast<const char8_t*>(generated);
   const auto stem = std::filesystem::path(std::u8string(utf8)).stem();
@@ -106,7 +107,9 @@ bool ReserveOutputFilename(const std::filesystem::path& directory, const std::st
   for (std::size_t suffix = 0; suffix < 1000; ++suffix) {
     format = PathToUtf8(stem) + (suffix ? "_" + std::to_string(suffix + 1) : "");
     const auto* begin = reinterpret_cast<const char8_t*>(format.data());
-    const auto path = directory / std::filesystem::path(std::u8string(begin, begin + format.size()) + u8".mkv");
+    const auto suffix_begin = reinterpret_cast<const char8_t*>(extension.data());
+    const auto suffix_path = std::u8string(u8".") + std::u8string(suffix_begin, suffix_begin + extension.size());
+    const auto path = directory / std::filesystem::path(std::u8string(begin, begin + format.size()) + suffix_path);
     DWORD code = ERROR_SUCCESS;
     if (reservation.Reserve(path, code)) return true;
     if (code != ERROR_FILE_EXISTS && code != ERROR_ALREADY_EXISTS) {
@@ -480,13 +483,35 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     const Error error{ErrorComponent::kAudio, "select microphone", "The configured microphone is disconnected. Choose an available device.", {}, {}, config.preferred_microphone_name};
     state_.SetError(error); logger_.ErrorMessage(error);
   }
-  configure(desktop_, desktop_meter_, desktop_level_, config.desktop_audio_enabled, "wasapi_output_capture", "Klip desktop audio", 1, "default", static_cast<float>(config.desktop_audio_gain), config.obs_separate_audio_tracks ? 3 : 1);
-  configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available, "wasapi_input_capture", "Klip microphone", 2, device, static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? 5 : 1);
+  const auto configure_process = [&](obs_source_t*& source, const char* name, const std::string& window,
+                                     std::uint32_t channel, std::uint32_t dedicated_mix) {
+    if (!config.desktop_audio_enabled || window.empty()) {
+      obs_set_output_source(channel, nullptr);
+      if (source) obs_source_release(source);
+      source = nullptr;
+      return;
+    }
+    auto settings = MakeData();
+    obs_data_set_string(settings.get(), "window", window.c_str());
+    obs_data_set_int(settings.get(), "priority", 2);
+    if (!source) source = obs_source_create("wasapi_process_output_capture", name, settings.get(), nullptr);
+    else obs_source_update(source, settings.get());
+    if (!source) throw std::runtime_error(std::string("OBS application-audio capture is unavailable for ") + name);
+    obs_source_set_audio_mixers(source, config.obs_separate_audio_tracks ? (1U | dedicated_mix) : 1U);
+    obs_source_set_volume(source, static_cast<float>(config.desktop_audio_gain));
+    obs_set_output_source(channel, source);
+  };
+  configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 1);
+  configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available,
+            "wasapi_input_capture", "Klip microphone", 2, device,
+            static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? 5 : 1);
+  configure_process(discord_audio_, "Klip Discord audio", config.discord_audio_window, 3, 1U << 3);
+  configure_process(music_audio_, "Klip music audio", config.music_audio_window, 4, 1U << 4);
   config_.desktop_audio_enabled = config.desktop_audio_enabled;
   config_.microphone_enabled = config.microphone_enabled;
   config_.preferred_microphone_name = config.preferred_microphone_name;
   state_.SetMicrophoneEnabled(config.microphone_enabled);
-  state_.SetAudio(desktop_ != nullptr, microphone_ != nullptr, 0.0F, 0.0F);
+  state_.SetAudio(game_audio_ != nullptr, microphone_ != nullptr, 0.0F, 0.0F);
 }
 
 void ObsEngine::SetDashboardActive(bool active) {
@@ -514,7 +539,7 @@ void ObsEngine::UpdateAudioMeters() {
       }
     }
   };
-  update(desktop_, desktop_meter_, desktop_level_);
+  update(game_audio_, game_audio_meter_, game_audio_level_);
   update(microphone_, microphone_meter_, microphone_level_);
 }
 
@@ -589,11 +614,16 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     if (!audio_encoder_) throw std::runtime_error("OBS AAC encoder creation failed");
     obs_encoder_set_audio(audio_encoder_, obs_get_audio());
     if (config_.obs_separate_audio_tracks) {
-      desktop_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip desktop-only AAC", audio.get(), 1, nullptr);
-      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip microphone-only AAC", audio.get(), 2, nullptr);
-      if (!desktop_encoder_ || !microphone_encoder_) throw std::runtime_error("OBS separate-track AAC creation failed");
-      obs_encoder_set_audio(desktop_encoder_, obs_get_audio());
+      game_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip game AAC", audio.get(), 1, nullptr);
+      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip microphone AAC", audio.get(), 2, nullptr);
+      discord_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip Discord AAC", audio.get(), 3, nullptr);
+      music_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip music AAC", audio.get(), 4, nullptr);
+      if (!game_encoder_ || !microphone_encoder_ || !discord_encoder_ || !music_encoder_)
+        throw std::runtime_error("OBS five-track AAC encoder creation failed");
+      obs_encoder_set_audio(game_encoder_, obs_get_audio());
       obs_encoder_set_audio(microphone_encoder_, obs_get_audio());
+      obs_encoder_set_audio(discord_encoder_, obs_get_audio());
+      obs_encoder_set_audio(music_encoder_, obs_get_audio());
     }
     state_.SetEncoder(selected);
     state_.SetEncoderStatus(selected == "obs_x264" ? "Software x264 selected; CPU encoding is active" : "OBS hardware encoder selected: " + selected);
@@ -608,7 +638,7 @@ bool ObsEngine::StartReplayBuffer(Error& error) {
   auto settings = MakeData();
   obs_data_set_string(settings.get(), "directory", PathToUtf8(config_.output_directory).c_str());
   obs_data_set_string(settings.get(), "format", config_.obs_filename_format.c_str());
-  obs_data_set_string(settings.get(), "extension", "mkv");
+  obs_data_set_string(settings.get(), "extension", config_.output_container.c_str());
   obs_data_set_bool(settings.get(), "allow_spaces", false);
   obs_data_set_int(settings.get(), "max_time_sec", ObsReplayRetentionSeconds(config_));
   obs_data_set_int(settings.get(), "max_size_mb", static_cast<long long>(config_.rolling_buffer_bytes / (1024 * 1024)));
@@ -616,8 +646,10 @@ bool ObsEngine::StartReplayBuffer(Error& error) {
   if (!replay_) { error = Error{ErrorComponent::kRollingBuffer, "create OBS replay", "replay_buffer output is unavailable"}; return false; }
   obs_output_set_video_encoder(replay_, video_encoder_);
   obs_output_set_audio_encoder(replay_, audio_encoder_, 0);
-  if (desktop_encoder_) obs_output_set_audio_encoder(replay_, desktop_encoder_, 1);
+  if (game_encoder_) obs_output_set_audio_encoder(replay_, game_encoder_, 1);
   if (microphone_encoder_) obs_output_set_audio_encoder(replay_, microphone_encoder_, 2);
+  if (discord_encoder_) obs_output_set_audio_encoder(replay_, discord_encoder_, 3);
+  if (music_encoder_) obs_output_set_audio_encoder(replay_, music_encoder_, 4);
   signal_handler_connect(obs_output_get_signal_handler(replay_), "saved", ReplaySaved, this);
   signal_handler_connect(obs_output_get_signal_handler(replay_), "stop", ReplayStopped, this);
   replay_waiting_for_source_ = true;
@@ -657,8 +689,9 @@ bool ObsEngine::StartRecording(Error& error) {
     recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
   }
   std::string filename_format;
-  if (!ReserveOutputFilename(config_.recording_directory, "recording_%CCYY-%MM-%DD_%hh-%mm-%ss",
-                             recording_reservation_, filename_format, error,
+  if (!ReserveOutputFilename(config_.recording_directory, config_.output_container,
+                             "recording_%CCYY-%MM-%DD_%hh-%mm-%ss", recording_reservation_,
+                             filename_format, error,
                              ErrorComponent::kRecordingWriter)) return false;
   recording_path_ = recording_reservation_.Path();
   auto settings = MakeData();
@@ -670,8 +703,10 @@ bool ObsEngine::StartRecording(Error& error) {
   }
   obs_output_set_video_encoder(recording_, video_encoder_);
   obs_output_set_audio_encoder(recording_, audio_encoder_, 0);
-  if (desktop_encoder_) obs_output_set_audio_encoder(recording_, desktop_encoder_, 1);
+  if (game_encoder_) obs_output_set_audio_encoder(recording_, game_encoder_, 1);
   if (microphone_encoder_) obs_output_set_audio_encoder(recording_, microphone_encoder_, 2);
+  if (discord_encoder_) obs_output_set_audio_encoder(recording_, discord_encoder_, 3);
+  if (music_encoder_) obs_output_set_audio_encoder(recording_, music_encoder_, 4);
   signal_handler_connect(obs_output_get_signal_handler(recording_), "stop", RecordingStopped, this);
   if (!obs_output_start(recording_)) {
     error = Error{ErrorComponent::kRecordingWriter, "start OBS recording", OutputError(recording_)};
@@ -762,8 +797,8 @@ void ObsEngine::ProcessSaveQueue() {
     --queued_saves_;
     std::string filename_format;
     Error filename_error;
-    if (!ReserveOutputFilename(config_.output_directory, config_.obs_filename_format,
-                               replay_reservation_, filename_format, filename_error,
+    if (!ReserveOutputFilename(config_.output_directory, config_.output_container,
+                               config_.obs_filename_format, replay_reservation_, filename_format, filename_error,
                                ErrorComponent::kClipWriter)) {
       // Fail closed: never overwrite an existing file or repeatedly retry a bad path.
       save_failed_ = true; queued_saves_ = 0;
@@ -884,8 +919,8 @@ void ObsEngine::Tick() {
   ProcessSaveQueue();
   state_.SetCaptureMetrics(obs_get_active_fps(), 0.0, obs_get_total_frames(),
                            obs_get_lagged_frames(), video_output_get_skipped_frames(obs_get_video()), 0, 0, 0.0);
-  state_.SetAudio(desktop_ && obs_source_audio_active(desktop_), microphone_ && obs_source_audio_active(microphone_),
-                  desktop_level_.load(std::memory_order_relaxed), microphone_level_.load(std::memory_order_relaxed));
+  state_.SetAudio(game_audio_ && obs_source_audio_active(game_audio_), microphone_ && obs_source_audio_active(microphone_),
+                  game_audio_level_.load(std::memory_order_relaxed), microphone_level_.load(std::memory_order_relaxed));
   const auto buffered = obs_output_active(replay_) ? std::chrono::duration<double>(std::chrono::steady_clock::now() - replay_started_).count() : 0.0;
   state_.SetRollingMetrics(std::min(buffered, config_.clip_duration_seconds), 0, 0);
   if (IsRecording()) state_.SetRecording(true, false, recording_path_,
@@ -938,15 +973,19 @@ void ObsEngine::Shutdown() noexcept {
   recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
   if (video_encoder_) { obs_encoder_release(video_encoder_); video_encoder_ = nullptr; }
   if (audio_encoder_) { obs_encoder_release(audio_encoder_); audio_encoder_ = nullptr; }
-  if (desktop_encoder_) { obs_encoder_release(desktop_encoder_); desktop_encoder_ = nullptr; }
+  if (game_encoder_) { obs_encoder_release(game_encoder_); game_encoder_ = nullptr; }
   if (microphone_encoder_) { obs_encoder_release(microphone_encoder_); microphone_encoder_ = nullptr; }
-  if (desktop_meter_) { obs_volmeter_destroy(desktop_meter_); desktop_meter_ = nullptr; }
+  if (discord_encoder_) { obs_encoder_release(discord_encoder_); discord_encoder_ = nullptr; }
+  if (music_encoder_) { obs_encoder_release(music_encoder_); music_encoder_ = nullptr; }
+  if (game_audio_meter_) { obs_volmeter_destroy(game_audio_meter_); game_audio_meter_ = nullptr; }
   if (microphone_meter_) { obs_volmeter_destroy(microphone_meter_); microphone_meter_ = nullptr; }
   if (initialized_) for (std::uint32_t i = 0; i < 3; ++i) obs_set_output_source(i, nullptr);
   if (scene_) { obs_scene_release(scene_); scene_ = nullptr; capture_item_ = nullptr; overlay_item_ = nullptr; }
   if (capture_) { obs_source_release(capture_); capture_ = nullptr; }
   if (overlay_) { obs_source_release(overlay_); overlay_ = nullptr; }
-  if (desktop_) { obs_source_release(desktop_); desktop_ = nullptr; }
+  if (game_audio_) { obs_source_release(game_audio_); game_audio_ = nullptr; }
+  if (discord_audio_) { obs_source_release(discord_audio_); discord_audio_ = nullptr; }
+  if (music_audio_) { obs_source_release(music_audio_); music_audio_ = nullptr; }
   if (microphone_) { obs_source_release(microphone_); microphone_ = nullptr; }
   if (initialized_) obs_shutdown();
   if (!core_data_path_.empty()) { obs_remove_data_path(core_data_path_.c_str()); core_data_path_.clear(); }
