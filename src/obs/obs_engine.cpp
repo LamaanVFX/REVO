@@ -946,9 +946,10 @@ void ObsEngine::Tick() {
       if (directory_error) {
         logger_.Warning("Automatic game folder could not be created: " + directory_error.message());
       } else {
-        if ((target && (config_.target_mode != CaptureTargetMode::kGameWindow ||
-                        selected_source_id_ != target->id)) ||
-            (detected_game.empty() && selected_source_id_ != 0)) {
+        if ((detected_game.empty() && selected_source_id_ != 0) ||
+            (!detected_game.empty() &&
+             (config_.target_mode != CaptureTargetMode::kGameWindow || !target ||
+              selected_source_id_ != target->id))) {
           Error capture_error;
           if (!ConfigureCapture(CaptureTargetMode::kGameWindow,
                                 target ? target->label : std::string{}, capture_error)) {
