@@ -85,15 +85,19 @@ struct AutomaticGameProfile {
 std::optional<AutomaticGameProfile> DetectGameProfile(std::string label) {
   std::transform(label.begin(), label.end(), label.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  if (label.find("javaw.exe") != std::string::npos)
+  if (label.find("javaw.exe") != std::string::npos ||
+      label.find("minecraft.windows.exe") != std::string::npos)
     return AutomaticGameProfile{"Minecraft", 240, 35'000'000};
   static constexpr const char* other_games[] = {
-      "minecraft.windows.exe", "fortniteclient-win64-shipping.exe",
+      "fortnite.exe", "fortniteclient-win64-shipping.exe",
+      "fortniteclient-win64-shipping_eac_eos.exe", "valorant.exe",
       "valorant-win64-shipping.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
-      "rocketleague.exe", "gta5.exe", "fivem_gtaprocess.exe", "robloxplayerbeta.exe",
-      "eldenring.exe", "helldivers2.exe", "deadbydaylight-win64-shipping.exe",
-      "destiny2.exe", "rainbowsix.exe", "rainbow6.exe", "dota2.exe", "pubg.exe",
-      "tslgame.exe", "thefinals.exe", "marvel-rivals.exe", "bf2042.exe"};
+      "rocketleague.exe", "gta5.exe", "gta5_enhanced.exe", "playgtav.exe",
+      "fivem_gtaprocess.exe", "robloxplayerbeta.exe", "eldenring.exe", "helldivers2.exe",
+      "deadbydaylight-win64-shipping.exe", "destiny2.exe", "rainbowsix.exe",
+      "rainbowsix_vulkan.exe", "rainbow6.exe", "dota2.exe", "pubg.exe", "tslgame.exe",
+      "discovery.exe", "thefinals.exe", "marvel-rivals.exe", "marvel-win64-shipping.exe",
+      "bf2042.exe", "battlefield.exe"};
   for (const auto* executable : other_games) {
     if (label.find(executable) != std::string::npos)
       return AutomaticGameProfile{"Other game", 60, 20'000'000};

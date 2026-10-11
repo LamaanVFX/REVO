@@ -211,6 +211,36 @@ std::filesystem::path ClipWriter::BuildOutputPath() const {
     set_game("apex", "apex");
   } else if (lower.find("robloxplayerbeta.exe") != std::string::npos) {
     set_game("roblox", "roblox");
+  } else if (lower.find("overwatch.exe") != std::string::npos) {
+    set_game("overwatch", "overwatch");
+  } else if (lower.find("rocketleague.exe") != std::string::npos) {
+    set_game("rocket-league", "rocket-league");
+  } else if (lower.find("eldenring.exe") != std::string::npos) {
+    set_game("elden-ring", "elden-ring");
+  } else if (lower.find("helldivers2.exe") != std::string::npos) {
+    set_game("helldivers2", "helldivers2");
+  } else if (lower.find("deadbydaylight-win64-shipping.exe") != std::string::npos) {
+    set_game("dead-by-daylight", "dead-by-daylight");
+  } else if (lower.find("destiny2.exe") != std::string::npos) {
+    set_game("destiny2", "destiny2");
+  } else if (lower.find("rainbowsix.exe") != std::string::npos ||
+             lower.find("rainbowsix_vulkan.exe") != std::string::npos ||
+             lower.find("rainbow6.exe") != std::string::npos) {
+    set_game("rainbow-six", "rainbow-six");
+  } else if (lower.find("dota2.exe") != std::string::npos) {
+    set_game("dota2", "dota2");
+  } else if (lower.find("tslgame.exe") != std::string::npos ||
+             lower.find("pubg.exe") != std::string::npos) {
+    set_game("pubg", "pubg");
+  } else if (lower.find("discovery.exe") != std::string::npos ||
+             lower.find("thefinals.exe") != std::string::npos) {
+    set_game("the-finals", "the-finals");
+  } else if (lower.find("marvel-win64-shipping.exe") != std::string::npos ||
+             lower.find("marvel-rivals.exe") != std::string::npos) {
+    set_game("marvel-rivals", "marvel-rivals");
+  } else if (lower.find("bf2042.exe") != std::string::npos ||
+             lower.find("battlefield.exe") != std::string::npos) {
+    set_game("battlefield-2042", "battlefield-2042");
   }
 
   auto directory = config_.output_directory;

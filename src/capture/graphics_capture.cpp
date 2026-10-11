@@ -68,12 +68,15 @@ int GameExecutablePriority(const std::string& label) {
   if (executable == "javaw.exe") return 100;
   static constexpr std::string_view known_games[] = {
       "minecraft.windows.exe", "fortniteclient-win64-shipping.exe",
-      "valorant-win64-shipping.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
-      "rocketleague.exe", "gta5.exe", "fivem_gtaprocess.exe", "robloxplayerbeta.exe",
-      "eldenring.exe", "eldenring.exe", "helldivers2.exe", "deadbydaylight-win64-shipping.exe",
-      "destiny2.exe", "rainbowsix.exe", "rainbow6.exe", "league of legends.exe",
+      "fortniteclient-win64-shipping_eac_eos.exe", "fortnite.exe",
+      "valorant-win64-shipping.exe", "valorant.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
+      "rocketleague.exe", "gta5.exe", "gta5_enhanced.exe", "playgtav.exe",
+      "fivem_gtaprocess.exe", "robloxplayerbeta.exe", "eldenring.exe",
+      "helldivers2.exe", "deadbydaylight-win64-shipping.exe", "destiny2.exe",
+      "rainbowsix.exe", "rainbowsix_vulkan.exe", "rainbow6.exe", "league of legends.exe",
       "leagueclient.exe", "dota2.exe", "pubg.exe", "tslgame.exe", "thefinals.exe",
-      "marvel-rivals.exe", "battlefield.exe", "bf2042.exe", "escape from tarkov.exe"};
+      "discovery.exe", "marvel-rivals.exe", "marvel-win64-shipping.exe", "battlefield.exe",
+      "bf2042.exe", "escape from tarkov.exe"};
   for (std::size_t i = 0; i < sizeof(known_games) / sizeof(known_games[0]); ++i) {
     if (executable == known_games[i]) return 80 - static_cast<int>(i);
   }
@@ -435,6 +438,26 @@ void GraphicsCapture::RefreshSourceOptions() {
     if (preferred != windows.end()) {
       selected_window = preferred->id;
       selected_window_.store(static_cast<std::uintptr_t>(preferred->id), std::memory_order_release);
+    }
+  }
+
+  // Follow the foreground supported game when the user switches games. If a
+  // game is temporarily unfocused, retain the previous valid game target instead
+  // of switching capture to a browser, launcher, or the Klip settings window.
+  if (target_mode_.load(std::memory_order_acquire) == CaptureTargetMode::kGameWindow) {
+    const HWND foreground = GetForegroundWindow();
+    if (foreground != nullptr && foreground != application_window_) {
+      const auto foreground_id =
+          static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(foreground));
+      const auto foreground_option = std::find_if(windows.begin(), windows.end(),
+          [&](const auto& option) { return option.id == foreground_id; });
+      if (foreground_option != windows.end() && GameExecutablePriority(foreground_option->label) > 0 &&
+          selected_window != foreground_id) {
+        selected_window = foreground_id;
+        selected_window_.store(static_cast<std::uintptr_t>(foreground_id),
+                               std::memory_order_release);
+        logger_.Info("Following focused game capture target: " + foreground_option->label);
+      }
     }
   }
 
