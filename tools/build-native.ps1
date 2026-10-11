@@ -22,16 +22,29 @@ if(-not $ffmpegHeader){throw 'Pinned FFmpeg headers were not found after bootstr
 $ffmpegRoot=Split-Path (Split-Path (Split-Path $ffmpegHeader.FullName -Parent) -Parent) -Parent
 if(-not (Test-Path (Join-Path $ffmpegRoot 'include/libavcodec/avcodec.h'))){throw "Could not resolve FFmpeg root: $ffmpegRoot"}
 
+# CMake's GNU/Clang Windows platform files parse compiler paths as CMake
+# strings. Forward slashes prevent paths such as D:\a from becoming escapes.
+$llvmBin=Join-Path $llvm 'bin'
+$compiler=Join-Path $llvmBin 'clang++.exe'
+$resourceCompiler=Join-Path $llvmBin 'llvm-windres.exe'
+$compiler=$compiler.Replace('\','/')
+$resourceCompiler=$resourceCompiler.Replace('\','/')
+$sdkCpp=Join-Path $sdk 'cppwinrt'
+$sdkCpp=$sdkCpp.Replace('\','/')
+$imgui=$imgui.Replace('\','/')
+$ffmpegRoot=$ffmpegRoot.Replace('\','/')
+$repoCmake=$repo.Replace('\','/')
+
 $previousPath=$env:PATH
 try {
-  $env:PATH="$llvm/bin;$cmake/bin;$deps/ninja;$env:PATH"
+  $env:PATH="$llvmBin;$cmake/bin;$deps/ninja;$env:PATH"
   $build=Join-Path $repo ("build-native-$Configuration" + $(if($BuildSuffix){"-$BuildSuffix"}else{''}))
   & cmake -S $repo -B $build -G Ninja `
     "-DCMAKE_BUILD_TYPE=$Configuration" `
-    "-DCMAKE_CXX_COMPILER=$llvm/bin/clang++.exe" `
-    "-DCMAKE_RC_COMPILER=$llvm/bin/llvm-windres.exe" `
-    "-DCMAKE_CXX_FLAGS=-isystem $($sdk.Replace('\','/'))/cppwinrt" `
-    "-Dimgui_DIR=$repo/cmake/validation-imgui" `
+    "-DCMAKE_CXX_COMPILER=$compiler" `
+    "-DCMAKE_RC_COMPILER=$resourceCompiler" `
+    "-DCMAKE_CXX_FLAGS=-isystem $sdkCpp" `
+    "-Dimgui_DIR=$repoCmake/cmake/validation-imgui" `
     "-DKLIP_IMGUI_SOURCE=$imgui" `
     "-DFFMPEG_ROOT=$ffmpegRoot" `
     '-DKLIP_USE_LIBOBS=OFF' `
