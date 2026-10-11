@@ -21,6 +21,7 @@ namespace klip {
 class RecordingWriter {
  public:
   using SnapshotProvider = std::function<bool(CodecSnapshot&)>;
+  using AudioTracksSnapshotProvider = std::function<bool(std::vector<CodecSnapshot>&)>;
 
   RecordingWriter(ApplicationState& state, Logger& logger);
   ~RecordingWriter() noexcept;
@@ -29,6 +30,8 @@ class RecordingWriter {
   RecordingWriter& operator=(const RecordingWriter&) = delete;
 
   bool Initialize(AppConfig config, SnapshotProvider video, SnapshotProvider audio, Error& error);
+  bool InitializeWithAudioTracks(AppConfig config, SnapshotProvider video,
+                                 AudioTracksSnapshotProvider audio, Error& error);
   void Shutdown() noexcept;
   bool StartRecording(Error& error);
   void RequestStopRecording(std::uint64_t video_packet_target,
@@ -38,7 +41,8 @@ class RecordingWriter {
   void StopRecording() noexcept;
   void Publish(const AVPacket* packet, StreamKind kind, AVRational time_base,
                std::uint64_t video_packets_routed = 0,
-               std::uint64_t audio_packets_routed = 0) noexcept;
+               std::uint64_t audio_packets_routed = 0,
+               std::uint8_t audio_track = 0) noexcept;
   void Tick();
 
   [[nodiscard]] bool IsRecording() const noexcept {
@@ -49,7 +53,7 @@ class RecordingWriter {
   using PacketQueue = BlockingBoundedQueue<EncodedPacket>;
 
   void Worker(std::shared_ptr<PacketQueue> queue, std::filesystem::path output_path,
-              CodecSnapshot video, CodecSnapshot audio, bool has_audio) noexcept;
+              CodecSnapshot video, std::vector<CodecSnapshot> audio_tracks) noexcept;
   void CloseQueueForFinalization(bool drain_timeout) noexcept;
   static std::filesystem::path BuildOutputPath(const std::filesystem::path& directory,
                                                std::string container);
@@ -59,6 +63,7 @@ class RecordingWriter {
   AppConfig config_;
   SnapshotProvider video_snapshot_;
   SnapshotProvider audio_snapshot_;
+  AudioTracksSnapshotProvider audio_tracks_snapshot_;
   mutable std::mutex control_mutex_;
   std::shared_ptr<PacketQueue> active_queue_;
   std::jthread worker_;
