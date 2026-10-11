@@ -38,6 +38,8 @@ void TestNativeCaptureDefaults() {
   CHECK(config.microphone_enabled);
   CHECK(config.discord_audio_window == "::Discord.exe");
   CHECK(config.music_audio_window == "::Spotify.exe");
+  CHECK(config.obs_display_method == 1);
+  CHECK(config.obs_limit_game_capture_fps);
 }
 
 void TestWaveFormats() {

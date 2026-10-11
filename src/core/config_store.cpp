@@ -295,11 +295,13 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   loaded.obs_separate_audio_tracks = true;
   loaded.desktop_audio_enabled = true;
   loaded.microphone_enabled = true;
+  loaded.capture_border = false;
+  loaded.obs_display_method = 1;
+  loaded.obs_limit_game_capture_fps = true;
   if (loaded.discord_audio_window.empty()) loaded.discord_audio_window = "::Discord.exe";
   if (loaded.music_audio_window.empty()) loaded.music_audio_window = "::Spotify.exe";
-  // The automatic display fallback can switch to Windows Graphics Capture and
-  // show the yellow system border. Prefer borderless DXGI for old "automatic" settings.
-  if (loaded.obs_display_method == 0) loaded.obs_display_method = 1;
+  // The app owns the default capture profile: borderless DXGI and rate-limited
+  // OBS capture copies. These settings never limit the game's own frame rate.
 
   const auto issues = ValidateConfig(loaded);
   if (!issues.empty()) {
