@@ -51,7 +51,8 @@ class RecordingWriter {
   void Worker(std::shared_ptr<PacketQueue> queue, std::filesystem::path output_path,
               CodecSnapshot video, CodecSnapshot audio, bool has_audio) noexcept;
   void CloseQueueForFinalization(bool drain_timeout) noexcept;
-  static std::filesystem::path BuildOutputPath(const std::filesystem::path& directory);
+  static std::filesystem::path BuildOutputPath(const std::filesystem::path& directory,
+                                               std::string container);
 
   ApplicationState& state_;
   Logger& logger_;

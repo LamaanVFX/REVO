@@ -2,6 +2,8 @@
 
 #include <Windows.h>
 
+#include <algorithm>
+#include <cctype>
 #include <exception>
 #include <utility>
 
@@ -60,7 +62,7 @@ bool RecordingWriter::StartRecording(Error& error) {
 
   std::scoped_lock lock(control_mutex_);
   if (recording_.load(std::memory_order_acquire)) return true;
-  active_path_ = BuildOutputPath(config_.recording_directory);
+  active_path_ = BuildOutputPath(config_.recording_directory, config_.output_container);
   active_queue_ = std::make_shared<PacketQueue>(config_.recording_packet_queue_capacity);
   dropped_packets_.store(0, std::memory_order_release);
   started_at_ = std::chrono::steady_clock::now();
@@ -279,13 +281,18 @@ void RecordingWriter::Worker(std::shared_ptr<PacketQueue> queue, std::filesystem
   state_.SetRecording(false, false);
 }
 
-std::filesystem::path RecordingWriter::BuildOutputPath(const std::filesystem::path& directory) {
+std::filesystem::path RecordingWriter::BuildOutputPath(const std::filesystem::path& directory,
+                                                        std::string container) {
   SYSTEMTIME time{};
   GetLocalTime(&time);
-  wchar_t filename[128]{};
-  swprintf_s(filename, L"recording_%04u%02u%02u_%02u%02u%02u_%03u.mp4", time.wYear, time.wMonth,
+  std::transform(container.begin(), container.end(), container.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (container != "mp4" && container != "mkv") container = "mp4";
+  wchar_t stem[128]{};
+  swprintf_s(stem, L"recording_%04u%02u%02u_%02u%02u%02u_%03u", time.wYear, time.wMonth,
              time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds);
-  return directory / filename;
+  return directory / (std::filesystem::path(stem).wstring() + L"." +
+                      std::wstring(container.begin(), container.end()));
 }
 
 }  // namespace klip
