@@ -209,6 +209,8 @@ UiCommands KlipApplication::BuildUiCommands() {
       .set_microphone_enabled = [this, audio](bool enabled) { config_.microphone_enabled = enabled; audio(); PersistSettings(config_, false); },
       .set_desktop_audio_gain = [this, audio](float gain) { config_.desktop_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0); audio(); },
       .set_microphone_audio_gain = [this, audio](float gain) { config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0); audio(); },
+      .set_discord_audio_gain = [this, audio](float gain) { config_.discord_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0); audio(); },
+      .set_music_audio_gain = [this, audio](float gain) { config_.music_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0); audio(); },
       .persist_audio_gains = [this] { PersistSettings(config_, false); },
       .select_microphone = [this, audio](int index) {
         const auto snapshot = state_.Snapshot();
