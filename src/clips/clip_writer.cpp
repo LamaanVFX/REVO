@@ -5,6 +5,9 @@
 #include <algorithm>
 #include <chrono>
 #include <exception>
+#include <iomanip>
+#include <sstream>
+#include <string_view>
 
 #include "klip/media/mp4_muxer.h"
 #include "klip/core/path_text.h"
@@ -57,7 +60,7 @@ void ClipWriter::Stop() noexcept {
 
 bool ClipWriter::RequestClip() {
   if (!running_.load(std::memory_order_acquire)) return false;
-  Request request{BuildOutputPath(config_.output_directory), config_.clip_duration_seconds};
+  Request request{BuildOutputPath(), config_.clip_duration_seconds};
   const auto accepted = requests_.TryPush(std::move(request));
   if (accepted)
     logger_.Info("Clip save requested");
@@ -147,13 +150,86 @@ bool ClipWriter::Write(const Request& request, const std::vector<EncodedPacket>&
   return muxer.Finalize(error);
 }
 
-std::filesystem::path ClipWriter::BuildOutputPath(const std::filesystem::path& directory) {
+std::filesystem::path ClipWriter::BuildOutputPath() const {
   SYSTEMTIME time{};
   GetLocalTime(&time);
-  wchar_t filename[128]{};
-  swprintf_s(filename, L"clip_%04u%02u%02u_%02u%02u%02u_%03u.mp4", time.wYear, time.wMonth,
-             time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds);
-  return directory / filename;
+
+  const auto snapshot = state_.Snapshot();
+  std::string game_folder;
+  std::string filename_prefix = "clip";
+  const auto target = snapshot.capture_target;
+  std::string lower = target;
+  std::transform(lower.begin(), lower.end(), lower.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  const auto set_game = [&](const char* folder, const char* prefix) {
+    game_folder = folder;
+    filename_prefix = prefix;
+  };
+  if (lower.find("javaw.exe") != std::string::npos ||
+      lower.find("minecraft.windows.exe") != std::string::npos) {
+    set_game("minecraft", "minecraft");
+  } else if (lower.find("fortniteclient") != std::string::npos ||
+             lower.find("fortnite.exe") != std::string::npos) {
+    set_game("fortnite", "fortnite");
+  } else if (lower.find("valorant") != std::string::npos) {
+    set_game("valorant", "valorant");
+  } else if (lower.find("gta5") != std::string::npos ||
+             lower.find("fivem") != std::string::npos) {
+    set_game("gta5", "gta5");
+  } else if (lower.find("cs2.exe") != std::string::npos) {
+    set_game("cs2", "cs2");
+  } else if (lower.find("r5apex.exe") != std::string::npos) {
+    set_game("apex", "apex");
+  } else if (lower.find("robloxplayerbeta.exe") != std::string::npos) {
+    set_game("roblox", "roblox");
+  }
+
+  auto directory = config_.output_directory;
+  if (!game_folder.empty()) directory /= game_folder;
+
+  std::string pattern = config_.obs_filename_format.empty()
+                            ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
+                            : config_.obs_filename_format;
+  if (!game_folder.empty() && pattern.starts_with("clip_")) {
+    pattern.replace(0, 4, filename_prefix);
+  }
+  const auto replace_all = [&](std::string_view token, const std::string& value) {
+    std::size_t position = 0;
+    while ((position = pattern.find(token, position)) != std::string::npos) {
+      pattern.replace(position, token.size(), value);
+      position += value.size();
+    }
+  };
+  const auto number = [](unsigned value, int width) {
+    std::ostringstream out;
+    out << std::setw(width) << std::setfill('0') << value;
+    return out.str();
+  };
+  replace_all("%CCYY", number(time.wYear, 4));
+  replace_all("%YY", number(time.wYear % 100, 2));
+  replace_all("%MM", number(time.wMonth, 2));
+  replace_all("%DD", number(time.wDay, 2));
+  replace_all("%hh", number(time.wHour, 2));
+  replace_all("%mm", number(time.wMinute, 2));
+  replace_all("%ss", number(time.wSecond, 2));
+  replace_all("%ms", number(time.wMilliseconds, 3));
+
+  std::string extension = config_.output_container;
+  std::transform(extension.begin(), extension.end(), extension.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (extension != "mp4" && extension != "mkv") extension = "mp4";
+
+  std::error_code ignored;
+  std::filesystem::create_directories(directory, ignored);
+  const auto stem = std::filesystem::path(pattern).filename().string();
+  for (unsigned suffix = 0; suffix < 1000; ++suffix) {
+    const auto filename = stem + (suffix ? "_" + std::to_string(suffix + 1) : "") +
+                          "." + extension;
+    const auto candidate = directory / filename;
+    if (!std::filesystem::exists(candidate, ignored)) return candidate;
+    ignored.clear();
+  }
+  return directory / (stem + "_" + std::to_string(time.wMilliseconds) + "." + extension);
 }
 
 }  // namespace klip
