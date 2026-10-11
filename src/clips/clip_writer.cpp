@@ -32,6 +32,7 @@ ClipWriter::~ClipWriter() noexcept { Stop(); }
 
 bool ClipWriter::Start(AppConfig config, SnapshotProvider video, SnapshotProvider audio,
                        Error& error) {
+  audio_tracks_snapshot_ = {};
   if (running_.exchange(true, std::memory_order_acq_rel)) return true;
   requests_.Reset();
   config_ = std::move(config);
@@ -42,14 +43,35 @@ bool ClipWriter::Start(AppConfig config, SnapshotProvider video, SnapshotProvide
   if (directory_error) {
     running_.store(false, std::memory_order_release);
     error = Error{ErrorComponent::kClipWriter, "create output directory",
-                  directory_error.message(),   directory_error.value(),
-                  directory_error.message(),   PathToUtf8(config_.output_directory)};
+                  directory_error.message(), directory_error.value(),
+                  directory_error.message(), PathToUtf8(config_.output_directory)};
     return false;
   }
   worker_ = std::jthread([this](std::stop_token token) { Worker(token); });
   return true;
 }
 
+bool ClipWriter::StartWithAudioTracks(AppConfig config, SnapshotProvider video,
+                                      AudioTracksSnapshotProvider audio, Error& error) {
+  if (running_.exchange(true, std::memory_order_acq_rel)) return true;
+  requests_.Reset();
+  config_ = std::move(config);
+  video_snapshot_ = std::move(video);
+  audio_snapshot_ = {};
+  audio_tracks_snapshot_ = {};
+  audio_tracks_snapshot_ = std::move(audio);
+  std::error_code directory_error;
+  std::filesystem::create_directories(config_.output_directory, directory_error);
+  if (directory_error) {
+    running_.store(false, std::memory_order_release);
+    error = Error{ErrorComponent::kClipWriter, "create output directory",
+                  directory_error.message(), directory_error.value(),
+                  directory_error.message(), PathToUtf8(config_.output_directory)};
+    return false;
+  }
+  worker_ = std::jthread([this](std::stop_token token) { Worker(token); });
+  return true;
+}
 void ClipWriter::Stop() noexcept {
   if (!running_.exchange(false, std::memory_order_acq_rel)) return;
   requests_.Close();
@@ -83,14 +105,18 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
       state_.SetStatus(CaptureStatus::kSaving, "Saving clip");
       const auto started = std::chrono::steady_clock::now();
       CodecSnapshot video;
-      CodecSnapshot audio;
+      std::vector<CodecSnapshot> audio_tracks;
       Error error;
       if (!video_snapshot_ || !video_snapshot_(video)) {
         error = Error{ErrorComponent::kClipWriter, "snapshot video codec",
                       "video encoder is not ready"};
       } else {
-        const auto has_audio = audio_snapshot_ && audio_snapshot_(audio);
-        // A clip requested immediately after capture starts can arrive before the
+        if (audio_tracks_snapshot_) {
+          if (!audio_tracks_snapshot_(audio_tracks)) audio_tracks.clear();
+        } else if (audio_snapshot_) {
+          CodecSnapshot audio;
+          if (audio_snapshot_(audio)) audio_tracks.push_back(std::move(audio));
+        }        // A clip requested immediately after capture starts can arrive before the
         // encoder has emitted its first keyframe. Give the rolling buffer a short
         // warm-up window instead of failing the user-visible clip operation.
         std::vector<EncodedPacket> packets;
@@ -107,7 +133,7 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
         } else if (packets.empty()) {
           error = Error{ErrorComponent::kClipWriter, "select clip range",
                         "the rolling buffer does not yet contain a keyframe"};
-        } else if (Write(request, packets, video, has_audio ? &audio : nullptr, error)) {
+        } else if (Write(request, packets, video, audio_tracks, error)) {
           const auto duration =
               std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started)
                   .count();
@@ -130,7 +156,8 @@ void ClipWriter::Worker(std::stop_token stop_token) noexcept {
 }
 
 bool ClipWriter::Write(const Request& request, const std::vector<EncodedPacket>& packets,
-                       const CodecSnapshot& video, const CodecSnapshot* audio, Error& error) {
+                       const CodecSnapshot& video,
+                       const std::vector<CodecSnapshot>& audio_tracks, Error& error) {
   std::int64_t base = INT64_MAX;
   for (const auto& encoded : packets) {
     if (!encoded.packet) continue;
@@ -143,7 +170,8 @@ bool ClipWriter::Write(const Request& request, const std::vector<EncodedPacket>&
   if (base == INT64_MAX) base = 0;
 
   Mp4Muxer muxer;
-  if (!muxer.Open(request.output_path, video, audio, ErrorComponent::kClipWriter, error))
+  if (!muxer.OpenMultiAudio(request.output_path, video, audio_tracks,
+                            ErrorComponent::kClipWriter, error))
     return false;
   for (const auto& encoded : packets) {
     if (!muxer.Write(encoded, base, error)) return false;
