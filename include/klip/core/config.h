@@ -70,6 +70,8 @@ struct AppConfig {
   bool desktop_audio_enabled = true;
   double desktop_audio_gain = 1.0;
   double microphone_audio_gain = 1.0;
+  double discord_audio_gain = 1.0;
+  double music_audio_gain = 1.0;
   std::filesystem::path output_directory = "clips";
   std::filesystem::path recording_directory = "recordings";
   std::filesystem::path log_path = "klip.log";
