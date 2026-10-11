@@ -7,7 +7,7 @@ Win32/D3D11/ImGui dashboard and customizable global shortcuts.
 
 ## Public beta
 
-This is the new-engine edition (native version 2.0.0), replacing the legacy
+This is the new-engine edition (current patch 2.0.1), replacing the legacy
 3.0.x downloads. It is unsigned, and compatibility/performance vary by game,
 GPU and drivers. No universal OBS-parity, zero-overhead or stable-release
 claim is made. NVIDIA RTX 3060 capture has been tested; broader hardware,
@@ -23,15 +23,16 @@ live microphone and clean-machine testing remain incomplete.
   a guaranteed smoothness fix and does not cap your game's frame rate.
 - Hidden/minimized dashboards stop rendering and computing visualization-only
   audio meters. Actual capture/audio continue.
-- Replay stores compressed packets with bounded memory; memory caps can shorten
-  saved clips. Clips and recordings use MKV.
+- Duration-first replay fits video bitrate to the chosen time and memory budget.
+  Allow the buffer to warm up after starting/changing capture. Constant quality
+  is optional and can still shorten clips. Clips and recordings use MKV.
 
 ## Download and run
 
 [Website](https://klip-ten-zeta.vercel.app/) ·
 [Releases and sources](https://github.com/andrewkernel/klip/releases)
 
-Install the complete `Klip-2.0.0-win64-setup.exe`, or extract the complete
+Install the complete `Klip-2.0.1-win64-setup.exe`, or extract the complete
 portable ZIP and open its root `Klip.exe`. Keep bin, data, obs-plugins and
 licenses together. Requires Windows x64, supported graphics drivers and the
 [Microsoft VC++ 2015–2022 x64 runtime](https://aka.ms/vs/17/release/vc_redist.x64.exe).

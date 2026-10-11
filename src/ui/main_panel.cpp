@@ -1,6 +1,7 @@
 #include "klip/ui/main_panel.h"
 #include "klip/ui/event_driven_tabs.h"
 #include "klip/core/path_text.h"
+#include "klip/obs/replay_policy.h"
 
 #include <Windows.h>
 #include <imgui.h>
@@ -307,6 +308,11 @@ std::filesystem::path ParsePath(const char* text) {
 
 void ResizeReplayBudget(AppConfig& config) {
   config.rolling_buffer_seconds = config.clip_duration_seconds + 15.0;
+#if defined(KLIP_USE_LIBOBS)
+  // CQ bitrate is scene-dependent; the legacy fixed-bitrate estimate used to
+  // shrink OBS's buffer when selecting a duration. Keep its explicit budget.
+  return;
+#endif
   const auto bits_per_second = static_cast<double>(config.video_bitrate + config.audio_bitrate);
   const auto required = bits_per_second / 8.0 * config.rolling_buffer_seconds * 1.25;
   constexpr auto minimum = 32ULL * 1024ULL * 1024ULL;
@@ -746,7 +752,11 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   DrawText(draw, regular, 17.0F, {seconds_x, hero_y + 48.0F}, kMutedU32, "seconds");
   char replay_copy[64]{};
 #if defined(KLIP_USE_LIBOBS)
-  std::snprintf(replay_copy, sizeof(replay_copy), "memory cap may shorten clips");
+  if (config.obs_duration_priority && buffered_seconds < requested_seconds)
+    std::snprintf(replay_copy, sizeof(replay_copy), "warming up / %.0f of %.0f seconds", buffered_seconds, requested_seconds);
+  else
+    std::snprintf(replay_copy, sizeof(replay_copy), config.obs_duration_priority ?
+                  "duration-first / buffer warmed up" : "memory cap may shorten clips");
 #else
   std::snprintf(replay_copy, sizeof(replay_copy), "buffered %.0f of %.0f seconds", buffered_seconds,
                 requested_seconds);
@@ -1407,14 +1417,23 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         draft_.scaling_mode = scaling == 0 ? VideoScalingMode::kFit : VideoScalingMode::kStretch;
 
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::SliderInt("CQ / lower is higher quality", &draft_.obs_cq, 1, 51);
+      ImGui::Checkbox("prioritize full replay duration", &draft_.obs_duration_priority);
+      if (draft_.obs_duration_priority) {
+        ImGui::SliderInt("target video bitrate / kbps", &draft_.obs_replay_bitrate_kbps, 1000, 60000);
+        ImGui::TextColored(kMuted, "Effective video bitrate: %.1f Mbps (fits duration, audio tracks and memory).",
+                          ObsReplayBitrateKbps(draft_) / 1000.0);
+        ImGui::TextColored(kMuted, "Duration-first uses bounded bitrate for clips AND recordings. Detail may be lower in complex scenes.");
+      } else {
+        ImGui::SliderInt("CQ / lower is higher quality", &draft_.obs_cq, 1, 51);
+        ImGui::TextColored(kMuted, "Constant quality may shorten clips when replay memory fills.");
+      }
       if (ImGui::BeginCombo("OBS encoder", draft_.obs_encoder_id.c_str())) {
         if (ImGui::Selectable("auto / detected hardware", draft_.obs_encoder_id == "auto")) draft_.obs_encoder_id = "auto";
         for (const auto& id : snapshot.available_encoders)
           if (ImGui::Selectable(id.c_str(), draft_.obs_encoder_id == id)) draft_.obs_encoder_id = id;
         ImGui::EndCombo();
       }
-      ImGui::TextColored(kMuted, "CQP on hardware / CRF on x264. No silent encoder fallback.");
+      ImGui::TextColored(kMuted, "No silent encoder fallback. Allow the buffer to warm up after changing capture settings.");
 #else
       int bitrate_mbps = static_cast<int>(draft_.video_bitrate / 1'000'000);
       if (ImGui::SliderInt("video bitrate", &bitrate_mbps, 4, 40, "%d Mbps")) {
@@ -1554,7 +1573,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         }
         ImGui::EndCombo();
       }
-      ImGui::TextColored(kMuted, "OBS replay memory cap: %.0f MiB. High CQP bitrates can shorten the replay.",
+      ImGui::TextColored(kMuted, "OBS replay memory cap: %.0f MiB. Duration-first limits bitrate to fit; constant quality may shorten clips.",
                          static_cast<double>(draft_.rolling_buffer_bytes) / (1024.0 * 1024.0));
 #else
       int clip_seconds = static_cast<int>(draft_.clip_duration_seconds);

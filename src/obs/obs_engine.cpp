@@ -18,6 +18,7 @@
 
 #include "klip/core/path_text.h"
 #include "klip/obs/encoder_policy.h"
+#include "klip/obs/replay_policy.h"
 
 namespace klip {
 namespace {
@@ -542,7 +543,7 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     const bool maximum = config_.encoder_quality == EncoderQuality::kQuality;
     if (selected == "obs_nvenc_h264_tex") {
       const auto policy = ObsNvencPolicyFor(config_.encoder_quality);
-      SetList(props.get(), settings.get(), "rate_control", "CQP");
+      SetList(props.get(), settings.get(), "rate_control", config_.obs_duration_priority ? "CBR" : "CQP");
       SetInt(props.get(), settings.get(), "cqp", config_.obs_cq);
       SetList(props.get(), settings.get(), "preset", policy.preset);
       SetList(props.get(), settings.get(), "tune", "hq");
@@ -553,16 +554,28 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
         obs_data_set_bool(settings.get(), "adaptive_quantization", policy.adaptive_quantization);
       if (obs_properties_get(props.get(), "lookahead")) obs_data_set_bool(settings.get(), "lookahead", false);
     } else if (selected == "obs_x264") {
-      SetList(props.get(), settings.get(), "rate_control", "CRF");
+      SetList(props.get(), settings.get(), "rate_control", config_.obs_duration_priority ? "CBR" : "CRF");
       SetInt(props.get(), settings.get(), "crf", config_.obs_cq);
       SetList(props.get(), settings.get(), "preset", performance ? "veryfast" : maximum ? "medium" : "fast");
       SetList(props.get(), settings.get(), "profile", "high");
     } else {
-      SetList(props.get(), settings.get(), "rate_control", "CQP");
+      SetList(props.get(), settings.get(), "rate_control", config_.obs_duration_priority ? "CBR" : "CQP");
       for (const char* key : {"cqp", "qpi", "qpp", "qpb"}) SetInt(props.get(), settings.get(), key, config_.obs_cq);
       SetList(props.get(), settings.get(), "profile", "high");
       if (selected == "h264_texture_amf") SetList(props.get(), settings.get(), "preset", performance ? "speed" : maximum ? "quality" : "balanced");
       else SetList(props.get(), settings.get(), "target_usage", performance ? "TU7" : maximum ? "TU1" : "TU4");
+    }
+    if (config_.obs_duration_priority) {
+      const int bitrate = ObsReplayBitrateKbps(config_);
+      if (!obs_properties_get(props.get(), "bitrate") || bitrate < 1000)
+        throw std::runtime_error("Cannot fit the replay duration into the memory budget. Increase replay memory or shorten the duration.");
+      SetInt(props.get(), settings.get(), "bitrate", bitrate);
+      if (selected == "obs_x264") {
+        obs_data_set_bool(settings.get(), "use_bufsize", true);
+        SetInt(props.get(), settings.get(), "buffer_size", bitrate);
+      }
+      logger_.Info("Replay duration-first: " + std::to_string(bitrate) + " kbps video; memory budget=" +
+                   std::to_string(config_.rolling_buffer_bytes) + " bytes (shared by recording)");
     }
     SetInt(props.get(), settings.get(), "keyint_sec", 2);
     logger_.Info("OBS encoder=" + selected + " settings=" + obs_data_get_json(settings.get()));
@@ -597,7 +610,7 @@ bool ObsEngine::StartReplayBuffer(Error& error) {
   obs_data_set_string(settings.get(), "format", config_.obs_filename_format.c_str());
   obs_data_set_string(settings.get(), "extension", "mkv");
   obs_data_set_bool(settings.get(), "allow_spaces", false);
-  obs_data_set_int(settings.get(), "max_time_sec", static_cast<long long>(config_.clip_duration_seconds));
+  obs_data_set_int(settings.get(), "max_time_sec", ObsReplayRetentionSeconds(config_));
   obs_data_set_int(settings.get(), "max_size_mb", static_cast<long long>(config_.rolling_buffer_bytes / (1024 * 1024)));
   replay_ = obs_output_create("replay_buffer", "Klip replay buffer", settings.get(), nullptr);
   if (!replay_) { error = Error{ErrorComponent::kRollingBuffer, "create OBS replay", "replay_buffer output is unavailable"}; return false; }

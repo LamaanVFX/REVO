@@ -37,7 +37,8 @@ jobs:
         shell: pwsh
         run: |
           $compiler='C:/Program Files (x86)/Inno Setup 6/ISCC.exe'
-          & packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-2 -SourcesDirectory work/release-sources-2.0.0 -InnoSetupCompiler $compiler
+          $version=& packaging/resolve-version.ps1
+          & packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-2 -SourcesDirectory "work/release-sources-$version" -InnoSetupCompiler $compiler
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: Klip-win64-beta-${{ github.run_number }}

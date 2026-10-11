@@ -321,6 +321,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     if (obs_save_shutdown_test) return application.RunSaveShutdownAcceptanceTest();
     if (obs_save_failure_test) return application.RunSaveFailureRecoveryAcceptanceTest();
 #endif
+    if (configured_capture_smoke_test && HasCommandLineFlag(command_line, L"--replay-duration-smoke-test"))
+      return application.RunCaptureAcceptanceTest({},
+          static_cast<std::uint32_t>((config.clip_duration_seconds + 4) * 2),
+          false, {}, false, hotkey_actions_smoke_test, hotkey_input_smoke_test);
     if (hotkey_actions_smoke_test)
       return application.RunCaptureAcceptanceTest({}, 10, false, {}, false, true);
     if (hotkey_input_smoke_test)

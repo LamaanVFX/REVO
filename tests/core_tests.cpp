@@ -21,6 +21,7 @@
 #include "klip/core/video_timeline.h"
 #include "klip/platform/dashboard_activity.h"
 #include "klip/obs/encoder_policy.h"
+#include "klip/obs/replay_policy.h"
 
 namespace {
 
@@ -113,6 +114,25 @@ void TestConfig() {
   CHECK(!capture_limiter.obs_limit_game_capture_fps);
   capture_limiter.obs_limit_game_capture_fps = true;
   CHECK(klip::RequiresMediaPipelineReconfigure(klip::AppConfig{}, capture_limiter));
+  klip::AppConfig replay;
+  CHECK(replay.obs_duration_priority);
+  replay.clip_duration_seconds = 30;
+  CHECK(klip::ObsReplayRetentionSeconds(replay) == 32);
+  CHECK(klip::ObsReplayBitrateKbps(replay) == 35336);
+  replay.obs_separate_audio_tracks = true;
+  CHECK(klip::ObsReplayBitrateKbps(replay) == 34952);
+  replay.rolling_buffer_bytes = 128ULL * 1024 * 1024;
+  CHECK(klip::ObsReplayBitrateKbps(replay) == 23109);
+  replay.clip_duration_seconds = 600;
+  CHECK(klip::ObsReplayBitrateKbps(replay) < 1000);
+  replay.rolling_buffer_seconds = 615;
+#if defined(KLIP_USE_LIBOBS)
+  CHECK(!klip::ValidateConfig(replay).empty());
+#endif
+  replay.obs_duration_priority = false;
+  CHECK(klip::RequiresMediaPipelineReconfigure(klip::AppConfig{}, replay));
+  replay.clip_duration_seconds = 30.1;
+  CHECK(klip::ObsReplayRetentionSeconds(replay) == 33);
 }
 
 void TestPathToUtf8() {
@@ -140,6 +160,8 @@ void TestConfigRoundTrip() {
   saved.obs_replay_enabled = false;
   saved.obs_encoder_id = "obs_nvenc_h264_tex";
   saved.obs_cq = 21;
+  saved.obs_duration_priority = false;
+  saved.obs_replay_bitrate_kbps = 27000;
   saved.obs_display_method = 2;
   saved.obs_limit_game_capture_fps = true;
   saved.obs_filename_format = "klip_%CCYY-%MM-%DD_%hh-%mm-%ss";
@@ -189,6 +211,7 @@ void TestConfigRoundTrip() {
   CHECK(!loaded.obs_replay_enabled);
   CHECK(loaded.obs_encoder_id == saved.obs_encoder_id);
   CHECK(loaded.obs_cq == 21 && loaded.obs_display_method == 2);
+  CHECK(!loaded.obs_duration_priority && loaded.obs_replay_bitrate_kbps == 27000);
   CHECK(loaded.obs_limit_game_capture_fps);
   CHECK(loaded.obs_filename_format == saved.obs_filename_format);
   CHECK(loaded.obs_separate_audio_tracks);
@@ -229,6 +252,19 @@ void TestConfigRoundTrip() {
   CHECK(loaded.hotkeys.record_virtual_key == 0x75);
   CHECK(loaded.hotkeys.toggle_ui_modifiers == saved.hotkeys.toggle_ui_modifiers);
   CHECK(loaded.hotkeys.toggle_ui_virtual_key == 'H');
+
+  // Existing installations have no duration-first fields. They must adopt the
+  // fixed default without discarding their chosen duration or memory budget.
+  {
+    std::ofstream legacy(path);
+    legacy << "clip_duration_seconds=30\nrolling_buffer_bytes=201326592\n";
+  }
+  klip::AppConfig migrated;
+  CHECK(klip::LoadConfig(path, migrated, diagnostic));
+  CHECK(migrated.obs_duration_priority);
+  CHECK(migrated.clip_duration_seconds == 30);
+  CHECK(migrated.rolling_buffer_bytes == 192ULL * 1024 * 1024);
+  CHECK(klip::ObsReplayBitrateKbps(migrated) == 35336);
 
   saved.static_overlay_enabled = false;
   saved.live_overlay_enabled = true;
