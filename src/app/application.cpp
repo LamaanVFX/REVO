@@ -86,7 +86,7 @@ std::optional<AutomaticGameProfile> DetectGameProfile(std::string label) {
   std::transform(label.begin(), label.end(), label.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   if (label.find("javaw.exe") != std::string::npos)
-    return AutomaticGameProfile{"Minecraft", 240, 35'000'000};
+    return AutomaticGameProfile{"Minecraft", 240, 30'000'000};
   static constexpr const char* other_games[] = {
       "minecraft.windows.exe", "fortniteclient-win64-shipping.exe",
       "valorant-win64-shipping.exe", "cs2.exe", "r5apex.exe", "overwatch.exe",
