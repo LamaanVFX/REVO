@@ -63,6 +63,8 @@ $modeSetting=if($Mode -eq 'game'){'game_window'}else{'display'}
   'hotkey_toggle_ui_virtual_key=135') | Set-Content "$root/settings.ini"
 $previousRoot=$env:KLIP_DATA_ROOT
 $previousPath=$env:PATH
+$audioProcesses = @()
+$audioFixtureAvailable = $true
 try {
   $llvm=(Get-ChildItem "$repo/work/validation-tools/llvm" -Directory | Select-Object -First 1).FullName
   $env:PATH="$llvm/bin;$env:PATH"
@@ -76,7 +78,6 @@ try {
     [pscustomobject]@{Name='klip_discord_audio';Frequency=660},
     [pscustomobject]@{Name='klip_music_audio';Frequency=880}
   )
-  $audioProcesses = @()
   foreach($spec in $audioSpecs){
     $audioExe = Join-Path $root ($spec.Name + '.exe')
     & "$llvm/bin/clang++.exe" -std=c++20 -O2 "$PSScriptRoot/audio_loop.cpp" -o $audioExe -lwinmm
@@ -85,8 +86,22 @@ try {
     $audioProcesses += [pscustomobject]@{Name=$spec.Name;Process=$process;Executable=$audioExe}
   }
   Start-Sleep -Milliseconds 1000
-  foreach($audio in $audioProcesses){
-    if($audio.Process.HasExited){throw "Synthetic audio source exited early: $($audio.Name) ($($audio.Process.ExitCode))"}
+  $unavailableEndpoint = @($audioProcesses | Where-Object {
+    $_.Process.HasExited -and $_.Process.ExitCode -eq 2
+  })
+  if($unavailableEndpoint.Count -gt 0){
+    $audioFixtureAvailable = $false
+    Write-Warning "This Windows runner has no audio render endpoint; CI will verify all five named streams and decoded video. The full signal-isolation check runs when an audio endpoint is available."
+    foreach($audio in $audioProcesses){
+      if(-not $audio.Process.HasExited){
+        Stop-Process -Id $audio.Process.Id -Force -ErrorAction SilentlyContinue
+      }
+    }
+    $audioProcesses = @()
+  } else {
+    foreach($audio in $audioProcesses){
+      if($audio.Process.HasExited){throw "Synthetic audio source exited early: $($audio.Name) ($($audio.Process.ExitCode))"}
+    }
   }
   if($Overlay -eq 'live' -and -not $OverlaySourceLate){
     $overlaySource=Start-Process $scene -ArgumentList '40 --fps=60 --overlay-window' -WindowStyle Hidden -RedirectStandardOutput "$root/overlay-source.log" -PassThru
@@ -135,7 +150,11 @@ try {
     if($a.unique_transitions_per_second -lt $minimum -or $a.nonmonotonic_presentation_timestamps -ne 0){throw "Decoded motion failed: $($file.Name), unique=$($a.unique_transitions_per_second)/s"}
     $expectedTracks=5
     if(@($a.streams | Where-Object codec_type -eq audio).Count -ne $expectedTracks){throw "Expected five separate AAC audio tracks in $($file.Name)"}
-    & python "$PSScriptRoot/check-audio-tracks.py" $file.FullName $bin > ($file.FullName+'.audio.json')
+    if($audioFixtureAvailable){
+      & python "$PSScriptRoot/check-audio-tracks.py" $file.FullName $bin > ($file.FullName+'.audio.json')
+    } else {
+      & python "$PSScriptRoot/check-audio-tracks.py" $file.FullName $bin --streams-only > ($file.FullName+'.audio.json')
+    }
     if($LASTEXITCODE){throw "Five-track audio separation or activity test failed: $($file.Name)"}
     if($AvMarkers){
       $offsets=@($a.audio_minus_video_ms)

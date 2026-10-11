@@ -7,8 +7,9 @@ import pathlib
 import subprocess
 import sys
 
-if len(sys.argv) != 3:
-    raise SystemExit("usage: check-audio-tracks.py MEDIA_FILE FFMPEG_BIN")
+if len(sys.argv) not in (3, 4) or (len(sys.argv) == 4 and sys.argv[3] != "--streams-only"):
+    raise SystemExit("usage: check-audio-tracks.py MEDIA_FILE FFMPEG_BIN [--streams-only]")
+streams_only = len(sys.argv) == 4
 media = pathlib.Path(sys.argv[1])
 tools = pathlib.Path(sys.argv[2])
 ffmpeg = str(tools / "ffmpeg.exe")
@@ -31,6 +32,14 @@ for index, (stream, expected_title) in enumerate(zip(audio_streams, expected_tit
             f"audio stream {index} title mismatch: expected {expected_title!r}, "
             f"found {actual_title!r}"
         )
+
+if streams_only:
+    print(json.dumps({
+        "file": str(media), "audio_streams": len(audio_streams),
+        "signal_test": "skipped: Windows runner has no render endpoint",
+        "titles": [s.get("tags", {}).get("title", "") for s in audio_streams],
+    }, indent=2))
+    raise SystemExit(0)
 
 def tone_amplitude(stream_index, frequency):
     raw = subprocess.check_output([
