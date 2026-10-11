@@ -22,12 +22,29 @@ Mp4Muxer::~Mp4Muxer() noexcept { Abort(); }
 
 bool Mp4Muxer::Open(const std::filesystem::path& output_path, const CodecSnapshot& video,
                     const CodecSnapshot* audio, ErrorComponent component, Error& error) {
+  std::vector<CodecSnapshot> tracks;
+  if (audio && audio->parameters) {
+    CodecSnapshot copy;
+    copy.parameters.reset(avcodec_parameters_alloc());
+    if (!copy.parameters || avcodec_parameters_copy(copy.parameters.get(), audio->parameters.get()) < 0) {
+      error = Error{component, "copy audio codec snapshot", "could not copy audio codec parameters"};
+      return false;
+    }
+    copy.time_base = audio->time_base;
+    tracks.push_back(std::move(copy));
+  }
+  return OpenMultiAudio(output_path, video, tracks, component, error);
+}
+
+bool Mp4Muxer::OpenMultiAudio(const std::filesystem::path& output_path,
+                              const CodecSnapshot& video,
+                              const std::vector<CodecSnapshot>& audio, ErrorComponent component,
+                              Error& error) {
   Abort();
   if (!video.parameters) {
-    error = Error{component, "open MP4", "video codec parameters are unavailable"};
+    error = Error{component, "open recording", "video codec parameters are unavailable"};
     return false;
   }
-
   component_ = component;
   output_path_ = output_path;
   temporary_path_ = output_path;
