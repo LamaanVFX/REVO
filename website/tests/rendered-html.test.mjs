@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { access, readFile, stat } from "node:fs/promises";
 import test from "node:test";
+import { createHash } from "node:crypto";
 
 async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -13,7 +14,7 @@ async function render(path = "/") {
   );
 }
 
-test("renders the Klip 2.0 beta landing page", async () => {
+test("renders the Klip 2.0.1 beta landing page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
@@ -21,9 +22,11 @@ test("renders the Klip 2.0 beta landing page", async () => {
   const html = await response.text();
   assert.match(html, /<title>Klip[^<]*Low-latency game clipping<\/title>/i);
   assert.match(html, /low-latency game clipping/i);
-  assert.match(html, /v2\.0\.0/);
+  assert.match(html, /v2\.0\.1/);
   assert.match(html, /public beta/);
-  assert.match(html, /OBS-powered capture engine/);
+  assert.match(html, /OBS-powered capture/);
+  assert.match(html, /duration-first/);
+  assert.match(html, /Linux downloads are not available yet/);
   assert.doesNotMatch(html, /v3\.0\.3/);
   assert.match(html, /https:\/\/github\.com\/andrewkernel\/klip/);
   assert.match(html, /\/api\/download\?artifact=installer/);
@@ -31,29 +34,34 @@ test("renders the Klip 2.0 beta landing page", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
-test("ships both 2.0.0 Windows downloads and checksums", async () => {
+test("ships both 2.0.1 Windows downloads and checksums", async () => {
   const filenames = [
-    "Klip-2.0.0-win64-setup.exe",
-    "Klip-2.0.0-win64-portable.zip",
+    "Klip-2.0.1-win64-setup.exe",
+    "Klip-2.0.1-win64-portable.zip",
     "SHA256SUMS.txt",
   ];
   await Promise.all(filenames.map((name) => access(new URL(`../public/${name}`, import.meta.url))));
 
   const [installer, portable, checksums] = await Promise.all([
-    stat(new URL("../public/Klip-2.0.0-win64-setup.exe", import.meta.url)),
-    stat(new URL("../public/Klip-2.0.0-win64-portable.zip", import.meta.url)),
+    stat(new URL("../public/Klip-2.0.1-win64-setup.exe", import.meta.url)),
+    stat(new URL("../public/Klip-2.0.1-win64-portable.zip", import.meta.url)),
     readFile(new URL("../public/SHA256SUMS.txt", import.meta.url), "utf8"),
   ]);
   assert.ok(installer.size > 8_000_000);
   assert.ok(portable.size > 8_000_000);
-  assert.match(checksums, /Klip-2\.0\.0-win64-setup\.exe/);
-  assert.match(checksums, /Klip-2\.0\.0-win64-portable\.zip/);
+  assert.match(checksums, /Klip-2\.0\.1-win64-setup\.exe/);
+  assert.match(checksums, /Klip-2\.0\.1-win64-portable\.zip/);
+  for (const name of filenames.slice(0, 2)) {
+    const file = await readFile(new URL(`../public/${name}`, import.meta.url));
+    const hash = createHash("sha256").update(file).digest("hex");
+    assert.ok(checksums.includes(`${hash}  ${name}`), `${name}: checksum mismatch`);
+  }
 });
 
-test("download route targets the published 2.0.0 files", async () => {
+test("download route targets the published 2.0.1 files", async () => {
   const route = await readFile(new URL("../app/api/download/route.ts", import.meta.url), "utf8");
-  assert.match(route, /Klip-2\.0\.0-win64-setup\.exe/);
-  assert.match(route, /Klip-2\.0\.0-win64-portable\.zip/);
+  assert.match(route, /Klip-2\.0\.1-win64-setup\.exe/);
+  assert.match(route, /Klip-2\.0\.1-win64-portable\.zip/);
   assert.doesNotMatch(route, /Klip-0\.3\.0/);
 });
 
