@@ -1199,7 +1199,10 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   ImGui::PopStyleColor(2);
   ImGui::PopStyleVar(3);
 
-  const float system_line_y = microphone_y + audio_row_height + 20.0F;
+  // Anchor status below the final mixer row (Spotify), not the microphone row.
+  // The mixer now has four rows; using microphone_y caused the status panel to
+  // overlap Discord and Spotify as the dashboard grew.
+  const float system_line_y = music_y + audio_row_height + 20.0F;
   draw->AddLine({window_min.x + 1.0F, system_line_y}, {window_max.x - 1.0F, system_line_y},
                 kDivider, 1.0F);
   DrawText(draw, label_font, 11.0F, {content.x, system_line_y + 22.0F}, kMutedU32,
