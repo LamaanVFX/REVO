@@ -1,0 +1,21 @@
+name: Linux shared-core verification
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Configure shared core (not a Linux capture application)
+        run: cmake -S . -B build-linux-core -DKLIP_BUILD_APP=OFF -DKLIP_USE_LIBOBS=ON -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build-linux-core --parallel 2
+      - name: Verify shared core including replay-budget policy
+        run: ctest --test-dir build-linux-core --output-on-failure

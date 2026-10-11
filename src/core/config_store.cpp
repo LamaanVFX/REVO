@@ -115,6 +115,8 @@ const char* ScalingName(VideoScalingMode mode) {
 bool AssignValue(AppConfig& config, const std::string& key, const std::string& value) {
   if (key == "obs_replay_enabled") return ParseBool(value, config.obs_replay_enabled);
   if (key == "obs_cq") return ParseInteger(value, config.obs_cq);
+  if (key == "obs_duration_priority") return ParseBool(value, config.obs_duration_priority);
+  if (key == "obs_replay_bitrate_kbps") return ParseInteger(value, config.obs_replay_bitrate_kbps);
   if (key == "obs_display_method") return ParseInteger(value, config.obs_display_method);
   if (key == "obs_limit_game_capture_fps") return ParseBool(value, config.obs_limit_game_capture_fps);
   if (key == "obs_separate_audio_tracks") return ParseBool(value, config.obs_separate_audio_tracks);
@@ -320,6 +322,8 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "obs_replay_enabled=" << (config.obs_replay_enabled ? "true" : "false") << '\n';
   output << "obs_encoder_id=" << std::quoted(config.obs_encoder_id) << '\n';
   output << "obs_cq=" << config.obs_cq << '\n';
+  output << "obs_duration_priority=" << (config.obs_duration_priority ? "true" : "false") << '\n';
+  output << "obs_replay_bitrate_kbps=" << config.obs_replay_bitrate_kbps << '\n';
   output << "obs_display_method=" << config.obs_display_method << '\n';
   output << "obs_limit_game_capture_fps=" << (config.obs_limit_game_capture_fps ? "true" : "false") << '\n';
   output << "obs_filename_format=" << std::quoted(config.obs_filename_format) << '\n';

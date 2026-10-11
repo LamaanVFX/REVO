@@ -15,6 +15,13 @@ param(
   [switch]$StartSourceLate,
   [switch]$SaveOnShutdown,
   [switch]$DestinationLoss,
+  [switch]$ReplayDurationTest,
+  [switch]$ConstantQuality,
+  [switch]$NoiseScene,
+  [ValidateRange(1,64)][int]$NoiseWork=8,
+  [ValidateRange(15,120)][int]$ReplaySeconds=30,
+  [ValidateRange(32,2048)][int]$ReplayMemoryMiB=192,
+  [ValidateSet('obs_nvenc_h264_tex','h264_texture_amf','obs_qsv11_v2','obs_x264')][string]$Encoder='obs_nvenc_h264_tex',
   [ValidateSet('none','static','live')][string]$Overlay='none',
   [ValidateRange(0,1)][double]$OverlayOpacity=0.5,
   [switch]$OverlaySourceLate,
@@ -34,9 +41,10 @@ if($Overlay -eq 'static'){
 }
 $modeSetting=if($Mode -eq 'game'){'game_window'}else{'display'}
 @("capture_mode=$modeSetting",'preferred_game_title="Klip cadence test scene"',
-  $(if($NativeResolution){'output_width=0'}else{'output_width=1920'}),$(if($NativeResolution){'output_height=0'}else{'output_height=1080'}),"target_fps=$Fps",'clip_duration_seconds=15',
-  'rolling_buffer_seconds=30','rolling_buffer_bytes=268435456','desktop_audio_enabled=true',
-  'microphone_enabled=false','obs_encoder_id="obs_nvenc_h264_tex"','obs_cq=18',
+  $(if($NativeResolution){'output_width=0'}else{'output_width=1920'}),$(if($NativeResolution){'output_height=0'}else{'output_height=1080'}),"target_fps=$Fps",$(if($ReplayDurationTest){"clip_duration_seconds=$ReplaySeconds"}else{'clip_duration_seconds=15'}),
+  "rolling_buffer_seconds=$($ReplaySeconds+15)","rolling_buffer_bytes=$([long]$ReplayMemoryMiB*1024*1024)",'desktop_audio_enabled=true',
+  'microphone_enabled=false',"obs_encoder_id=`"$Encoder`"",'obs_cq=18',
+  "obs_duration_priority=$((!$ConstantQuality).ToString().ToLowerInvariant())",
   "encoder_quality=$EncoderQuality","obs_display_method=$DisplayMethod",
   "obs_limit_game_capture_fps=$($LimitGameCapture.IsPresent.ToString().ToLowerInvariant())",
   "obs_separate_audio_tracks=$($SeparateAudioTracks.IsPresent.ToString().ToLowerInvariant())",
@@ -62,7 +70,8 @@ try {
     $overlaySource=Start-Process $scene -ArgumentList '40 --fps=60 --overlay-window' -WindowStyle Hidden -RedirectStandardOutput "$root/overlay-source.log" -PassThru
     Start-Sleep -Milliseconds 500
   }
-  $sourceArgs="40 --fps=$SourceFps" + $(if($AvMarkers){' --av'}else{''})
+  $testSeconds=if($ReplayDurationTest){($ReplaySeconds+4)*2}else{10}
+  $sourceArgs="$($testSeconds+22) --fps=$SourceFps" + $(if($AvMarkers){' --av'}else{''}) + $(if($NoiseScene){" --gpu-work=$NoiseWork --present-interval=0"}else{''})
   if(-not $StartSourceLate){
     $source=Start-Process $scene -ArgumentList $sourceArgs -WindowStyle Hidden -RedirectStandardOutput "$root/source.log" -PassThru
     Start-Sleep -Milliseconds 500
@@ -72,6 +81,7 @@ try {
   $arguments=if($GlobalHotkeys){'--configured-capture-smoke-test --hotkey-input-smoke-test'}else{'--configured-capture-smoke-test'}
   if($SaveOnShutdown){$arguments='--configured-capture-smoke-test --obs-save-shutdown-smoke-test'}
   if($DestinationLoss){$arguments='--configured-capture-smoke-test --obs-save-failure-smoke-test'}
+  if($ReplayDurationTest){$arguments+=' --replay-duration-smoke-test'}
   $capture=Start-Process $exe -WorkingDirectory (Split-Path $exe) -ArgumentList $arguments -WindowStyle Hidden -PassThru
   if($Overlay -eq 'live' -and $OverlaySourceLate){
     Start-Sleep -Seconds 2
@@ -81,7 +91,7 @@ try {
     Start-Sleep -Seconds 3
     $source=Start-Process $scene -ArgumentList $sourceArgs -WindowStyle Hidden -RedirectStandardOutput "$root/source.log" -PassThru
   }
-  if(-not $capture.WaitForExit(45000)){throw "Acceptance exceeded its timeout (PID $($capture.Id))"}
+  if(-not $capture.WaitForExit(($testSeconds+30)*1000)){throw "Acceptance exceeded its timeout (PID $($capture.Id))"}
   Get-Content "$root/klip.log" -Tail 10
   if($capture.ExitCode){throw "OBS acceptance failed: exit=$($capture.ExitCode)"}
   $files=@(Get-ChildItem "$root/Clips","$root/Recordings" -Filter '*.mkv')
@@ -92,6 +102,13 @@ try {
     & python "$PSScriptRoot/analyze-cadence.py" @analysisArgs > ($file.FullName+'.analysis.json')
     if($LASTEXITCODE){throw 'Saved media decode failed'}
     $a=Get-Content ($file.FullName+'.analysis.json') -Raw | ConvertFrom-Json
+    if($ReplayDurationTest -and !$ConstantQuality -and $file.Directory.Name -eq 'Clips'){
+      $probe=& "$bin/ffprobe.exe" -v error -select_streams v:0 -show_entries frame=best_effort_timestamp_time -of csv=p=0 $file.FullName
+      $times=@($probe | ForEach-Object {if($_ -match '^([0-9]+\.[0-9]+)'){[double]::Parse($Matches[1],[Globalization.CultureInfo]::InvariantCulture)}})
+      $span=$times[-1]-$times[0]+1.0/$Fps
+      if($span -lt $ReplaySeconds-0.1 -or $span -gt $ReplaySeconds+2.5){throw "Replay duration failed: $($file.Name) decoded span=$span seconds"}
+      "DURATION $($file.Name): $span seconds"
+    }
     $minimum=$Fps*0.97
     if($a.unique_transitions_per_second -lt $minimum -or $a.nonmonotonic_presentation_timestamps -ne 0){throw "Decoded motion failed: $($file.Name), unique=$($a.unique_transitions_per_second)/s"}
     $expectedTracks=if($SeparateAudioTracks){3}else{1}

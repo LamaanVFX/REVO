@@ -1,7 +1,7 @@
 param([string]$Destination='')
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-if(-not $Destination){$Destination=Join-Path $repo 'work/release-sources-2.0.0'}
+if(-not $Destination){$version=& "$PSScriptRoot/resolve-version.ps1"; $Destination=Join-Path $repo "work/release-sources-$version"}
 New-Item -ItemType Directory -Force $Destination | Out-Null
 $Destination=(Resolve-Path $Destination).Path
 $recipes=Join-Path $repo 'work/obs-deps-2025-08-23'

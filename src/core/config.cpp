@@ -5,6 +5,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <utility>
+#include "klip/obs/replay_policy.h"
 
 namespace klip {
 namespace {
@@ -25,6 +26,8 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   std::vector<ValidationIssue> issues;
   if (config.obs_cq < 1 || config.obs_cq > 51)
     issues.push_back({"obs_cq", "must be between 1 and 51"});
+  if (config.obs_replay_bitrate_kbps < 1000 || config.obs_replay_bitrate_kbps > 60000)
+    issues.push_back({"obs_replay_bitrate_kbps", "must be between 1000 and 60000"});
   if (config.obs_display_method < 0 || config.obs_display_method > 2)
     issues.push_back({"obs_display_method", "must be an OBS display capture method (0-2)"});
   if (config.obs_encoder_id.empty()) issues.push_back({"obs_encoder_id", "must not be empty"});
@@ -36,7 +39,7 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
     issues.push_back({std::move(field), std::move(message)});
   };
 
-  if (config.clip_duration_seconds <= 0.0 || config.clip_duration_seconds > 600.0) {
+  if (!std::isfinite(config.clip_duration_seconds) || config.clip_duration_seconds <= 0.0 || config.clip_duration_seconds > 600.0) {
     reject("clip_duration_seconds", "must be in (0, 600]");
   }
   if (config.target_fps != 30 && config.target_fps != 60 && config.target_fps != 120) {
@@ -110,6 +113,12 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (config.rolling_buffer_bytes < 1024 * 1024) {
     reject("rolling_buffer_bytes", "must be at least one MiB");
   }
+#if defined(KLIP_USE_LIBOBS)
+  if (config.obs_duration_priority && std::isfinite(config.clip_duration_seconds) &&
+      config.clip_duration_seconds > 0 && config.clip_duration_seconds <= 600 &&
+      ObsReplayBitrateKbps(config) < 1000)
+    reject("rolling_buffer_bytes", "increase replay memory or shorten the duration (at least 1 Mbps video required)");
+#endif
   if (config.encoder_preferences.empty()) {
     reject("encoder_preferences", "must contain at least one encoder");
   }
@@ -228,6 +237,8 @@ bool RequiresMediaPipelineReconfigure(const AppConfig& current, const AppConfig&
   return current.obs_replay_enabled != updated.obs_replay_enabled ||
          current.obs_encoder_id != updated.obs_encoder_id ||
          current.obs_cq != updated.obs_cq ||
+         current.obs_duration_priority != updated.obs_duration_priority ||
+         current.obs_replay_bitrate_kbps != updated.obs_replay_bitrate_kbps ||
          current.obs_display_method != updated.obs_display_method ||
          current.obs_limit_game_capture_fps != updated.obs_limit_game_capture_fps ||
          current.obs_filename_format != updated.obs_filename_format ||

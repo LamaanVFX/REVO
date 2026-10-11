@@ -46,6 +46,8 @@ struct AppConfig {
   bool obs_replay_enabled = true;
   std::string obs_encoder_id = "auto";
   int obs_cq = 18;
+  bool obs_duration_priority = true;
+  int obs_replay_bitrate_kbps = 40000;
   std::string obs_filename_format = "clip_%CCYY-%MM-%DD_%hh-%mm-%ss";
   bool obs_separate_audio_tracks = false;
   int obs_display_method = 0; // OBS monitor_capture: auto=0, DXGI=1, WGC=2.
