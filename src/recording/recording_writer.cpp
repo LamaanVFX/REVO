@@ -23,15 +23,23 @@ bool RecordingWriter::Initialize(AppConfig config, SnapshotProvider video, Snaps
   config_ = std::move(config);
   video_snapshot_ = std::move(video);
   audio_snapshot_ = std::move(audio);
+  audio_tracks_snapshot_ = {};
   std::error_code directory_error;
   std::filesystem::create_directories(config_.recording_directory, directory_error);
   if (directory_error) {
     error = Error{ErrorComponent::kRecordingWriter, "create recording directory",
-                  directory_error.message(),        directory_error.value(),
-                  directory_error.message(),        PathToUtf8(config_.recording_directory)};
+                  directory_error.message(), directory_error.value(),
+                  directory_error.message(), PathToUtf8(config_.recording_directory)};
     return false;
   }
   initialized_.store(true, std::memory_order_release);
+  return true;
+}
+
+bool RecordingWriter::InitializeWithAudioTracks(AppConfig config, SnapshotProvider video,
+                                                 AudioTracksSnapshotProvider audio, Error& error) {
+  if (!Initialize(std::move(config), std::move(video), {}, error)) return false;
+  audio_tracks_snapshot_ = std::move(audio);
   return true;
 }
 
@@ -40,6 +48,7 @@ void RecordingWriter::Shutdown() noexcept {
   initialized_.store(false, std::memory_order_release);
   video_snapshot_ = {};
   audio_snapshot_ = {};
+  audio_tracks_snapshot_ = {};
 }
 
 bool RecordingWriter::StartRecording(Error& error) {
@@ -52,13 +61,18 @@ bool RecordingWriter::StartRecording(Error& error) {
   if (worker_.joinable()) worker_ = {};
 
   CodecSnapshot video;
-  CodecSnapshot audio;
+  std::vector<CodecSnapshot> audio_tracks;
   if (!video_snapshot_ || !video_snapshot_(video)) {
     error = Error{ErrorComponent::kRecordingWriter, "snapshot video codec",
                   "capture is still warming up; try recording again in a moment"};
     return false;
   }
-  const bool has_audio = audio_snapshot_ && audio_snapshot_(audio);
+  if (audio_tracks_snapshot_) {
+    if (!audio_tracks_snapshot_(audio_tracks)) audio_tracks.clear();
+  } else if (audio_snapshot_) {
+    CodecSnapshot audio;
+    if (audio_snapshot_(audio)) audio_tracks.push_back(std::move(audio));
+  }
 
   std::scoped_lock lock(control_mutex_);
   if (recording_.load(std::memory_order_acquire)) return true;
@@ -78,9 +92,8 @@ bool RecordingWriter::StartRecording(Error& error) {
   auto queue = active_queue_;
   auto path = active_path_;
   worker_ = std::jthread([this, queue = std::move(queue), path = std::move(path),
-                          video = std::move(video), audio = std::move(audio),
-                          has_audio](std::stop_token) mutable {
-    Worker(std::move(queue), std::move(path), std::move(video), std::move(audio), has_audio);
+                          video = std::move(video), audio_tracks = std::move(audio_tracks)](std::stop_token) mutable {
+    Worker(std::move(queue), std::move(path), std::move(video), std::move(audio_tracks));
   });
   return true;
 }
@@ -137,14 +150,15 @@ void RecordingWriter::StopRecording() noexcept {
 
 void RecordingWriter::Publish(const AVPacket* packet, StreamKind kind, AVRational time_base,
                               std::uint64_t video_packets_routed,
-                              std::uint64_t audio_packets_routed) noexcept {
+                              std::uint64_t audio_packets_routed,
+                              std::uint8_t audio_track) noexcept {
   if (packet == nullptr || !recording_.load(std::memory_order_acquire)) return;
   PacketPtr clone(av_packet_clone(packet));
   bool drain_complete = false;
   {
     std::scoped_lock lock(control_mutex_);
     if (!recording_.load(std::memory_order_acquire) || !active_queue_) return;
-    if (!clone || !active_queue_->TryPush(EncodedPacket{std::move(clone), kind, time_base})) {
+    if (!clone || !active_queue_->TryPush(EncodedPacket{std::move(clone), kind, time_base, audio_track})) {
       // Dropping compressed reference pictures and continuing corrupts subsequent
       // pictures. Drain only the accepted prefix; replay capture remains independent.
       dropped_packets_.fetch_add(1, std::memory_order_relaxed);
@@ -220,14 +234,15 @@ void RecordingWriter::Tick() {
 }
 
 void RecordingWriter::Worker(std::shared_ptr<PacketQueue> queue, std::filesystem::path output_path,
-                             CodecSnapshot video, CodecSnapshot audio, bool has_audio) noexcept {
+                             CodecSnapshot video,
+                             std::vector<CodecSnapshot> audio_tracks) noexcept {
   try {
     // Background mode also lowers I/O priority, which can starve a live writer.
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
     Mp4Muxer muxer;
     Error error;
-    if (!muxer.Open(output_path, video, has_audio ? &audio : nullptr,
-                    ErrorComponent::kRecordingWriter, error)) {
+    if (!muxer.OpenMultiAudio(output_path, video, audio_tracks,
+                              ErrorComponent::kRecordingWriter, error)) {
       recording_.store(false, std::memory_order_release);
       finalizing_.store(false, std::memory_order_release);
       state_.SetError(error);
