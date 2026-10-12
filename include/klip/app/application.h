@@ -79,7 +79,6 @@ class KlipApplication {
 
   AppConfig config_;
   std::filesystem::path settings_path_;
-  std::filesystem::path last_notified_clip_;
   ApplicationState state_;
   Logger logger_;
 #if defined(KLIP_USE_LIBOBS)
