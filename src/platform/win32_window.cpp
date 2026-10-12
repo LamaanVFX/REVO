@@ -18,6 +18,11 @@ namespace klip {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"KlipWindowClass";
+constexpr wchar_t kToastWindowClass[] = L"KlipStatusToastClass";
+constexpr UINT_PTR kToastTimer = 1;
+constexpr int kToastWidth = 320;
+constexpr int kToastHeight = 64;
+constexpr int kToastMargin = 18;
 
 struct LogoPoint {
   float x;
@@ -184,6 +189,22 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
     UnregisterClassW(kWindowClass, instance_);
     return false;
   }
+  WNDCLASSEXW toast_class{};
+  toast_class.cbSize = sizeof(toast_class);
+  toast_class.style = CS_DROPSHADOW;
+  toast_class.lpfnWndProc = ToastWindowProc;
+  toast_class.hInstance = instance_;
+  toast_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+  toast_class.lpszClassName = kToastWindowClass;
+  toast_class_registered_ = RegisterClassExW(&toast_class) != 0;
+  if (toast_class_registered_) {
+    toast_window_ = CreateWindowExW(
+        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
+        kToastWindowClass, L"Klip status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
+        nullptr, nullptr, instance_, this);
+    if (toast_window_)
+      SetLayeredWindowAttributes(toast_window_, 0, 248, LWA_ALPHA);
+  }
   ApplyDarkWindowChrome(window_);
   SendMessageW(window_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large_icon_));
   SendMessageW(window_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon_));
@@ -213,6 +234,14 @@ void Win32Window::UpdateTray(bool add) noexcept {
 
 void Win32Window::Destroy() noexcept {
   if (tray_added_) UpdateTray(false);
+  if (toast_window_ != nullptr) {
+    if (IsWindow(toast_window_)) DestroyWindow(toast_window_);
+    toast_window_ = nullptr;
+  }
+  if (toast_class_registered_ && instance_ != nullptr) {
+    UnregisterClassW(kToastWindowClass, instance_);
+    toast_class_registered_ = false;
+  }
   if (window_ != nullptr) {
     if (IsWindow(window_)) {
       SetWindowLongPtrW(window_, GWLP_USERDATA, 0);
@@ -254,6 +283,33 @@ void Win32Window::SetHotkeyCallback(HotkeyCallback callback) {
   hotkey_callback_ = std::move(callback);
 }
 
+void Win32Window::ShowToast(const std::wstring& message) {
+  if (message.empty() || !toast_window_ || !IsWindow(toast_window_)) return;
+  toast_text_ = message;
+
+  POINT cursor{};
+  GetCursorPos(&cursor);
+  const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+  MONITORINFO info{};
+  info.cbSize = sizeof(info);
+  RECT work{};
+  if (GetMonitorInfoW(monitor, &info)) work = info.rcWork;
+  else {
+    work.right = GetSystemMetrics(SM_CXSCREEN);
+    work.bottom = GetSystemMetrics(SM_CYSCREEN);
+  }
+
+  const int x = std::max(work.left + kToastMargin,
+                         work.right - kToastWidth - kToastMargin);
+  const int y = work.top + kToastMargin;
+  KillTimer(toast_window_, kToastTimer);
+  SetWindowPos(toast_window_, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
+               SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  SetTimer(toast_window_, kToastTimer, 3000, nullptr);
+  InvalidateRect(toast_window_, nullptr, TRUE);
+  UpdateWindow(toast_window_);
+}
+
 bool Win32Window::TakeResize(UINT& width, UINT& height) {
   if (pending_width_ == 0 || pending_height_ == 0) return false;
   width = std::exchange(pending_width_, 0);
@@ -276,6 +332,68 @@ LRESULT CALLBACK Win32Window::WindowProc(HWND window, UINT message, WPARAM w_par
     return 1;
   return self != nullptr ? self->HandleMessage(message, w_param, l_param)
                          : DefWindowProcW(window, message, w_param, l_param);
+}
+
+LRESULT CALLBACK Win32Window::ToastWindowProc(HWND window, UINT message,
+                                                            WPARAM w_param, LPARAM l_param) {
+  auto* self = reinterpret_cast<Win32Window*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+  if (message == WM_NCCREATE) {
+    const auto* create = reinterpret_cast<const CREATESTRUCTW*>(l_param);
+    self = static_cast<Win32Window*>(create->lpCreateParams);
+    SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
+  }
+  switch (message) {
+    case WM_MOUSEACTIVATE:
+      return MA_NOACTIVATE;
+    case WM_NCHITTEST:
+      return HTTRANSPARENT;  // Never steal clicks from the game or desktop.
+    case WM_ERASEBKGND:
+      return 1;
+    case WM_TIMER:
+      if (w_param == kToastTimer) {
+        KillTimer(window, kToastTimer);
+        ShowWindow(window, SW_HIDE);
+        return 0;
+      }
+      break;
+    case WM_PAINT: {
+      PAINTSTRUCT paint{};
+      HDC dc = BeginPaint(window, &paint);
+      RECT client{};
+      GetClientRect(window, &client);
+      HBRUSH background = CreateSolidBrush(RGB(26, 22, 35));
+      HPEN outline = CreatePen(PS_SOLID, 1, RGB(100, 67, 145));
+      HGDIOBJ old_brush = SelectObject(dc, background);
+      HGDIOBJ old_pen = SelectObject(dc, outline);
+      RoundRect(dc, client.left, client.top, client.right, client.bottom, 16, 16);
+      SelectObject(dc, old_brush);
+      SelectObject(dc, old_pen);
+      DeleteObject(background);
+      DeleteObject(outline);
+
+      SetBkMode(dc, TRANSPARENT);
+      SetTextColor(dc, RGB(246, 242, 255));
+      HFONT font = CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+                               DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                               CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+      HGDIOBJ old_font = font ? SelectObject(dc, font) : nullptr;
+      if (self) {
+        RECT text_rect = client;
+        text_rect.left += 12;
+        text_rect.right -= 12;
+        DrawTextW(dc, self->toast_text_.c_str(), -1, &text_rect,
+                  DT_SINGLELINE | DT_CENTER | DT_VCENTER | DT_END_ELLIPSIS);
+      }
+      if (old_font) SelectObject(dc, old_font);
+      if (font) DeleteObject(font);
+      EndPaint(window, &paint);
+      return 0;
+    }
+    case WM_DESTROY:
+      KillTimer(window, kToastTimer);
+      return 0;
+  }
+  return DefWindowProcW(window, message, w_param, l_param);
 }
 
 LRESULT Win32Window::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param) {
