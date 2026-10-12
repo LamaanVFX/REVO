@@ -150,37 +150,70 @@ void TestHotkeyWindowDispatch() {
   CHECK(window.Create(GetModuleHandleW(nullptr), SW_HIDE, error));
   if (window.Handle() == nullptr) return;
 
-  // The status notification stays on the primary monitor, remains topmost
-  // while visible, and never requires the main Klip window to be shown.
+  // A popup should be visible in the top-right of every connected display,
+  // even while the main Klip window is hidden.
+  std::vector<RECT> monitor_areas;
+  EnumDisplayMonitors(
+      nullptr, nullptr,
+      [](HMONITOR monitor, HDC, LPRECT, LPARAM parameter) -> BOOL {
+        auto& areas = *reinterpret_cast<std::vector<RECT>*>(parameter);
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(monitor, &info)) areas.push_back(info.rcWork);
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&monitor_areas));
+  CHECK(!monitor_areas.empty());
+
   window.ShowToast(L"CLIP SAVED");
-  HWND toast = FindWindowW(L"KlipStatusToastClass", L"Klip status");
-  CHECK(toast != nullptr);
-  if (toast) {
+  std::vector<HWND> toasts;
+  EnumWindows(
+      [](HWND candidate, LPARAM parameter) -> BOOL {
+        if (!IsWindowVisible(candidate)) return TRUE;
+        wchar_t class_name[128]{};
+        GetClassNameW(candidate, class_name, 128);
+        if (lstrcmpW(class_name, L"KlipStatusToastClass") == 0)
+          reinterpret_cast<std::vector<HWND>*>(parameter)->push_back(candidate);
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&toasts));
+  CHECK(toasts.size() == monitor_areas.size());
+
+  std::vector<bool> monitor_has_toast(monitor_areas.size(), false);
+  HWND toast_to_demote = nullptr;
+  for (const HWND toast : toasts) {
     CHECK(IsWindowVisible(toast));
     CHECK((GetWindowLongPtrW(toast, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
-    RECT toast_rect{}, primary_work{};
-    MONITORINFO primary_info{};
-    primary_info.cbSize = sizeof(primary_info);
-    const auto primary = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
-    if (GetMonitorInfoW(primary, &primary_info)) {
-      primary_work = primary_info.rcWork;
-      CHECK(GetWindowRect(toast, &toast_rect));
-      CHECK(toast_rect.left >= primary_work.left);
-      CHECK(toast_rect.right <= primary_work.right);
-      CHECK(toast_rect.top >= primary_work.top && toast_rect.top < primary_work.top + 40);
-      CHECK(toast_rect.right > primary_work.right - 380);
-    } else {
-      CHECK(false);
+    RECT toast_rect{};
+    CHECK(GetWindowRect(toast, &toast_rect));
+    bool positioned_on_monitor = false;
+    for (std::size_t index = 0; index < monitor_areas.size(); ++index) {
+      const RECT& work = monitor_areas[index];
+      const bool in_top_right = toast_rect.left >= work.left &&
+                                toast_rect.right <= work.right &&
+                                toast_rect.top >= work.top &&
+                                toast_rect.top < work.top + 40 &&
+                                toast_rect.right > work.right - 380;
+      if (in_top_right) {
+        CHECK(!monitor_has_toast[index]);
+        monitor_has_toast[index] = true;
+        positioned_on_monitor = true;
+      }
     }
+    CHECK(positioned_on_monitor);
+    if (!toast_to_demote) toast_to_demote = toast;
+  }
+  for (const bool has_toast : monitor_has_toast) CHECK(has_toast);
 
-    // Simulate another app pushing the popup out of the topmost band; the next
-    // keep-topmost tick must reassert HWND_TOPMOST without activating the popup.
-    CHECK(SetWindowPos(toast, HWND_NOTOPMOST, 0, 0, 0, 0,
+  // Simulate another app pushing a popup out of the topmost band; the next
+  // refresh must restore its topmost Z-order without activating it.
+  if (toast_to_demote) {
+    CHECK(SetWindowPos(toast_to_demote, HWND_NOTOPMOST, 0, 0, 0, 0,
                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE));
-    CHECK((GetWindowLongPtrW(toast, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0);
-    CHECK(PostMessageW(toast, WM_TIMER, 2, 0));
+    CHECK((GetWindowLongPtrW(toast_to_demote, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0);
+    CHECK(PostMessageW(toast_to_demote, WM_TIMER, 2, 0));
     CHECK(window.PumpMessages());
-    CHECK((GetWindowLongPtrW(toast, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+    CHECK((GetWindowLongPtrW(toast_to_demote, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
   }
 
   int save_clip_calls = 0;
