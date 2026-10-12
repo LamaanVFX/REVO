@@ -24,6 +24,14 @@ constexpr int kToastWidth = 320;
 constexpr int kToastHeight = 64;
 constexpr int kToastMargin = 18;
 
+BOOL CALLBACK CollectMonitorWorkArea(HMONITOR monitor, HDC, LPRECT, LPARAM parameter) {
+  auto& work_areas = *reinterpret_cast<std::vector<RECT>*>(parameter);
+  MONITORINFO info{};
+  info.cbSize = sizeof(info);
+  if (GetMonitorInfoW(monitor, &info)) work_areas.push_back(info.rcWork);
+  return TRUE;
+}
+
 struct LogoPoint {
   float x;
   float y;
@@ -189,7 +197,7 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
     UnregisterClassW(kWindowClass, instance_);
     return false;
   }
-  EnsureToastWindow();
+  EnsureToastClass();
   ApplyDarkWindowChrome(window_);
   SendMessageW(window_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large_icon_));
   SendMessageW(window_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon_));
@@ -219,10 +227,10 @@ void Win32Window::UpdateTray(bool add) noexcept {
 
 void Win32Window::Destroy() noexcept {
   if (tray_added_) UpdateTray(false);
-  if (toast_window_ != nullptr) {
-    if (IsWindow(toast_window_)) DestroyWindow(toast_window_);
-    toast_window_ = nullptr;
+  for (const HWND toast : toast_windows_) {
+    if (toast && IsWindow(toast)) DestroyWindow(toast);
   }
+  toast_windows_.clear();
   if (toast_class_registered_ && instance_ != nullptr) {
     UnregisterClassW(kToastWindowClass, instance_);
     toast_class_registered_ = false;
@@ -268,66 +276,79 @@ void Win32Window::SetHotkeyCallback(HotkeyCallback callback) {
   hotkey_callback_ = std::move(callback);
 }
 
-bool Win32Window::EnsureToastWindow() {
-  if (toast_window_ && IsWindow(toast_window_)) return true;
+bool Win32Window::EnsureToastClass() {
+  if (toast_class_registered_) return true;
   if (!instance_) return false;
 
-  if (!toast_class_registered_) {
-    WNDCLASSEXW toast_class{};
-    toast_class.cbSize = sizeof(toast_class);
-    toast_class.lpfnWndProc = ToastWindowProc;
-    toast_class.hInstance = instance_;
-    toast_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-    toast_class.lpszClassName = kToastWindowClass;
-    if (!RegisterClassExW(&toast_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
-      OutputDebugStringW(L"[Klip] Could not register toast window class.\n");
-      return false;
-    }
-    toast_class_registered_ = true;
-  }
-
-  toast_window_ = CreateWindowExW(
-      WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
-      kToastWindowClass, L"Klip status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
-      nullptr, nullptr, instance_, this);
-  if (!toast_window_) {
-    OutputDebugStringW(L"[Klip] Could not create toast popup window.\n");
+  WNDCLASSEXW toast_class{};
+  toast_class.cbSize = sizeof(toast_class);
+  toast_class.lpfnWndProc = ToastWindowProc;
+  toast_class.hInstance = instance_;
+  toast_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+  toast_class.lpszClassName = kToastWindowClass;
+  if (!RegisterClassExW(&toast_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+    OutputDebugStringW(L"[Klip] Could not register toast window class.\\n");
     return false;
   }
-  if (!SetLayeredWindowAttributes(toast_window_, 0, 224, LWA_ALPHA)) {
-    OutputDebugStringW(L"[Klip] Could not configure toast transparency.\n");
-  }
+  toast_class_registered_ = true;
   return true;
 }
 
 void Win32Window::ShowToast(const std::wstring& message) {
-  if (message.empty() || !EnsureToastWindow()) return;
+  if (message.empty() || !EnsureToastClass()) return;
   toast_text_ = message;
 
-  // Always use the Windows primary display, regardless of the cursor, Klip's
-  // current window position, or which display is capturing.
-  const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
-  MONITORINFO info{};
-  info.cbSize = sizeof(info);
-  RECT work{0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
-  if (GetMonitorInfoW(monitor, &info)) work = info.rcWork;
-
-  const int x = std::max(work.left + kToastMargin,
-                         work.right - kToastWidth - kToastMargin);
-  const int y = work.top + kToastMargin;
-  KillTimer(toast_window_, kToastTimer);
-  if (!SetWindowPos(toast_window_, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
-                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER)) {
-    OutputDebugStringW(L"[Klip] Could not place topmost toast popup.\n");
-    return;
+  // Create a separate, unowned topmost popup on each connected monitor. This is
+  // useful when a borderless-fullscreen game prevents a popup on its own display
+  // from being visible: the matching notification remains visible on the other display.
+  std::vector<RECT> work_areas;
+  EnumDisplayMonitors(nullptr, nullptr, CollectMonitorWorkArea,
+                      reinterpret_cast<LPARAM>(&work_areas));
+  if (work_areas.empty()) {
+    RECT fallback{0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+    work_areas.push_back(fallback);
   }
-  ShowWindow(toast_window_, SW_SHOWNOACTIVATE);
-  SetWindowPos(toast_window_, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
-               SWP_NOACTIVATE | SWP_NOOWNERZORDER);
-  if (!SetTimer(toast_window_, kToastTimer, 3000, nullptr))
-    OutputDebugStringW(L"[Klip] Could not start toast dismissal timer.\n");
-  RedrawWindow(toast_window_, nullptr, nullptr,
-               RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+
+  while (toast_windows_.size() > work_areas.size()) {
+    const HWND obsolete = toast_windows_.back();
+    toast_windows_.pop_back();
+    if (obsolete && IsWindow(obsolete)) DestroyWindow(obsolete);
+  }
+  while (toast_windows_.size() < work_areas.size()) toast_windows_.push_back(nullptr);
+
+  for (std::size_t index = 0; index < work_areas.size(); ++index) {
+    HWND& toast = toast_windows_[index];
+    if (!toast || !IsWindow(toast)) {
+      toast = CreateWindowExW(
+          WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
+          kToastWindowClass, L"Klip status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
+          nullptr, nullptr, instance_, this);
+      if (!toast) {
+        OutputDebugStringW(L"[Klip] Could not create a monitor toast popup.\\n");
+        continue;
+      }
+      if (!SetLayeredWindowAttributes(toast, 0, 224, LWA_ALPHA))
+        OutputDebugStringW(L"[Klip] Could not configure toast transparency.\\n");
+    }
+
+    const RECT& work = work_areas[index];
+    const int x = std::max(work.left + kToastMargin,
+                           work.right - kToastWidth - kToastMargin);
+    const int y = work.top + kToastMargin;
+    KillTimer(toast, kToastTimer);
+    if (!SetWindowPos(toast, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
+                      SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER)) {
+      OutputDebugStringW(L"[Klip] Could not place topmost toast popup.\\n");
+      continue;
+    }
+    ShowWindow(toast, SW_SHOWNOACTIVATE);
+    SetWindowPos(toast, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
+                 SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+    if (!SetTimer(toast, kToastTimer, 3000, nullptr))
+      OutputDebugStringW(L"[Klip] Could not start toast dismissal timer.\\n");
+    RedrawWindow(toast, nullptr, nullptr,
+                 RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
+  }
 }
 
 bool Win32Window::TakeResize(UINT& width, UINT& height) {
