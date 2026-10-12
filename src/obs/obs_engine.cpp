@@ -22,6 +22,7 @@
 
 #include "klip/core/path_text.h"
 #include "klip/obs/encoder_policy.h"
+#include "klip/obs/gdi_monitor_capture.h"
 #include "klip/obs/replay_policy.h"
 
 namespace klip {
@@ -130,11 +131,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   Shutdown();
   config_ = config;
   config_.obs_separate_audio_tracks = true;
-  // Display capture must not silently select DXGI: this build defaults to
-  // Windows Graphics Capture, and a failed WGC session is reported rather than
-  // switching to a different backend behind the user's back.
-  if (config_.target_mode == CaptureTargetMode::kDisplay)
-    config_.obs_display_method = 2;
+  // Display capture is provided by Klip's GDI/BitBlt source to avoid the WGC border.
   // Start with the non-Minecraft profile; detection upgrades to Minecraft's
   // 240 FPS / 35 Mbps profile if javaw.exe is running.
   config_.target_fps = 60;
@@ -232,6 +229,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
         throw std::runtime_error(std::string("Required OBS module failed: ") + name);
     }
     obs_post_load_modules();
+    RegisterGdiMonitorCapture();
     scene_ = obs_scene_create_private("Klip capture graph");
     if (!scene_) throw std::runtime_error("Could not create internal OBS scene");
     obs_set_output_source(0, obs_scene_get_source(scene_));
@@ -242,7 +240,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     if (!ConfigureOverlay(error)) { Shutdown(); return false; }
 
     native_resolution_pending_ = !config.output_width || !config.output_height;
-    ConfigureAudio(config);
+    ConfigureAudio(config_);
     if (!ConfigureEncoder(error) || !StartReplayBuffer(error)) { Shutdown(); return false; }
     logger_.Info("LIBOBS ENGINE READY version=" + std::string(obs_get_version_string()) +
                  " resolution=" + std::to_string(video.output_width) + "x" + std::to_string(video.output_height) +
@@ -336,17 +334,11 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     return false;
   }
   auto settings = MakeData();
-  const char* type = mode == CaptureTargetMode::kDisplay ? "monitor_capture" : "game_capture";
-  if (mode == CaptureTargetMode::kDisplay) {
+  const bool display_capture = mode == CaptureTargetMode::kDisplay;
+  const char* type = display_capture ? "klip_gdi_monitor_capture" : "game_capture";
+  if (display_capture) {
     if (!selected) { error = Error{ErrorComponent::kCapture, "select display", "OBS found no displays"}; return false; }
     obs_data_set_string(settings.get(), "monitor_id", selected->value.c_str());
-    Properties properties(obs_get_source_properties(type), obs_properties_destroy);
-    auto* method = properties ? obs_properties_get(properties.get(), "method") : nullptr;
-    bool supported = false;
-    if (method) for (std::size_t i = 0; i < obs_property_list_item_count(method); ++i)
-      if (!obs_property_list_item_disabled(method, i) && obs_property_list_item_int(method, i) == config_.obs_display_method) supported = true;
-    if (!supported) { error = Error{ErrorComponent::kCapture, "select display method", "The selected OBS display method is unsupported"}; return false; }
-    obs_data_set_int(settings.get(), "method", config_.obs_display_method);
     obs_data_set_bool(settings.get(), "capture_cursor", config_.capture_cursor);
   } else {
     pending_game_label_ = !selected && !label.empty() ? label : "";
@@ -359,7 +351,7 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     obs_data_set_bool(settings.get(), "capture_audio", false); // Desktop audio is captured once.
     obs_data_set_bool(settings.get(), "anti_cheat_hook", true); // Official OBS compatibility mode only.
   }
-  auto* next = obs_source_create(type, "Klip gameplay", settings.get(), nullptr);
+  auto* next = obs_source_create(type, display_capture ? "Klip display (GDI)" : "Klip gameplay", settings.get(), nullptr);
   if (!next) { error = Error{ErrorComponent::kCapture, "create OBS source", std::string(type) + " creation failed"}; return false; }
   if (capture_item_) obs_sceneitem_remove(capture_item_);
   if (capture_) obs_source_release(capture_);
@@ -510,10 +502,16 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     const Error error{ErrorComponent::kAudio, "select microphone", "The configured microphone is disconnected. Choose an available device.", {}, {}, config.preferred_microphone_name};
     state_.SetError(error); logger_.ErrorMessage(error);
   }
+  // WASAPI endpoint loopback captures the complete default Windows output mix
+  // (browser, games, media players, notification sounds, etc.). It is deliberately
+  // independent of the game/Discord/Spotify process selectors below.
   configure(desktop_audio_, desktop_audio_meter_, desktop_audio_level_,
             config.obs_separate_audio_tracks && config.desktop_audio_enabled,
             "wasapi_output_capture", "Klip desktop audio", 5, "default",
             static_cast<float>(config.desktop_audio_gain), 1U);
+  if (config.obs_separate_audio_tracks && config.desktop_audio_enabled && desktop_audio_) {
+    logger_.Info("Desktop audio captures the default Windows render endpoint (all system output)");
+  }
   const auto configure_process = [&](obs_source_t*& source, const char* name, const std::string& window,
                                      std::uint32_t channel, std::uint32_t dedicated_mix) {
     if (window.empty()) {
@@ -556,18 +554,19 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     obs_source_set_audio_mixers(source, config.obs_separate_audio_tracks ? dedicated_mix : 1U);
     const float gain = std::string_view(name) == "Klip Discord audio"
                            ? static_cast<float>(config.discord_audio_gain)
-                           : std::string_view(name) == "Klip music audio"
+                           : std::string_view(name) == "Klip Spotify audio"
                                  ? static_cast<float>(config.music_audio_gain)
                                  : static_cast<float>(config.game_audio_gain);
     obs_source_set_volume(source, gain);
     obs_set_output_source(channel, source);
   };
-  configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 1);
+  configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 2);
   configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available,
             "wasapi_input_capture", "Klip microphone", 2, device,
-            static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? (1U << 2) : 1U);
+            static_cast<float>(config.microphone_audio_gain),
+            config.obs_separate_audio_tracks ? (1U | (1U << 1)) : 1U);
   configure_process(discord_audio_, "Klip Discord audio", config.discord_audio_window, 3, 1U << 3);
-  configure_process(music_audio_, "Klip music audio", config.music_audio_window, 4, 1U << 4);
+  configure_process(music_audio_, "Klip Spotify audio", config.music_audio_window, 4, 1U << 4);
   config_.desktop_audio_enabled = config.desktop_audio_enabled;
   config_.microphone_enabled = config.microphone_enabled;
   config_.preferred_microphone_name = config.preferred_microphone_name;
@@ -678,14 +677,14 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     if (!audio_encoder_) throw std::runtime_error("OBS AAC encoder creation failed");
     obs_encoder_set_audio(audio_encoder_, obs_get_audio());
     if (config_.obs_separate_audio_tracks) {
-      game_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip game AAC", audio.get(), 1, nullptr);
-      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip microphone AAC", audio.get(), 2, nullptr);
+      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip microphone AAC", audio.get(), 1, nullptr);
+      game_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip game AAC", audio.get(), 2, nullptr);
       discord_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip Discord AAC", audio.get(), 3, nullptr);
-      music_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip music AAC", audio.get(), 4, nullptr);
-      if (!game_encoder_ || !microphone_encoder_ || !discord_encoder_ || !music_encoder_)
+      music_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip Spotify AAC", audio.get(), 4, nullptr);
+      if (!microphone_encoder_ || !game_encoder_ || !discord_encoder_ || !music_encoder_)
         throw std::runtime_error("OBS five-track AAC encoder creation failed");
-      obs_encoder_set_audio(game_encoder_, obs_get_audio());
       obs_encoder_set_audio(microphone_encoder_, obs_get_audio());
+      obs_encoder_set_audio(game_encoder_, obs_get_audio());
       obs_encoder_set_audio(discord_encoder_, obs_get_audio());
       obs_encoder_set_audio(music_encoder_, obs_get_audio());
     }
@@ -710,8 +709,8 @@ bool ObsEngine::StartReplayBuffer(Error& error) {
   if (!replay_) { error = Error{ErrorComponent::kRollingBuffer, "create OBS replay", "replay_buffer output is unavailable"}; return false; }
   obs_output_set_video_encoder(replay_, video_encoder_);
   obs_output_set_audio_encoder(replay_, audio_encoder_, 0);
-  if (game_encoder_) obs_output_set_audio_encoder(replay_, game_encoder_, 1);
-  if (microphone_encoder_) obs_output_set_audio_encoder(replay_, microphone_encoder_, 2);
+  if (microphone_encoder_) obs_output_set_audio_encoder(replay_, microphone_encoder_, 1);
+  if (game_encoder_) obs_output_set_audio_encoder(replay_, game_encoder_, 2);
   if (discord_encoder_) obs_output_set_audio_encoder(replay_, discord_encoder_, 3);
   if (music_encoder_) obs_output_set_audio_encoder(replay_, music_encoder_, 4);
   signal_handler_connect(obs_output_get_signal_handler(replay_), "saved", ReplaySaved, this);
@@ -767,8 +766,8 @@ bool ObsEngine::StartRecording(Error& error) {
   }
   obs_output_set_video_encoder(recording_, video_encoder_);
   obs_output_set_audio_encoder(recording_, audio_encoder_, 0);
-  if (game_encoder_) obs_output_set_audio_encoder(recording_, game_encoder_, 1);
-  if (microphone_encoder_) obs_output_set_audio_encoder(recording_, microphone_encoder_, 2);
+  if (microphone_encoder_) obs_output_set_audio_encoder(recording_, microphone_encoder_, 1);
+  if (game_encoder_) obs_output_set_audio_encoder(recording_, game_encoder_, 2);
   if (discord_encoder_) obs_output_set_audio_encoder(recording_, discord_encoder_, 3);
   if (music_encoder_) obs_output_set_audio_encoder(recording_, music_encoder_, 4);
   signal_handler_connect(obs_output_get_signal_handler(recording_), "stop", RecordingStopped, this);
