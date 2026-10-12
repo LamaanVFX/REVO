@@ -172,7 +172,7 @@ void TestHotkeyWindowDispatch() {
       [](HWND candidate, LPARAM parameter) -> BOOL {
         if (!IsWindowVisible(candidate)) return TRUE;
         wchar_t class_name[128]{};
-        GetClassNameW(candidate, class_name, static_cast<int>(std::size(class_name)));
+        GetClassNameW(candidate, class_name, 128);
         if (lstrcmpW(class_name, L"KlipStatusToastClass") == 0)
           reinterpret_cast<std::vector<HWND>*>(parameter)->push_back(candidate);
         return TRUE;
