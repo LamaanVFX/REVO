@@ -53,7 +53,7 @@ bool KlipApplication::Initialize(HINSTANCE instance, int show, Error& error, boo
     error = Error{ErrorComponent::kApplication, "open log", "Could not open " + PathToUtf8(config_.log_path)};
     return false;
   }
-  logger_.Info("Klip libobs startup");
+  logger_.Info("REVO libobs startup");
   if (!window_.Create(instance, show, error) ||
       !graphics_.Initialize(window_.Handle(), error, vendor, feature_level) ||
       !imgui_.Initialize(window_.Handle(), graphics_.Device(), graphics_.Context(), error)) {
