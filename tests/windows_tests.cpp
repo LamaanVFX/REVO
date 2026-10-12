@@ -151,7 +151,7 @@ void TestHotkeyWindowDispatch() {
   if (window.Handle() == nullptr) return;
 
   // A popup should be visible in the top-right of every connected display,
-  // even while the main Klip window is hidden.
+  // even while the main REVO window is hidden.
   std::vector<RECT> monitor_areas;
   EnumDisplayMonitors(
       nullptr, nullptr,
