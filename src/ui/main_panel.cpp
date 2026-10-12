@@ -1711,7 +1711,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       if (ImGui::SliderInt("game volume", &game_volume, 0, 200, "%d%%"))
         draft_.game_audio_gain = static_cast<double>(game_volume) / 100.0;
 #if defined(KLIP_USE_LIBOBS)
-      ImGui::TextWrapped("Track 1 captures all Windows output plus the microphone; track 2 is microphone-only. Tracks 3–5 isolate game, Discord, and Spotify. Desktop audio follows the default Windows playback device, while the application selectors control only their dedicated tracks.");
+      ImGui::TextWrapped("Track 1 mixes all Windows output, microphone, and Spotify; track 2 is microphone-only. Tracks 3–5 isolate game, Discord, and Spotify. Desktop audio follows the default Windows playback device, while Spotify is also routed into Track 1.");
       if (!draft_.excluded_audio_process.empty()) {
         ImGui::TextWrapped("Legacy per-app exclusion is ignored: desktop audio now records all Windows output.");
         if (ImGui::Button("clear legacy exclusion setting")) draft_.excluded_audio_process.clear();
