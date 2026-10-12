@@ -15,7 +15,7 @@ set_target_properties(OBS::libobs PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${OBS_ROOT}/include/libobs;${CMAKE_CURRENT_BINARY_DIR}/obs-include")
 target_compile_definitions(klip_core PUBLIC KLIP_USE_LIBOBS)
 add_library(klip_media STATIC
-  src/obs/obs_engine.cpp src/core/error.cpp src/core/logger.cpp
+  src/obs/obs_engine.cpp src/obs/gdi_monitor_capture.cpp src/core/error.cpp src/core/logger.cpp
   src/graphics/d3d_device.cpp src/platform/hotkeys.cpp src/platform/user_paths.cpp
   src/platform/win32_window.cpp src/ui/imgui_host.cpp src/ui/main_panel.cpp)
 target_include_directories(klip_media PUBLIC include)
