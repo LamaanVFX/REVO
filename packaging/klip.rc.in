@@ -20,12 +20,12 @@ BEGIN
     BLOCK "040904b0"
     BEGIN
       VALUE "CompanyName", "Andrewkernel\0"
-      VALUE "FileDescription", "Klip game capture and replay recorder\0"
+      VALUE "FileDescription", "REVO game capture and replay recorder\0"
       VALUE "FileVersion", "@PROJECT_VERSION@\0"
-      VALUE "InternalName", "Klip\0"
+      VALUE "InternalName", "REVO\0"
       VALUE "LegalCopyright", "Copyright (C) 2026 Andrewkernel\0"
       VALUE "OriginalFilename", "Klip.exe\0"
-      VALUE "ProductName", "Klip\0"
+      VALUE "ProductName", "REVO\0"
       VALUE "ProductVersion", "@PROJECT_VERSION@\0"
     END
   END
