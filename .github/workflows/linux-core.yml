@@ -14,7 +14,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Configure shared core (not a Linux capture application)
-        run: cmake -S . -B build-linux-core -DKLIP_BUILD_APP=OFF -DKLIP_USE_LIBOBS=ON -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build-linux-core -DREVO_BUILD_APP=OFF -DREVO_USE_LIBOBS=ON -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build build-linux-core --parallel 2
       - name: Verify shared core including replay-budget policy
