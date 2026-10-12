@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: ["feature/five-audio-tracks-mp4"]
+    branches:
+      - "feature/five-audio-tracks-mp4"
+      - "fix/gdi-monitor-capture-no-border"
     tags: ["v*"]
 
 permissions:
