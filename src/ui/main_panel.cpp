@@ -94,19 +94,6 @@ constexpr ImU32 kRed = IM_COL32(255, 97, 110, 255);
 void DrawText(ImDrawList* draw, ImFont* font, float size, ImVec2 position, ImU32 color,
               std::string_view text);
 
-constexpr float kMinGainDb = -60.0F;
-constexpr float kMaxGainDb = 6.0F;
-
-float GainToDb(float gain) {
-  if (!std::isfinite(gain) || gain <= 0.001F) return kMinGainDb;
-  return std::clamp(20.0F * std::log10(gain), kMinGainDb, kMaxGainDb);
-}
-
-float DbToGain(float db) {
-  if (!std::isfinite(db) || db <= kMinGainDb) return 0.0F;
-  return std::clamp(std::pow(10.0F, db / 20.0F), 0.0F, 2.0F);
-}
-
 const char* StatusText(CaptureStatus status) {
   switch (status) {
     case CaptureStatus::kIdle:
@@ -297,15 +284,14 @@ bool GainSlider(const char* id, ImVec2 position, float width, float& gain) {
   const bool hovered = ImGui::IsItemHovered();
   const bool active = ImGui::IsItemActive();
   bool changed = false;
-  float db = GainToDb(gain);
+  float progress = std::clamp(gain * 0.5F, 0.0F, 1.0F);
   if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
-    const float normalized =
+    const float updated_progress =
         std::clamp((ImGui::GetIO().MousePos.x - position.x) / width, 0.0F, 1.0F);
-    const float updated_db = kMinGainDb + normalized * (kMaxGainDb - kMinGainDb);
-    const float updated_gain = DbToGain(updated_db);
+    const float updated_gain = updated_progress * 2.0F;
     if (std::abs(updated_gain - gain) > 0.001F) {
       gain = updated_gain;
-      db = updated_db;
+      progress = updated_progress;
       changed = true;
     }
   }
@@ -313,12 +299,11 @@ bool GainSlider(const char* id, ImVec2 position, float width, float& gain) {
   const float track_y = position.y + height * 0.5F - 3.0F;
   draw->AddRectFilled({position.x, track_y}, {position.x + width, track_y + 6.0F},
                       IM_COL32(22, 42, 49, 255), 3.0F);
-  const float progress = std::clamp((db - kMinGainDb) / (kMaxGainDb - kMinGainDb), 0.0F, 1.0F);
   const float knob_x = position.x + width * progress;
   if (progress > 0.001F)
     draw->AddRectFilled({position.x, track_y}, {knob_x, track_y + 6.0F}, kPurpleBright, 3.0F);
   if (hovered || active)
-    draw->AddCircleFilled({knob_x, position.y + height * 0.5F}, 9.0F, IM_COL32(0, 226, 234, 44));
+    draw->AddCircleFilled({knob_x, position.y + height * 0.5F}, 9.0F, IM_COL32(24, 229, 234, 44));
   draw->AddCircleFilled({knob_x, position.y + height * 0.5F}, active ? 6.0F : 5.0F,
                         IM_COL32(202, 252, 253, 255));
   return changed;
@@ -1168,9 +1153,18 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_desktop_audio_gain(desktop_gain);
   }
   char desktop_gain_text[24]{};
-  std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "%.1f dB", GainToDb(desktop_gain));
-  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, audio_row_y + 18.0F}, kTextU32,
+  std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "%d%%",
+                static_cast<int>(std::clamp(desktop_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, audio_row_y + 18.0F}, kTextU32,
            desktop_gain_text);
+  const float meter_x = content.x + content_width - 208.0F;
+  const int lit_segments =
+      static_cast<int>(std::clamp(snapshot.desktop_audio_level, 0.0F, 1.0F) * 18.0F);
+  for (int segment = 0; segment < 18; ++segment) {
+    const ImU32 meter_color = segment < lit_segments ? kGreen : IM_COL32(32, 73, 55, 255);
+    draw->AddRectFilled({meter_x + segment * 7.0F, audio_row_y + 22.0F},
+                        {meter_x + segment * 7.0F + 4.0F, audio_row_y + 30.0F}, meter_color);
+  }
   bool desktop_enabled = config.desktop_audio_enabled;
   if (Switch("##desktop-audio-toggle", {content.x + content_width - 70.0F, audio_row_y + 13.0F},
              desktop_enabled) &&
@@ -1206,6 +1200,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const auto mic_label = Ellipsize(semibold, 12.0F, microphone_name, 166.0F);
   DrawText(draw, semibold, 12.0F, {content.x + 76.0F, microphone_y + 21.0F},
            microphone_enabled ? kTextU32 : kMutedU32, mic_label);
+  DrawProgress(draw, {content.x + 76.0F, microphone_y + 42.0F}, {164.0F, 3.0F},
+               snapshot.microphone_level, snapshot.microphone_active ? kGreen : kPanelBorder);
   float microphone_gain = static_cast<float>(config.microphone_audio_gain);
   if (GainSlider("##microphone-gain", {level_x, microphone_y + 15.0F}, gain_width,
                  microphone_gain) &&
@@ -1214,8 +1210,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_microphone_audio_gain(microphone_gain);
   }
   char microphone_gain_text[24]{};
-  std::snprintf(microphone_gain_text, sizeof(microphone_gain_text), "%.1f dB",
-                GainToDb(microphone_gain));
+  std::snprintf(microphone_gain_text, sizeof(microphone_gain_text), "%d%%",
+                static_cast<int>(std::clamp(microphone_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, microphone_y + 18.0F},
            microphone_enabled ? kTextU32 : kMutedU32, microphone_gain_text);
   if (Switch("##microphone-toggle", {content.x + content_width - 70.0F, microphone_y + 13.0F},
@@ -1237,7 +1233,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_discord_audio_gain(discord_gain);
   }
   char discord_gain_text[24]{};
-  std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%.1f dB", GainToDb(discord_gain));
+  std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%d%%",
+                static_cast<int>(std::clamp(discord_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, discord_y + 18.0F},
            config.discord_audio_window.empty() ? kMutedU32 : kTextU32, discord_gain_text);
   if (ImGui::IsItemHovered() && config.discord_audio_window.empty())
@@ -1256,7 +1253,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_music_audio_gain(music_gain);
   }
   char music_gain_text[24]{};
-  std::snprintf(music_gain_text, sizeof(music_gain_text), "%.1f dB", GainToDb(music_gain));
+  std::snprintf(music_gain_text, sizeof(music_gain_text), "%d%%",
+                static_cast<int>(std::clamp(music_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, music_y + 18.0F},
            config.music_audio_window.empty() ? kMutedU32 : kTextU32, music_gain_text);
   if (ImGui::IsItemHovered() && config.music_audio_window.empty())
@@ -1768,27 +1766,18 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         draft_.audio_bitrate = static_cast<std::int64_t>(audio_bitrate) * 1000;
         ResizeReplayBudget(draft_);
       }
-      int desktop_volume_db = static_cast<int>(std::lround(GainToDb(
-          static_cast<float>(draft_.desktop_audio_gain))));
-      if (ImGui::SliderInt("desktop gain", &desktop_volume_db, -60, 6, "%d dB"))
-        draft_.desktop_audio_gain = static_cast<double>(DbToGain(
-            static_cast<float>(desktop_volume_db)));
-      int game_volume_db = static_cast<int>(std::lround(GainToDb(
-          static_cast<float>(draft_.game_audio_gain))));
-      if (ImGui::SliderInt("game gain", &game_volume_db, -60, 6, "%d dB"))
-        draft_.game_audio_gain = static_cast<double>(DbToGain(
-            static_cast<float>(game_volume_db)));
-      int discord_volume_db = static_cast<int>(std::lround(GainToDb(
-          static_cast<float>(draft_.discord_audio_gain))));
-      if (ImGui::SliderInt("Discord gain", &discord_volume_db, -60, 6, "%d dB"))
-        draft_.discord_audio_gain = static_cast<double>(DbToGain(
-            static_cast<float>(discord_volume_db)));
-      int music_volume_db = static_cast<int>(std::lround(GainToDb(
-          static_cast<float>(draft_.music_audio_gain))));
-      if (ImGui::SliderInt("Spotify gain", &music_volume_db, -60, 6, "%d dB"))
-        draft_.music_audio_gain = static_cast<double>(DbToGain(
-            static_cast<float>(music_volume_db)));
-
+      int desktop_volume = static_cast<int>(draft_.desktop_audio_gain * 100.0 + 0.5);
+      if (ImGui::SliderInt("desktop volume", &desktop_volume, 0, 200, "%d%%"))
+        draft_.desktop_audio_gain = static_cast<double>(desktop_volume) / 100.0;
+      int game_volume = static_cast<int>(draft_.game_audio_gain * 100.0 + 0.5);
+      if (ImGui::SliderInt("game volume", &game_volume, 0, 200, "%d%%"))
+        draft_.game_audio_gain = static_cast<double>(game_volume) / 100.0;
+      int discord_volume = static_cast<int>(draft_.discord_audio_gain * 100.0 + 0.5);
+      if (ImGui::SliderInt("Discord volume", &discord_volume, 0, 200, "%d%%"))
+        draft_.discord_audio_gain = static_cast<double>(discord_volume) / 100.0;
+      int music_volume = static_cast<int>(draft_.music_audio_gain * 100.0 + 0.5);
+      if (ImGui::SliderInt("Spotify volume", &music_volume, 0, 200, "%d%%"))
+        draft_.music_audio_gain = static_cast<double>(music_volume) / 100.0;
 #if defined(KLIP_USE_LIBOBS)
       ImGui::TextWrapped("Track 1 mixes all Windows output, microphone, and Spotify; track 2 is microphone-only. Tracks 3–5 isolate game, Discord, and Spotify. Desktop audio follows the default Windows playback device, while Spotify is also routed into Track 1.");
       if (!draft_.excluded_audio_process.empty()) {
@@ -1815,11 +1804,9 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       ImGui::TextColored(kMuted,
                          "low-overhead process-tree exclusion; it does not mute playback for you.");
 #endif
-      int microphone_volume_db = static_cast<int>(std::lround(GainToDb(
-          static_cast<float>(draft_.microphone_audio_gain))));
-      if (ImGui::SliderInt("microphone gain", &microphone_volume_db, -60, 6, "%d dB"))
-        draft_.microphone_audio_gain = static_cast<double>(DbToGain(
-            static_cast<float>(microphone_volume_db)));
+      int microphone_volume = static_cast<int>(draft_.microphone_audio_gain * 100.0 + 0.5);
+      if (ImGui::SliderInt("microphone volume", &microphone_volume, 0, 200, "%d%%"))
+        draft_.microphone_audio_gain = static_cast<double>(microphone_volume) / 100.0;
       ImGui::Checkbox("enable microphone (voice / keyboard clicks) on launch",
                       &draft_.microphone_enabled);
     }
