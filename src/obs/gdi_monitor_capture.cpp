@@ -236,9 +236,8 @@ void GdiMonitorDestroy(void* data) {
 }  // namespace
 
 void RegisterGdiMonitorCapture() {
-  static bool registered = false;
-  if (registered) return;
-
+  // OBS clears registered source types during obs_shutdown(); register this
+  // source on every ObsEngine initialization, just like the modules do.
   obs_source_info info{};
   info.id = kSourceId;
   info.type = OBS_SOURCE_TYPE_INPUT;
@@ -251,7 +250,6 @@ void RegisterGdiMonitorCapture() {
   info.video_tick = GdiMonitorTick;
   info.video_render = GdiMonitorRender;
   obs_register_source(&info);
-  registered = true;
 }
 
 }  // namespace klip
