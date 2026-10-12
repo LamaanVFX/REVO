@@ -48,11 +48,11 @@ jobs:
           & packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-2 -SourcesDirectory "work/release-sources-$version" -InnoSetupCompiler $compiler
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: Klip-win64-beta-${{ github.run_number }}
+          name: REVO-win64-beta-${{ github.run_number }}
           path: |
-            artifacts/**/Klip-*-win64-setup.exe
-            artifacts/**/Klip-*-win64-portable.zip
-            artifacts/**/Klip-*-corresponding-sources.zip
+            artifacts/**/REVO-*-win64-setup.exe
+            artifacts/**/REVO-*-win64-portable.zip
+            artifacts/**/REVO-*-corresponding-sources.zip
             artifacts/**/SHA256SUMS.txt
           if-no-files-found: error
 
