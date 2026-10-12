@@ -381,11 +381,16 @@ LRESULT CALLBACK Win32Window::ToastWindowProc(HWND window, UINT message,
       HDC dc = BeginPaint(window, &paint);
       RECT client{};
       GetClientRect(window, &client);
-      HBRUSH background = CreateSolidBrush(RGB(26, 22, 35));
-      HPEN outline = CreatePen(PS_SOLID, 1, RGB(100, 67, 145));
+      HBRUSH background = CreateSolidBrush(RGB(43, 29, 58));
+      HPEN outline = CreatePen(PS_SOLID, 1, RGB(139, 82, 190));
       HGDIOBJ old_brush = SelectObject(dc, background);
       HGDIOBJ old_pen = SelectObject(dc, outline);
       RoundRect(dc, client.left, client.top, client.right, client.bottom, 16, 16);
+      HBRUSH accent = CreateSolidBrush(RGB(184, 112, 255));
+      RECT accent_rect{client.left + 10, client.top + 14,
+                       client.left + 14, client.bottom - 14};
+      FillRect(dc, &accent_rect, accent);
+      DeleteObject(accent);
       SelectObject(dc, old_brush);
       SelectObject(dc, old_pen);
       DeleteObject(background);
