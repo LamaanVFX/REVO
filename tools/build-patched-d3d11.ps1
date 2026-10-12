@@ -63,6 +63,11 @@ $subsystemText = Get-Content -LiteralPath $subsystemPath -Raw
 if ($subsystemText.Contains('#include <d3dkmthk.h>')) {
   $subsystemText = [regex]::Replace($subsystemText, '(?m)^#include <d3dkmthk\.h>\r?\n', '')
   $subsystemText = [regex]::Replace($subsystemText, '(?ms)^#ifdef USE_GPU_PRIORITY\r?\n.*?^#endif\r?\n', '')
+  $hagsInitStart = $subsystemText.IndexOf('/* Log HAGS status */')
+  if ($hagsInitStart -lt 0) { throw 'Expected OBS HAGS initialization diagnostics were not found.' }
+  $hagsInitEnd = $subsystemText.IndexOf('/* ---------------------------------------- */', $hagsInitStart)
+  if ($hagsInitEnd -lt 0) { throw 'Could not identify the end of OBS HAGS initialization diagnostics.' }
+  $subsystemText = $subsystemText.Remove($hagsInitStart, $hagsInitEnd - $hagsInitStart)
   $hagsStart = $subsystemText.IndexOf('struct HagsStatus {')
   if ($hagsStart -lt 0) { throw 'Expected OBS HAGS diagnostics block was not found.' }
   $checkStart = $subsystemText.IndexOf('static bool CheckFormat(', $hagsStart)
