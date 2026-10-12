@@ -1670,7 +1670,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       ImGui::Checkbox("enable desktop audio track", &draft_.desktop_audio_enabled);
 #if defined(KLIP_USE_LIBOBS)
       ImGui::TextColored(kMuted, "Five separate audio tracks are always enabled.");
-      ImGui::TextColored(kMuted, "Tracks: 1 desktop / 2 game / 3 mic / 4 Discord / 5 music");
+      ImGui::TextColored(kMuted, "Tracks: 1 desktop + mic / 2 mic / 3 game / 4 Discord / 5 Spotify");
       DrawAudioWindowSelector("game audio application", draft_.game_audio_window);
       DrawAudioWindowSelector("Discord audio application", draft_.discord_audio_window);
       DrawAudioWindowSelector("music audio application", draft_.music_audio_window);
