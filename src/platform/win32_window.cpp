@@ -60,12 +60,20 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   window_class.style = CS_CLASSDC;
   window_class.lpfnWndProc = WindowProc;
   window_class.hInstance = instance;
-  // Use the exact same compiled REVO icon resource for the title bar, taskbar,
-  // and notification area instead of separately rasterizing a similar-looking mark.
+  // Use the same compiled REVO icon resource everywhere, but load it at the
+  // actual Windows icon dimensions. Loading a 64 px icon for the title bar and
+  // a 32 px icon for the tray made Windows repeatedly downscale it, which
+  // softened the mark and made its optical alignment look off-center.
+  const int large_icon_width = std::max(32, GetSystemMetrics(SM_CXICON));
+  const int large_icon_height = std::max(32, GetSystemMetrics(SM_CYICON));
+  const int small_icon_width = std::max(16, GetSystemMetrics(SM_CXSMICON));
+  const int small_icon_height = std::max(16, GetSystemMetrics(SM_CYSMICON));
   large_icon_ = static_cast<HICON>(LoadImageW(
-      instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, 64, 64, LR_DEFAULTCOLOR));
+      instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, large_icon_width, large_icon_height,
+      LR_DEFAULTCOLOR));
   small_icon_ = static_cast<HICON>(LoadImageW(
-      instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
+      instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, small_icon_width, small_icon_height,
+      LR_DEFAULTCOLOR));
   window_class.hIcon = large_icon_;
   window_class.hIconSm = small_icon_;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
