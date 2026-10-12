@@ -55,6 +55,14 @@ $cpp = @(
   'd3d11-zstencilbuffer.cpp'
 ) | ForEach-Object { Join-Path (Join-Path $source 'libobs-d3d11') $_ }
 
+$wdkRoot = Join-Path $deps 'wdk-10.0.28000.2526'
+$wdkHeader = Get-ChildItem -LiteralPath $wdkRoot -Filter 'd3dkmthk.h' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $wdkHeader) { throw "Required WDK header d3dkmthk.h missing under $wdkRoot" }
+$wdkIncludeDirs = @($wdkHeader.Directory.FullName)
+$wdkIncludeDirs += Get-ChildItem -LiteralPath $wdkRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -in @('km','shared','um','ucrt') } | ForEach-Object { $_.FullName }
+$wdkIncludeArgs = @($wdkIncludeDirs | Select-Object -Unique | ForEach-Object { "-I$_" })
+
 $includeArgs = @(
   "-I$configDir",
   "-I$(Join-Path $source 'libobs')",
@@ -64,7 +72,7 @@ $includeArgs = @(
   "-I$(Join-Path $obsSdk 'include')",
   '-isystem',
   ((Get-ChildItem (Join-Path $deps 'winsdk/c/Include') -Directory | Select-Object -First 1).FullName + '/cppwinrt')
-)
+) + $wdkIncludeArgs
 $arguments = @(
   '-std=c++20',
   '-O2',
