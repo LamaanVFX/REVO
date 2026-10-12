@@ -470,13 +470,16 @@ void ObsEngine::UpdateSceneLayout() {
 
 void ObsEngine::ConfigureAudio(const AppConfig& config) {
   if (!initialized_) return;
-  auto configure = [&](obs_source_t*& source, bool enabled, const char* type,
+  auto configure = [&](obs_source_t*& source, obs_volmeter_t*& meter,
+                       std::atomic<float>& level, bool enabled, const char* type,
                        const char* name, std::uint32_t channel, const std::string& device,
                        float gain, std::uint32_t mixers) {
     if (!enabled) {
       obs_set_output_source(channel, nullptr);
+      if (meter) { obs_volmeter_destroy(meter); meter = nullptr; }
       if (source) obs_source_release(source);
       source = nullptr;
+      level.store(0.0F, std::memory_order_relaxed);
       return;
     }
     auto settings = MakeData();
@@ -489,6 +492,15 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
       obs_source_set_audio_mixers(source, mixers);
       obs_source_set_volume(source, gain);
       obs_set_output_source(channel, source);
+      if (!meter && dashboard_active_) {
+        meter = obs_volmeter_create(OBS_FADER_LOG);
+        if (meter) {
+          obs_volmeter_add_callback(meter, MeterUpdated, &level);
+          obs_volmeter_attach_source(meter, source);
+        }
+      }
+    } else {
+      level.store(0.0F, std::memory_order_relaxed);
     }
   };
   std::string device = "default";
@@ -509,7 +521,8 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
 
   // WASAPI endpoint loopback captures the complete default Windows output mix:
   // browsers, games, media players, and all other system sounds.
-  configure(desktop_audio_, config.obs_separate_audio_tracks && config.desktop_audio_enabled,
+  configure(desktop_audio_, desktop_audio_meter_, desktop_audio_level_,
+            config.obs_separate_audio_tracks && config.desktop_audio_enabled,
             "wasapi_output_capture", "REVO desktop audio", 5, "default",
             static_cast<float>(config.desktop_audio_gain), 1U);
   if (config.obs_separate_audio_tracks && config.desktop_audio_enabled && desktop_audio_) {
@@ -571,7 +584,8 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
   };
 
   configure_process(game_audio_, "REVO game audio", config.game_audio_window, 1, 1U << 2);
-  configure(microphone_, config.microphone_enabled && microphone_available,
+  configure(microphone_, microphone_meter_, microphone_level_,
+            config.microphone_enabled && microphone_available,
             "wasapi_input_capture", "REVO microphone", 2, device,
             static_cast<float>(config.microphone_audio_gain),
             config.obs_separate_audio_tracks ? (1U | (1U << 1)) : 1U);
@@ -582,15 +596,43 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
   config_.microphone_enabled = config.microphone_enabled;
   config_.preferred_microphone_name = config.preferred_microphone_name;
   state_.SetMicrophoneEnabled(config.microphone_enabled);
-  // Live peak meters are intentionally disabled; audio capture/gain controls
-  // and all dedicated output tracks remain active.
-  state_.SetAudio(desktop_audio_ != nullptr, microphone_ != nullptr, 0.0F, 0.0F);
+  UpdateAudioMeters();
+  state_.SetAudio(desktop_audio_ && obs_source_audio_active(desktop_audio_),
+                  microphone_ && obs_source_audio_active(microphone_),
+                  desktop_audio_level_.load(std::memory_order_relaxed),
+                  microphone_level_.load(std::memory_order_relaxed));
+  state_.SetProcessAudioLevels(game_audio_level_.load(std::memory_order_relaxed), 0.0F, 0.0F);
 }
 
 void ObsEngine::SetDashboardActive(bool active) {
-  // There are no live audio meters to pause/resume; keep this API a no-op for
-  // the existing application lifecycle caller.
-  (void)active;
+  if (dashboard_active_ == active) return;
+  dashboard_active_ = active;
+  if (initialized_) {
+    UpdateAudioMeters();
+    logger_.Info(active ? "REVO dashboard active; audio metering resumed"
+                        : "REVO dashboard inactive; audio metering paused (capture/audio continue)");
+  }
+}
+
+void ObsEngine::UpdateAudioMeters() {
+  const auto update = [&](obs_source_t* source, obs_volmeter_t*& meter,
+                          std::atomic<float>& level) {
+    if (!dashboard_active_ || !source) {
+      if (meter) { obs_volmeter_destroy(meter); meter = nullptr; }
+      level.store(0.0F, std::memory_order_relaxed);
+    } else if (!meter) {
+      meter = obs_volmeter_create(OBS_FADER_LOG);
+      if (meter) {
+        obs_volmeter_add_callback(meter, MeterUpdated, &level);
+        obs_volmeter_attach_source(meter, source);
+      } else {
+        level.store(0.0F, std::memory_order_relaxed);
+      }
+    }
+  };
+  update(desktop_audio_, desktop_audio_meter_, desktop_audio_level_);
+  update(game_audio_, game_audio_meter_, game_audio_level_);
+  update(microphone_, microphone_meter_, microphone_level_);
 }
 
 bool ObsEngine::ConfigureEncoder(Error& error) {
@@ -824,6 +866,14 @@ void ObsEngine::StopRecording() {
   }
 }
 bool ObsEngine::IsRecording() const { return recording_ && obs_output_active(recording_); }
+void ObsEngine::MeterUpdated(void* parameter, const float*, const float* peak,
+                             const float*) noexcept {
+  const float value = obs_db_to_mul(std::max(peak[0], peak[1]));
+  static_cast<std::atomic<float>*>(parameter)->store(
+      std::isfinite(value) ? std::clamp(value, 0.0F, 1.0F) : 0.0F,
+      std::memory_order_relaxed);
+}
+
 
 
 
@@ -1319,8 +1369,10 @@ void ObsEngine::Tick() {
   state_.SetCaptureMetrics(obs_get_active_fps(), 0.0, obs_get_total_frames(),
                            obs_get_lagged_frames(), video_output_get_skipped_frames(obs_get_video()), 0, 0, 0.0);
   state_.SetAudio(desktop_audio_ && obs_source_audio_active(desktop_audio_),
-                  microphone_ && obs_source_audio_active(microphone_), 0.0F, 0.0F);
-  state_.SetProcessAudioLevels(0.0F, 0.0F, 0.0F);
+                  microphone_ && obs_source_audio_active(microphone_),
+                  desktop_audio_level_.load(std::memory_order_relaxed),
+                  microphone_level_.load(std::memory_order_relaxed));
+  state_.SetProcessAudioLevels(game_audio_level_.load(std::memory_order_relaxed), 0.0F, 0.0F);
   const auto buffered = obs_output_active(replay_) ? std::chrono::duration<double>(std::chrono::steady_clock::now() - replay_started_).count() : 0.0;
   state_.SetRollingMetrics(std::min(buffered, config_.clip_duration_seconds), 0, 0);
   if (IsRecording()) state_.SetRecording(true, false, recording_path_,
@@ -1377,6 +1429,12 @@ void ObsEngine::Shutdown() noexcept {
   if (microphone_encoder_) { obs_encoder_release(microphone_encoder_); microphone_encoder_ = nullptr; }
   if (discord_encoder_) { obs_encoder_release(discord_encoder_); discord_encoder_ = nullptr; }
   if (music_encoder_) { obs_encoder_release(music_encoder_); music_encoder_ = nullptr; }
+  if (desktop_audio_meter_) { obs_volmeter_destroy(desktop_audio_meter_); desktop_audio_meter_ = nullptr; }
+  if (game_audio_meter_) { obs_volmeter_destroy(game_audio_meter_); game_audio_meter_ = nullptr; }
+  if (microphone_meter_) { obs_volmeter_destroy(microphone_meter_); microphone_meter_ = nullptr; }
+  desktop_audio_level_.store(0.0F, std::memory_order_relaxed);
+  game_audio_level_.store(0.0F, std::memory_order_relaxed);
+  microphone_level_.store(0.0F, std::memory_order_relaxed);
   if (initialized_) for (std::uint32_t i = 0; i < 6; ++i) obs_set_output_source(i, nullptr);
   if (scene_) { obs_scene_release(scene_); scene_ = nullptr; capture_item_ = nullptr; overlay_item_ = nullptr; }
   if (capture_) { obs_source_release(capture_); capture_ = nullptr; }
