@@ -147,7 +147,9 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
         std::max(32.0 * 1024.0 * 1024.0, required_bytes));
   }
   clips_root_ = config.output_directory;
+  recordings_root_ = config.recording_directory;
   active_game_.clear();
+  active_game_filename_prefix_.clear();
   next_game_detection_ = std::chrono::steady_clock::now();
   window_ = window;
   shutting_down_ = false;
@@ -793,9 +795,12 @@ bool ObsEngine::StartRecording(Error& error) {
     ProcessOutputSignals();
     recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
   }
+  const std::string recording_pattern = active_game_filename_prefix_.empty()
+      ? "recording_%CCYY-%MM-%DD_%hh-%mm-%ss"
+      : active_game_filename_prefix_ + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
   std::string filename_format;
   if (!ReserveOutputFilename(config_.recording_directory, config_.output_container,
-                             "recording_%CCYY-%MM-%DD_%hh-%mm-%ss", recording_reservation_,
+                             recording_pattern, recording_reservation_,
                              filename_format, error,
                              ErrorComponent::kRecordingWriter)) return false;
   recording_path_ = recording_reservation_.Path();
@@ -1182,6 +1187,7 @@ void ObsEngine::Tick() {
       release_encoder(music_encoder_);
 
       active_game_ = detected_game;
+      active_game_filename_prefix_ = filename_prefix;
 
       config_.target_fps = profile_fps;
       config_.obs_replay_bitrate_kbps = profile_bitrate_kbps;
@@ -1195,16 +1201,27 @@ void ObsEngine::Tick() {
       config_.rolling_buffer_bytes = static_cast<std::size_t>(
           std::max(32.0 * 1024.0 * 1024.0, required_bytes));
 
-      config_.output_directory = clips_root_ /
-          (folder_name.empty() ? std::filesystem::path{} : std::filesystem::path(folder_name));
+      const auto profile_folder = folder_name.empty()
+          ? std::filesystem::path{}
+          : std::filesystem::path(folder_name);
+      config_.output_directory = clips_root_ / profile_folder;
       config_.obs_filename_format = filename_prefix.empty()
           ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
           : filename_prefix + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
+      config_.recording_directory = recordings_root_ / profile_folder;
+
       std::error_code directory_error;
       std::filesystem::create_directories(config_.output_directory, directory_error);
       if (directory_error) {
-        logger_.Warning("Automatic game folder could not be created: " + directory_error.message());
-      } else {
+        logger_.Warning("Automatic game clip folder could not be created: " + directory_error.message());
+      }
+      std::error_code recording_directory_error;
+      std::filesystem::create_directories(config_.recording_directory, recording_directory_error);
+      if (recording_directory_error) {
+        logger_.Warning("Automatic game recording folder could not be created: " +
+                        recording_directory_error.message());
+      }
+      if (!directory_error) {
         if ((detected_game.empty() && selected_source_id_ != 0) ||
             (!detected_game.empty() &&
              (config_.target_mode != CaptureTargetMode::kGameWindow || !target ||
