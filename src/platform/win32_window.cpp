@@ -341,16 +341,16 @@ void Win32Window::ShowToast(const std::wstring& message) {
     KillTimer(toast, kToastKeepTopmostTimer);
     if (!SetWindowPos(toast, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
                       SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER)) {
-      OutputDebugStringW(L"[Klip] Could not place topmost toast popup.\\n");
+      OutputDebugStringW(L"[REVO] Could not place topmost toast popup.\\n");
       continue;
     }
     ShowWindow(toast, SW_SHOWNOACTIVATE);
     SetWindowPos(toast, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
                  SWP_NOACTIVATE | SWP_NOOWNERZORDER);
     if (!SetTimer(toast, kToastDismissTimer, 3000, nullptr))
-      OutputDebugStringW(L"[Klip] Could not start toast dismissal timer.\\n");
+      OutputDebugStringW(L"[REVO] Could not start toast dismissal timer.\\n");
     if (!SetTimer(toast, kToastKeepTopmostTimer, kToastKeepTopmostIntervalMs, nullptr))
-      OutputDebugStringW(L"[Klip] Could not start toast topmost refresh timer.\\n");
+      OutputDebugStringW(L"[REVO] Could not start toast topmost refresh timer.\\n");
     RedrawWindow(toast, nullptr, nullptr,
                  RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
   }
