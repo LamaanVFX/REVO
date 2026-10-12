@@ -1565,8 +1565,8 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     return;
   }
   DrawLogo(ImGui::GetWindowDrawList(),
-           {settings_window_origin.x + 138.0F, settings_window_origin.y + 20.0F},
-           0.58F);
+           {settings_window_origin.x + 132.0F, settings_window_origin.y + 20.0F},
+           0.50F);
   ImGui::SameLine(0.0F, 46.0F);
   ImGui::PushFont(UiFont(2));
   ImGui::TextUnformatted("REVO / SETTINGS");
