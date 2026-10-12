@@ -101,7 +101,10 @@ class ObsEngine {
   obs_volmeter* desktop_audio_meter_ = nullptr;
   obs_volmeter* game_audio_meter_ = nullptr;
   obs_volmeter* microphone_meter_ = nullptr;
-  std::atomic<float> desktop_audio_level_{0.0F}, game_audio_level_{0.0F}, microphone_level_{0.0F};
+  obs_volmeter* discord_audio_meter_ = nullptr;
+  obs_volmeter* music_audio_meter_ = nullptr;
+  std::atomic<float> desktop_audio_level_{0.0F}, game_audio_level_{0.0F},
+      microphone_level_{0.0F}, discord_audio_level_{0.0F}, music_audio_level_{0.0F};
   obs_output* replay_ = nullptr;
   obs_output* recording_ = nullptr;
   std::vector<SourceChoice> games_, displays_, microphones_, overlay_windows_;
