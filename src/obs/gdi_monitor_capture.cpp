@@ -8,10 +8,11 @@
 #include <util/base.h>
 #include <util/platform.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <mutex>
 #include <string>
-#include <vector>
+#include <utility>
 
 namespace klip {
 namespace {
