@@ -950,35 +950,9 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const double requested_seconds = std::max(1.0, config.clip_duration_seconds);
   const double buffered_seconds =
       std::clamp(snapshot.metrics.rolling_buffer_seconds, 0.0, requested_seconds);
-  const float hero_y = window_min.y + 96.0F;
-#if defined(KLIP_USE_LIBOBS)
-  DrawText(draw, label_font, 11.0F, {content.x, hero_y}, kMutedU32, "clip limit / replay");
-#else
-  DrawText(draw, label_font, 11.0F, {content.x, hero_y}, kMutedU32, "clip length / replay");
-#endif
-  char clip_seconds[24]{};
-  std::snprintf(clip_seconds, sizeof(clip_seconds), "%.0f", config.clip_duration_seconds);
-  DrawText(draw, number_font, 42.0F, {content.x, hero_y + 24.0F}, kTextU32, clip_seconds);
-  const float seconds_x = content.x + TextWidth(number_font, 42.0F, clip_seconds) + 12.0F;
-  DrawText(draw, regular, 17.0F, {seconds_x, hero_y + 48.0F}, kMutedU32, "seconds");
-  char replay_copy[64]{};
-#if defined(KLIP_USE_LIBOBS)
-  if (config.obs_duration_priority && buffered_seconds < requested_seconds)
-    std::snprintf(replay_copy, sizeof(replay_copy), "warming up / %.0f of %.0f seconds", buffered_seconds, requested_seconds);
-  else
-    std::snprintf(replay_copy, sizeof(replay_copy), config.obs_duration_priority ?
-                  "duration-first / buffer warmed up" : "memory cap may shorten clips");
-#else
-  std::snprintf(replay_copy, sizeof(replay_copy), "buffered %.0f of %.0f seconds", buffered_seconds,
-                requested_seconds);
-#endif
-  DrawText(draw, regular, 14.0F, {content.x, hero_y + 88.0F}, kMutedU32, replay_copy);
-#if !defined(KLIP_USE_LIBOBS)
-  DrawProgress(draw, {content.x, hero_y + 111.0F}, {210.0F, 4.0F},
-               static_cast<float>(buffered_seconds / requested_seconds));
-#endif
-  const float hero_divider_x = content.x + 276.0F;
-  draw->AddLine({hero_divider_x, hero_y}, {hero_divider_x, hero_y + 108.0F}, kDivider, 1.0F);
+  // The actions sit directly beneath the REVO hero banner, matching the compact
+  // reference layout while retaining the existing save/start-recording behavior.
+  const float hero_y = window_min.y + 132.0F;
 
   const bool can_save = snapshot.status == CaptureStatus::kBuffering &&
                         !snapshot.finalizing_recording && buffered_seconds >= 1.0;
@@ -992,9 +966,9 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     std::snprintf(save_label, sizeof(save_label), "save available %.0f seconds", buffered_seconds);
   }
 #endif
-  const float action_gap = 26.0F;
-  const float action_start_x = hero_divider_x + 58.0F;
-  const float action_width = (content.x + content_width - action_start_x - action_gap) * 0.5F;
+  const float action_gap = 20.0F;
+  const float action_start_x = content.x;
+  const float action_width = (content_width - action_gap) * 0.5F;
   const ImVec2 save_pos{action_start_x, hero_y + 1.0F};
   const ImVec2 action_size{action_width, 94.0F};
   ImGui::SetCursorScreenPos(save_pos);
@@ -1004,8 +978,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const bool save_hovered = ImGui::IsItemHovered();
   if (!can_save) ImGui::EndDisabled();
   DrawCard(draw, save_pos, action_size, save_hovered && can_save,
-           can_save ? IM_COL32(100, 39, 193, 255) : IM_COL32(36, 31, 43, 255),
-           can_save ? IM_COL32(177, 111, 255, 235) : kPanelBorder, 9.0F);
+           can_save ? IM_COL32(0, 94, 105, 242) : IM_COL32(9, 25, 31, 255),
+           can_save ? IM_COL32(17, 223, 230, 235) : kPanelBorder, 9.0F);
   draw->AddCircleFilled({save_pos.x + 42.0F, save_pos.y + 47.0F}, 22.0F,
                         IM_COL32(255, 255, 255, can_save ? 18 : 8));
   DrawClipIcon(draw, {save_pos.x + 42.0F, save_pos.y + 47.0F}, can_save ? kTextU32 : kMutedU32);
@@ -1018,7 +992,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   draw->AddRectFilled(save_pill, {save_pill.x + save_pill_width, save_pill.y + 31.0F},
                       IM_COL32(255, 255, 255, 15), 7.0F);
   DrawText(draw, label_font, 11.0F, {save_pill.x + 11.0F, save_pill.y + 9.0F},
-           can_save ? IM_COL32(224, 213, 247, 255) : kMutedU32, save_hotkey);
+           can_save ? IM_COL32(182, 248, 250, 255) : kMutedU32, save_hotkey);
   if (save_clicked && can_save && commands.save_clip) commands.save_clip();
 
   const bool record_disabled =
