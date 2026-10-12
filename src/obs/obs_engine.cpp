@@ -1077,8 +1077,11 @@ void ObsEngine::Tick() {
           std::transform(exe.begin(), exe.end(), exe.begin(),
                          [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
           int score = -1;
-          if (exe == L"javaw.exe") score = 60;
-          else if (exe == L"minecraft.windows.exe") score = 65;
+          // Any detected javaw.exe/Minecraft process takes priority over
+          // other supported games so the HEVC-only Minecraft policy cannot be
+          // masked by another game left running in the background.
+          if (exe == L"javaw.exe") score = 240;
+          else if (exe == L"minecraft.windows.exe") score = 245;
           else if (exe == L"valorant.exe" || exe == L"fortnite.exe" ||
                    exe == L"playgtav.exe") score = 35; // Launcher processes.
           else if (exe == L"valorant-win64-shipping.exe" ||
