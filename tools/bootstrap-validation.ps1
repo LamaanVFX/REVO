@@ -57,10 +57,17 @@ if (-not (Test-Path $wdkZip)) {
   & curl.exe -fL --retry 3 --silent --show-error $wdkUrl -o $wdkZip
   if ($LASTEXITCODE -ne 0) { throw "WDK package download failed: $wdkUrl" }
 }
-$wdkShaFile = "$wdkZip.sha512"
-& curl.exe -fL --retry 3 --silent --show-error $wdkShaUrl -o $wdkShaFile
-if ($LASTEXITCODE -ne 0) { throw "WDK SHA-512 metadata download failed: $wdkShaUrl" }
-$expectedWdkSha512 = (Get-Content -LiteralPath $wdkShaFile -Raw).Trim()
+# NuGet's flat-container .sha512 sidecar is not served for this WDK package.
+# Query NuGet's package metadata endpoint for its published PackageHash instead.
+$wdkMetadataUrl = "https://www.nuget.org/api/v2/Packages(Id='Microsoft.Windows.WDK.x64',Version='$wdkVersion')"
+try {
+  [xml]$wdkMetadata = (Invoke-WebRequest -UseBasicParsing -Uri $wdkMetadataUrl).Content
+} catch {
+  throw "Could not retrieve Microsoft WDK package metadata: $wdkMetadataUrl"
+}
+$wdkHashNode = $wdkMetadata.SelectSingleNode("//*[local-name()='PackageHash']")
+if (-not $wdkHashNode) { throw "NuGet metadata did not include a package hash for WDK $wdkVersion" }
+$expectedWdkSha512 = $wdkHashNode.InnerText.Trim()
 $actualWdkSha512 = [Convert]::ToBase64String([Convert]::FromHexString((Get-FileHash -LiteralPath $wdkZip -Algorithm SHA512).Hash))
 if ($actualWdkSha512 -ne $expectedWdkSha512) { throw "WDK package SHA-512 mismatch for $wdkVersion" }
 $wdkMarker = Join-Path $wdkDest '.complete'
