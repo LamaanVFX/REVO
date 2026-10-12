@@ -1542,12 +1542,24 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         ImGui::TextColored(kMuted, "Constant quality may shorten clips when replay memory fills.");
       }
       if (ImGui::BeginCombo("OBS encoder", draft_.obs_encoder_id.c_str())) {
-        if (ImGui::Selectable("auto / detected hardware", draft_.obs_encoder_id == "auto")) draft_.obs_encoder_id = "auto";
-        for (const auto& id : snapshot.available_encoders)
-          if (ImGui::Selectable(id.c_str(), draft_.obs_encoder_id == id)) draft_.obs_encoder_id = id;
+        if (ImGui::Selectable("auto / detected hardware", draft_.obs_encoder_id == "auto"))
+          draft_.obs_encoder_id = "auto";
+        for (const auto& id : snapshot.available_encoders) {
+          const char* label = id.c_str();
+          if (id == "obs_nvenc_h264_tex") label = "NVIDIA NVENC H.264";
+          else if (id == "obs_nvenc_hevc_tex") label = "NVIDIA NVENC HEVC (Minecraft only)";
+          else if (id == "h264_texture_amf") label = "AMD AMF H.264";
+          else if (id == "obs_qsv11_v2") label = "Intel QSV H.264";
+          else if (id == "obs_x264") label = "Software x264";
+          if (ImGui::Selectable(label, draft_.obs_encoder_id == id))
+            draft_.obs_encoder_id = id;
+        }
         ImGui::EndCombo();
       }
-      ImGui::TextColored(kMuted, "No silent encoder fallback. Allow the buffer to warm up after changing capture settings.");
+      ImGui::TextWrapped(
+          "Automatic codec policy: H.264 for all normal apps and games; NVIDIA NVENC HEVC only when javaw.exe or Minecraft for Windows is detected. It returns to H.264 when Minecraft exits.");
+      ImGui::TextColored(kMuted,
+          "If a manual recording is active, codec switching waits until it stops so the recording file is not interrupted.");
 #else
       int bitrate_mbps = static_cast<int>(draft_.video_bitrate / 1'000'000);
       if (ImGui::SliderInt("video bitrate", &bitrate_mbps, 4, 40, "%d Mbps")) {
