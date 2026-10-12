@@ -34,10 +34,19 @@ struct HotkeyConfig {
   static constexpr unsigned int kWindows = 0x0008;
   static constexpr unsigned int kNoRepeat = 0x4000;
 
+  // Primary shortcuts preserve the original settings file names.
   unsigned int save_modifiers = kAlt | kNoRepeat;
   unsigned int save_virtual_key = 'C';
+  unsigned int save2_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int save2_virtual_key = 'C';
+  unsigned int save3_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int save3_virtual_key = 0x79;  // F10
   unsigned int record_modifiers = kAlt | kNoRepeat;
   unsigned int record_virtual_key = 'R';
+  unsigned int record2_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int record2_virtual_key = 'R';
+  unsigned int record3_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int record3_virtual_key = 0x7A;  // F11
   unsigned int toggle_ui_modifiers = kAlt | kNoRepeat;
   unsigned int toggle_ui_virtual_key = 'X';
 };
