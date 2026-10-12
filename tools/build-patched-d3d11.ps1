@@ -55,13 +55,30 @@ $cpp = @(
   'd3d11-zstencilbuffer.cpp'
 ) | ForEach-Object { Join-Path (Join-Path $source 'libobs-d3d11') $_ }
 
-$wdkRoot = Join-Path $deps 'wdk-10.0.28000.2526'
-$wdkHeader = Get-ChildItem -LiteralPath $wdkRoot -Filter 'd3dkmthk.h' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $wdkHeader) { throw "Required WDK header d3dkmthk.h missing under $wdkRoot" }
-$wdkIncludeDirs = @($wdkHeader.Directory.FullName)
-$wdkIncludeDirs += Get-ChildItem -LiteralPath $wdkRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-  Where-Object { $_.Name -in @('km','shared','um','ucrt') } | ForEach-Object { $_.FullName }
-$wdkIncludeArgs = @($wdkIncludeDirs | Select-Object -Unique | ForEach-Object { "-I$_" })
+# Only OBS's optional GPU-priority/HAGS diagnostics depend on the WDK-only
+# d3dkmthk.h header. The capture backend does not need those diagnostics, so
+# disable those optional blocks while retaining all actual D3D11 capture code.
+$subsystemPath = Join-Path $source 'libobs-d3d11/d3d11-subsystem.cpp'
+$subsystemText = Get-Content -LiteralPath $subsystemPath -Raw
+if ($subsystemText.Contains('#include <d3dkmthk.h>')) {
+  $subsystemText = [regex]::Replace($subsystemText, '(?m)^#include <d3dkmthk\.h>\r?\n', '')
+  $subsystemText = [regex]::Replace($subsystemText, '(?ms)^#ifdef USE_GPU_PRIORITY\r?\n.*?^#endif\r?\n', '')
+  $hagsStart = $subsystemText.IndexOf('struct HagsStatus {')
+  if ($hagsStart -lt 0) { throw 'Expected OBS HAGS diagnostics block was not found.' }
+  $checkStart = $subsystemText.IndexOf('static bool CheckFormat(', $hagsStart)
+  if ($checkStart -lt 0) { throw 'Could not identify the end of the optional OBS HAGS diagnostics block.' }
+  $subsystemText = $subsystemText.Remove($hagsStart, $checkStart - $hagsStart)
+  $hagsLogPattern = '(?s)\s*if \(auto hags_support = GetAdapterHagsStatus\(&desc\)\) \{\s*blog\(LOG_INFO, "\\t  HAGS Status:    %s", hags_support->ToString\(\)\.c_str\(\)\);\s*\} else \{\s*blog\(LOG_WARNING, "\\t  HAGS Status:    Unknown"\);\s*\}'
+  $withoutHagsLog = [regex]::Replace($subsystemText, $hagsLogPattern, '', 1)
+  if ($withoutHagsLog -eq $subsystemText -or $withoutHagsLog.Contains('GetAdapterHagsStatus(&desc)')) {
+    throw 'Could not safely remove the optional OBS HAGS diagnostic call.'
+  }
+  $subsystemText = $withoutHagsLog
+  Set-Content -LiteralPath $subsystemPath -Value $subsystemText -Encoding utf8NoBOM
+}
+if ($subsystemText.Contains('d3dkmthk.h') -or $subsystemText.Contains('GetAdapterHagsStatus(&desc)')) {
+  throw 'WDK-dependent diagnostic code remains in D3D11 backend source.'
+}
 
 $includeArgs = @(
   "-I$configDir",
@@ -72,7 +89,7 @@ $includeArgs = @(
   "-I$(Join-Path $obsSdk 'include')",
   '-isystem',
   ((Get-ChildItem (Join-Path $deps 'winsdk/c/Include') -Directory | Select-Object -First 1).FullName + '/cppwinrt')
-) + $wdkIncludeArgs
+)
 $arguments = @(
   '-std=c++20',
   '-O2',
