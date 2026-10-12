@@ -54,7 +54,7 @@ struct AppConfig {
   std::string discord_audio_window = "::Discord.exe";
   std::string music_audio_window = "::Spotify.exe";
   std::string output_container = "mkv";
-  int obs_display_method = 2; // Use Windows Graphics Capture; auto=0, DXGI=1, WGC=2.
+  int obs_display_method = 1; // Legacy setting only; display capture uses Klip GDI/BitBlt.
   bool obs_limit_game_capture_fps = true; // Limit capture copies to output FPS; never caps the game itself.
   double clip_duration_seconds = 60.0;
   std::uint32_t target_fps = 60;
