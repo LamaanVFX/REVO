@@ -2,8 +2,8 @@ REVO 3.0.4 — LICENSE NOTICE
 Copyright (C) 2026 Andrewkernel and contributors
 
 REVO 3.0.4 is free software: you can redistribute it and/or modify it under
- the GNU General Public License as published by the Free Software Foundation,
- either version 3 of the License, or (at your option) any later version.
+the GNU General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
 REVO is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
@@ -15,7 +15,6 @@ acknowledges this notice; running the program does not require accepting
 additional contractual terms.
 
 Source, build instructions and third-party sources accompany the release:
-https://github.com/LamaanVFX/klipedit
 https://github.com/LamaanVFX/klipedit
 
 Record only content you are authorized to capture. See PRIVACY.md for local
