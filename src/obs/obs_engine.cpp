@@ -1162,6 +1162,11 @@ void ObsEngine::Tick() {
         config_.game_audio_window = desired_audio_selector;
         if (game_audio_) {
           obs_set_output_source(1, nullptr);
+          if (game_audio_meter_) {
+            obs_volmeter_destroy(game_audio_meter_);
+            game_audio_meter_ = nullptr;
+          }
+          game_audio_level_.store(0.0F, std::memory_order_relaxed);
           obs_source_release(game_audio_);
           game_audio_ = nullptr;
         }
