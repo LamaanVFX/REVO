@@ -1182,7 +1182,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const float audio_row_y = audio_title_y + 27.0F;
   const ImVec2 audio_row_size{content_width, audio_row_height};
   const float level_x = content.x + 265.0F;
-  const float gain_width = content_width - 585.0F;
+  const float gain_width = std::max(160.0F, content_width - 650.0F);
   DrawCard(draw, {content.x, audio_row_y}, audio_row_size, false, kPanel, kPanelBorder, 7.0F);
   DrawSpeakerIcon(draw, {content.x + 38.0F, audio_row_y + 26.0F}, kMutedU32);
   DrawText(draw, semibold, 13.0F, {content.x + 76.0F, audio_row_y + 18.0F}, kMutedU32,
@@ -1193,19 +1193,12 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     desktop_gain_dirty_ = true;
     commands.set_desktop_audio_gain(desktop_gain);
   }
-  char desktop_gain_text[16]{};
-  std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "%d%%",
-                static_cast<int>(desktop_gain * 100.0F + 0.5F));
-  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, audio_row_y + 18.0F}, kTextU32,
+  char desktop_gain_text[24]{};
+  std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "%.1f dB", GainToDb(desktop_gain));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, audio_row_y + 18.0F}, kTextU32,
            desktop_gain_text);
   const float meter_x = content.x + content_width - 208.0F;
-  const int lit_segments =
-      static_cast<int>(std::clamp(snapshot.desktop_audio_level, 0.0F, 1.0F) * 18.0F);
-  for (int segment = 0; segment < 18; ++segment) {
-    const ImU32 meter_color = segment < lit_segments ? kGreen : IM_COL32(32, 73, 55, 255);
-    draw->AddRectFilled({meter_x + segment * 7.0F, audio_row_y + 22.0F},
-                        {meter_x + segment * 7.0F + 4.0F, audio_row_y + 30.0F}, meter_color);
-  }
+  DrawAudioMeter(draw, label_font, meter_x, audio_row_y + 2.0F, snapshot.desktop_audio_level);
   bool desktop_enabled = config.desktop_audio_enabled;
   if (Switch("##desktop-audio-toggle", {content.x + content_width - 70.0F, audio_row_y + 13.0F},
              desktop_enabled) &&
@@ -1250,11 +1243,12 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     microphone_gain_dirty_ = true;
     commands.set_microphone_audio_gain(microphone_gain);
   }
-  char microphone_gain_text[16]{};
-  std::snprintf(microphone_gain_text, sizeof(microphone_gain_text), "%d%%",
-                static_cast<int>(microphone_gain * 100.0F + 0.5F));
-  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, microphone_y + 18.0F},
+  char microphone_gain_text[24]{};
+  std::snprintf(microphone_gain_text, sizeof(microphone_gain_text), "%.1f dB",
+                GainToDb(microphone_gain));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, microphone_y + 18.0F},
            microphone_enabled ? kTextU32 : kMutedU32, microphone_gain_text);
+  DrawAudioMeter(draw, label_font, meter_x, microphone_y + 2.0F, snapshot.microphone_level);
   if (Switch("##microphone-toggle", {content.x + content_width - 70.0F, microphone_y + 13.0F},
              microphone_enabled) &&
       commands.set_microphone_enabled) {
@@ -1273,11 +1267,11 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     microphone_gain_dirty_ = true;
     commands.set_discord_audio_gain(discord_gain);
   }
-  char discord_gain_text[16]{};
-  std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%d%%",
-                static_cast<int>(discord_gain * 100.0F + 0.5F));
-  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, discord_y + 18.0F},
+  char discord_gain_text[24]{};
+  std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%.1f dB", GainToDb(discord_gain));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, discord_y + 18.0F},
            config.discord_audio_window.empty() ? kMutedU32 : kTextU32, discord_gain_text);
+  DrawAudioMeter(draw, label_font, meter_x, discord_y + 2.0F, snapshot.discord_audio_level);
   if (ImGui::IsItemHovered() && config.discord_audio_window.empty())
     ImGui::SetTooltip("Select Discord's executable in Settings > Audio to enable this source.");
 
@@ -1293,11 +1287,11 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     microphone_gain_dirty_ = true;
     commands.set_music_audio_gain(music_gain);
   }
-  char music_gain_text[16]{};
-  std::snprintf(music_gain_text, sizeof(music_gain_text), "%d%%",
-                static_cast<int>(music_gain * 100.0F + 0.5F));
-  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, music_y + 18.0F},
+  char music_gain_text[24]{};
+  std::snprintf(music_gain_text, sizeof(music_gain_text), "%.1f dB", GainToDb(music_gain));
+  DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, music_y + 18.0F},
            config.music_audio_window.empty() ? kMutedU32 : kTextU32, music_gain_text);
+  DrawAudioMeter(draw, label_font, meter_x, music_y + 2.0F, snapshot.music_audio_level);
   if (ImGui::IsItemHovered() && config.music_audio_window.empty())
     ImGui::SetTooltip("Select Spotify's executable in Settings > Audio to enable this source.");
 
