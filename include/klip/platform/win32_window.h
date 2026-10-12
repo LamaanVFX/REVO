@@ -37,6 +37,7 @@ class Win32Window {
   static LRESULT CALLBACK ToastWindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param);
   LRESULT HandleMessage(UINT message, WPARAM w_param, LPARAM l_param);
   void UpdateTray(bool add) noexcept;
+  bool EnsureToastWindow();
 
   HINSTANCE instance_ = nullptr;
   HWND window_ = nullptr;
