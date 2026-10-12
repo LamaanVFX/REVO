@@ -643,7 +643,7 @@ std::string SystemHardwareSummary() {
 std::string BuildDiagnostics(const ApplicationSnapshot& snapshot, const AppConfig& config,
                              bool include_private_details) {
   std::ostringstream report;
-  report << "REVO v3.0.3 diagnostics\n"
+  report << "REVO v3.0.4 diagnostics\n"
          << "Application build: Windows x64\n"
          << "Windows version: " << WindowsBuildSummary() << '\n'
          << "System: " << SystemHardwareSummary() << '\n'
@@ -932,7 +932,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
            kMutedU32, snapshot.status == CaptureStatus::kBuffering
                           ? "Live capture / replay buffer"
                           : "Capture status / details");
-  constexpr std::string_view sidebar_version = "v3.0.3";
+  constexpr std::string_view sidebar_version = "v3.0.4";
   DrawText(draw, label_font, 10.0F,
            {window_min.x + 20.0F,
             window_max.y - 26.0F},
@@ -1572,7 +1572,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     ResetDraft(config);
     settings_open_ = true;
   }
-  constexpr std::string_view version = "v3.0.3";
+  constexpr std::string_view version = "v3.0.4";
   DrawText(draw, label_font, 10.0F,
            {content.x + content_width - TextWidth(label_font, 10.0F, version), footer_y + 21.0F},
            kMutedU32, version);
@@ -1915,7 +1915,6 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     }
 
     {
-      SectionLabel("shortcuts / global keybinds");
       SectionLabel("shortcuts / global keybinds");
       ImGui::TextColored(kMuted,
                          "Choose any key or key combination for each global shortcut.");
