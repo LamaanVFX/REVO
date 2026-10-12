@@ -195,21 +195,36 @@ void DrawCard(ImDrawList* draw, ImVec2 minimum, ImVec2 size, bool hovered = fals
 }
 
 void DrawLogo(ImDrawList* draw, ImVec2 position, float scale) {
-  const ImU32 left = IM_COL32(139, 67, 247, 255);
-  const ImU32 light = IM_COL32(177, 90, 255, 255);
-  const ImU32 dark = IM_COL32(103, 48, 219, 255);
-  draw->AddRectFilled(position, {position.x + 11.0F * scale, position.y + 34.0F * scale}, left,
-                      4.0F * scale);
-  const ImVec2 upper[] = {{position.x + 8.0F * scale, position.y + 15.0F * scale},
-                          {position.x + 24.0F * scale, position.y},
-                          {position.x + 35.0F * scale, position.y},
-                          {position.x + 17.0F * scale, position.y + 18.0F * scale}};
-  draw->AddConvexPolyFilled(upper, 4, light);
-  const ImVec2 lower[] = {{position.x + 9.0F * scale, position.y + 18.0F * scale},
-                          {position.x + 18.0F * scale, position.y + 10.0F * scale},
-                          {position.x + 36.0F * scale, position.y + 34.0F * scale},
-                          {position.x + 23.0F * scale, position.y + 34.0F * scale}};
-  draw->AddConvexPolyFilled(lower, 4, dark);
+  const auto p = [&](float x, float y) {
+    return ImVec2{position.x + x * scale, position.y + y * scale};
+  };
+  const ImU32 glow = IM_COL32(0, 226, 239, 34);
+  const ImU32 shadow = IM_COL32(0, 88, 105, 150);
+  const ImU32 cyan = IM_COL32(25, 232, 239, 255);
+  const ImU32 bright = IM_COL32(110, 255, 255, 255);
+  const ImU32 teal = IM_COL32(0, 179, 205, 255);
+
+  // Soft cyan glow and a dark, offset extrusion echo the supplied REVO mark.
+  draw->AddLine(p(7, 5), p(28, 5), glow, 17.0F * scale);
+  draw->AddLine(p(28, 5), p(37, 14), glow, 17.0F * scale);
+  draw->AddLine(p(37, 14), p(37, 22), glow, 17.0F * scale);
+  draw->AddLine(p(37, 22), p(28, 30), glow, 17.0F * scale);
+  draw->AddLine(p(28, 30), p(42, 44), glow, 17.0F * scale);
+
+  draw->AddLine(p(9, 7), p(9, 41), shadow, 12.0F * scale);
+  draw->AddLine(p(9, 7), p(27, 7), shadow, 12.0F * scale);
+  draw->AddLine(p(27, 7), p(35, 15), shadow, 12.0F * scale);
+  draw->AddLine(p(35, 15), p(35, 21), shadow, 12.0F * scale);
+  draw->AddLine(p(35, 21), p(27, 28), shadow, 12.0F * scale);
+  draw->AddLine(p(27, 28), p(40, 42), shadow, 12.0F * scale);
+
+  draw->AddLine(p(7, 4), p(26, 4), bright, 8.0F * scale);
+  draw->AddBezierCubic(p(26, 4), p(33, 4), p(37, 10), p(39, 15), cyan, 8.0F * scale);
+  draw->AddBezierCubic(p(39, 15), p(43, 22), p(38, 27), p(30, 30), cyan, 8.0F * scale);
+  draw->AddLine(p(7, 4), p(7, 42), cyan, 8.0F * scale);
+  draw->AddLine(p(14, 25), p(28, 25), teal, 7.0F * scale);
+  draw->AddLine(p(25, 28), p(40, 43), cyan, 9.0F * scale);
+  draw->AddLine(p(7, 4), p(26, 4), bright, 2.0F * scale);
 }
 
 void DrawMonitorIcon(ImDrawList* draw, ImVec2 center, ImU32 color) {
@@ -721,8 +736,11 @@ void MainPanel::Render(const ApplicationSnapshot& snapshot, const AppConfig& con
                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
   ImGui::Begin("REVO", nullptr, window_flags);
 
-  RenderDashboard(snapshot, config, commands, hotkeys_available);
-  if (settings_open_) RenderSettings(snapshot, config, commands);
+  if (settings_open_) {
+    RenderSettings(snapshot, config, commands);
+  } else {
+    RenderDashboard(snapshot, config, commands, hotkeys_available);
+  }
   ImGui::End();
   ImGui::PopStyleVar();
 #if !defined(KLIP_USE_LIBOBS)
@@ -898,7 +916,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   if (draw_nav_item("##revo-settings", "Settings", 190.0F, settings_open_)) {
     ResetDraft(config);
     settings_open_ = true;
-    ImGui::OpenPopup("settings###klip-settings-modal");
   }
 
   const char* sidebar_status =
@@ -1476,8 +1493,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
       if (!settings_open_) {
         ResetDraft(config);
         settings_open_ = true;
-        ImGui::OpenPopup("settings###klip-settings-modal");
-      }
+          }
     }
     if (ImGui::BeginPopup("capture-error-details")) {
       ImGui::TextColored(kCoral, "%s / %s", ComponentName(snapshot.last_error->component).c_str(),
@@ -1504,7 +1520,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   if (now < clip_toast_until_) {
     ImGui::SetNextWindowPos({window_max.x - 352.0F, window_min.y + 10.0F}, ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.96F);
-    if (ImGui::Begin("clip saved###klip-clip-saved", nullptr,
+    if (ImGui::Begin("clip saved###revo-clip-saved", nullptr,
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing)) {
       ImGui::TextColored(kMint, "clip saved");
@@ -1519,7 +1535,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   } else if (now < diagnostics_copied_until_) {
     ImGui::SetNextWindowPos({window_max.x - 270.0F, window_min.y + 10.0F}, ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.96F);
-    if (ImGui::Begin("diagnostics copied###klip-diagnostics-copied", nullptr,
+    if (ImGui::Begin("diagnostics copied###revo-diagnostics-copied", nullptr,
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing))
       ImGui::TextColored(kMint, "diagnostics copied / review before sharing");
@@ -1555,7 +1571,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   if (settings_clicked) {
     ResetDraft(config);
     settings_open_ = true;
-    ImGui::OpenPopup("settings###klip-settings-modal");
   }
   constexpr std::string_view version = "v3.0.3";
   DrawText(draw, label_font, 10.0F,
@@ -1572,53 +1587,41 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
   }
 
   if (!draft_initialized_) ResetDraft(config);
-  auto* viewport = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, {0.5F, 0.5F});
-  ImGui::SetNextWindowSize({std::max(480.0F, std::min(900.0F, viewport->WorkSize.x - 32.0F)),
-                            std::max(420.0F, std::min(700.0F, viewport->WorkSize.y - 32.0F))},
-                           ImGuiCond_Always);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {26.0F, 22.0F});
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0F);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0F);
-  ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4{0.005F, 0.02F, 0.025F, 0.76F});
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.018F, 0.052F, 0.064F, 1.0F});
-  bool popup_open = true;
-  if (!ImGui::BeginPopupModal(
-          "settings###klip-settings-modal", &popup_open,
-          ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar)) {
-    if (!ImGui::IsPopupOpen("settings###klip-settings-modal")) settings_open_ = false;
-    ImGui::PopStyleColor(2);
-    ImGui::PopStyleVar(3);
+  const ImVec2 settings_window_size = ImGui::GetWindowSize();
+
+  ImGui::SetCursorPos({22.0F, 18.0F});
+  if (ImGui::Button("< home", {98.0F, 36.0F})) {
+    ResetDraft(config);
+    settings_open_ = false;
+    diagnostics_preview_open_ = false;
     return;
   }
-
+  ImGui::SameLine(0.0F, 18.0F);
   ImGui::PushFont(UiFont(2));
-  ImGui::TextUnformatted("settings");
+  ImGui::TextUnformatted("REVO / SETTINGS");
   ImGui::PopFont();
-  ImGui::TextColored(kMuted, "save & apply changes here. No app restart is needed.");
-  ImGui::Separator();
-  ImGui::BeginChild("##settings-scroll", {0.0F, -94.0F}, false,
-                    ImGuiWindowFlags_AlwaysVerticalScrollbar);
+  ImGui::SameLine(18.0F, 0.0F);
+  ImGui::TextColored(kMuted, "All controls on one scrollable page");
+
+  ImGui::SetCursorPos({22.0F, 68.0F});
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {20.0F, 16.0F});
+  ImGui::BeginChild("##settings-scroll",
+                    {std::max(320.0F, settings_window_size.x - 44.0F),
+                     std::max(200.0F, settings_window_size.y - 176.0F)},
+                    false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+  ImGui::PopStyleVar();
 
   if (diagnostics_preview_open_) {
     RenderDiagnosticsPreview(snapshot, config);
-  } else if (ImGui::BeginTabBar("##settings-tabs")) {
-    const int requested_tab = std::exchange(requested_settings_tab_, -1);
-    const auto begin_settings_tab = [&](const char* label, int index) {
-#if defined(KLIP_USE_LIBOBS)
-      return BeginEventDrivenTab(label, index, requested_tab, requested_settings_tab_);
-#else
-      const bool visible = ImGui::BeginTabItem(label, nullptr,
-          requested_tab == index ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None);
-      return visible;
-#endif
-    };
-    if (begin_settings_tab("compatibility", 0)) {
+  } else {
+
+    {
+      SectionLabel("compatibility / system checks");
       RenderCompatibility(snapshot, config, commands);
-      ImGui::EndTabItem();
     }
 
-    if (begin_settings_tab("video", 1)) {
+    {
+      SectionLabel("video / encoder and quality");
       SectionLabel("performance / preset");
       bool performance_mode = IsPerformanceMode(draft_);
       if (ImGui::Checkbox("performance mode", &performance_mode))
@@ -1706,10 +1709,10 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       if (draft_.encoder_quality == EncoderQuality::kPerformance)
         ImGui::TextWrapped("performance uses lighter encoder tuning. image quality and file size may differ; resolution, fps and cq stay unchanged.");
 #endif
-      ImGui::EndTabItem();
     }
 
-    if (begin_settings_tab("capture", 2)) {
+    {
+      SectionLabel("capture / source and overlays");
 #if defined(KLIP_USE_LIBOBS)
       constexpr const char* methods[] = {"OBS automatic", "OBS DXGI duplication", "OBS Windows Graphics Capture"};
       ImGui::Combo("display capture method", &draft_.obs_display_method, methods, 3);
@@ -1800,10 +1803,10 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
                          "Open Windows Camera for a webcam source. One overlay is composed in the "
                          "existing GPU pass and applies when you save.");
 #endif
-      ImGui::EndTabItem();
     }
 
-    if (begin_settings_tab("audio", 3)) {
+    {
+      SectionLabel("audio / devices and routing");
       SectionLabel("clips / audio");
       ImGui::Checkbox("enable desktop audio track", &draft_.desktop_audio_enabled);
 #if defined(KLIP_USE_LIBOBS)
@@ -1902,10 +1905,10 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
             static_cast<float>(microphone_volume_db)));
       ImGui::Checkbox("enable microphone (voice / keyboard clicks) on launch",
                       &draft_.microphone_enabled);
-      ImGui::EndTabItem();
     }
 
-    if (begin_settings_tab("shortcuts", 4)) {
+    {
+      SectionLabel("shortcuts / global keybinds");
       SectionLabel("shortcuts / global keybinds");
       ImGui::TextColored(kMuted,
                          "Choose any key or key combination for each global shortcut.");
@@ -1977,10 +1980,10 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       if (!hotkey_capture_message_.empty())
         ImGui::TextColored(hotkey_capture_target_ >= 0 ? kCoral : kMint, "%s",
                            hotkey_capture_message_.c_str());
-      ImGui::EndTabItem();
     }
 
-    if (begin_settings_tab("storage", 5)) {
+    {
+      SectionLabel("storage / files and diagnostics");
       SectionLabel("storage / local files");
 #if defined(KLIP_USE_LIBOBS)
       const char* container_names[] = {"MKV (recommended / crash-safe)", "MP4"};
@@ -2008,12 +2011,11 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       }
       ImGui::SameLine();
       ImGui::TextDisabled("Preview locally; private details are excluded by default.");
-      ImGui::EndTabItem();
     }
-    ImGui::EndTabBar();
   }
 
   ImGui::EndChild();
+  ImGui::SetCursorPos({22.0F, settings_window_size.y - 91.0F});
   ImGui::Separator();
 
   const bool busy = snapshot.recording || snapshot.finalizing_recording ||
@@ -2031,7 +2033,6 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
   if (ImGui::Button("cancel", {112.0F, 46.0F})) {
     ResetDraft(config);
     settings_open_ = false;
-    ImGui::CloseCurrentPopup();
   }
   ImGui::SameLine();
   ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.0F, 0.42F, 0.48F, 1.0F});
@@ -2048,16 +2049,11 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     if (commands.save_settings(draft_)) {
       hotkey_capture_message_.clear();
       settings_open_ = false;
-      ImGui::CloseCurrentPopup();
-    }
+      }
   }
   ImGui::EndDisabled();
   ImGui::PopStyleColor(3);
 
-  if (!popup_open) settings_open_ = false;
-  ImGui::EndPopup();
-  ImGui::PopStyleColor(2);
-  ImGui::PopStyleVar(3);
 }
 
 void MainPanel::RenderCompatibility(const ApplicationSnapshot& snapshot, const AppConfig& config,
