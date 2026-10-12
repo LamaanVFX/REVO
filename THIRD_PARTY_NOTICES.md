@@ -1,6 +1,6 @@
-# Third-party notices — Klip 2.0
+# Third-party notices — REVO 3.0.4
 
-Klip 2.0 is distributed under GPL-3.0-or-later; see LICENSE. Individual
+REVO 3.0.4 is distributed under GPL-3.0-or-later; see LICENSE. Individual
 third-party components retain their own copyrights and licenses. Microsoft
 Windows, GPU drivers and the Microsoft Visual C++ runtime are system
 prerequisites, not relicensed as GPL components.
@@ -16,7 +16,7 @@ OBS license text is in licenses/OBS-GPL-2.0.txt.
 
 ## OBS runtime dependencies
 
-These are the official OBS dependency builds, not Klip's former LGPL-only
+These are the official OBS dependency builds, not the former legacy engine's LGPL-only
 FFmpeg 8 SDK. The official FFmpeg 7.1.1 runtime enables GPL and version3
 (including x264 and other codecs); the distributed combination uses GPLv3
 compatible terms. The release includes source archives, license texts and the
@@ -32,7 +32,7 @@ Intel libvpl, WIL, zstd, NV codec headers and AMF headers.
 
 ## Dear ImGui 1.92.8
 
-Klip statically links ImGui with its Win32/D3D11 backends under the MIT license.
+REVO statically links ImGui with its Win32/D3D11 backends under the MIT license.
 Source archive and license are provided. https://github.com/ocornut/imgui
 
 ## LLVM runtime
