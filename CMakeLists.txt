@@ -149,7 +149,7 @@ execute_process(
     "$base64 = [System.IO.File]::ReadAllText('${REVO_ICON_BASE64_PATH}').Trim(); [System.IO.File]::WriteAllBytes('${REVO_ICON_RESOURCE_PATH}', [System.Convert]::FromBase64String($base64))"
   RESULT_VARIABLE REVO_ICON_GENERATION_RESULT
   ERROR_VARIABLE REVO_ICON_GENERATION_ERROR)
-if(NOT REVO_ICON_GENERATION_RESULT EQUAL 0 OR NOT EXISTS "${KLIP_ICON_RESOURCE_PATH}")
+if(NOT REVO_ICON_GENERATION_RESULT EQUAL 0 OR NOT EXISTS "${REVO_ICON_RESOURCE_PATH}")
   message(FATAL_ERROR "Could not generate the REVO application icon: ${REVO_ICON_GENERATION_ERROR}")
 endif()
 configure_file(packaging/revo.rc.in "${CMAKE_CURRENT_BINARY_DIR}/revo.rc" @ONLY)
