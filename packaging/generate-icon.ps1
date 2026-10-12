@@ -9,13 +9,13 @@ Add-Type -AssemblyName System.Drawing
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-  $OutputPath = Join-Path $repositoryRoot "assets\klip.ico"
+  $OutputPath = Join-Path $repositoryRoot "assets\revo.ico"
 }
 $destination = [System.IO.Path]::GetFullPath($OutputPath)
 $destinationDirectory = Split-Path -Parent $destination
 New-Item -ItemType Directory -Force -Path $destinationDirectory | Out-Null
 
-function New-KlipPng([int]$Size) {
+function New-REVOPng([int]$Size) {
   $bitmap = [System.Drawing.Bitmap]::new($Size, $Size,
     [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
   $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
@@ -77,7 +77,7 @@ function New-KlipPng([int]$Size) {
 $sizes = @(16, 24, 32, 48, 64, 256)
 $images = @()
 foreach ($size in $sizes) {
-  $images += ,([byte[]](New-KlipPng $size))
+  $images += ,([byte[]](New-REVOPng $size))
 }
 $headerSize = 6 + 16 * $images.Count
 $offset = $headerSize
