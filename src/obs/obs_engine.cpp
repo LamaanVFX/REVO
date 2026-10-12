@@ -21,6 +21,7 @@
 
 #include "klip/core/path_text.h"
 #include "klip/obs/encoder_policy.h"
+#include "klip/obs/gdi_monitor_capture.h"
 #include "klip/obs/replay_policy.h"
 
 namespace klip {
@@ -198,15 +199,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     if (obs_reset_video(&video) != OBS_VIDEO_SUCCESS)
       throw std::runtime_error("OBS D3D11 video initialization failed");
     state_.SetCaptureAdapter("OBS D3D11 video engine", "Initialized / adapter details are in the OBS log");
-    obs_enter_graphics();
-    EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR monitor, HDC, LPRECT, LPARAM parameter) -> BOOL {
-      auto& logger = *reinterpret_cast<Logger*>(parameter);
-      MONITORINFOEXA info{}; info.cbSize = sizeof(info);
-      GetMonitorInfoA(monitor, &info);
-      logger.Info(std::string("OBS DXGI monitor ") + info.szDevice + " index=" + std::to_string(gs_duplicator_get_monitor_index(monitor)));
-      return TRUE;
-    }, reinterpret_cast<LPARAM>(&logger_));
-    obs_leave_graphics();
+    logger_.Info("Display acquisition backend: GDI BitBlt (no WGC / DXGI Desktop Duplication)");
 
     std::vector<const char*> modules{"win-capture", "win-wasapi", "obs-ffmpeg", "obs-nvenc", "obs-qsv11", "obs-x264"};
     if (config.static_overlay_enabled) modules.push_back("image-source");
@@ -225,6 +218,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
         throw std::runtime_error(std::string("Required OBS module failed: ") + name);
     }
     obs_post_load_modules();
+    RegisterGdiMonitorCapture();
     scene_ = obs_scene_create_private("Klip capture graph");
     if (!scene_) throw std::runtime_error("Could not create internal OBS scene");
     obs_set_output_source(0, obs_scene_get_source(scene_));
@@ -329,17 +323,11 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     return false;
   }
   auto settings = MakeData();
-  const char* type = mode == CaptureTargetMode::kDisplay ? "monitor_capture" : "game_capture";
-  if (mode == CaptureTargetMode::kDisplay) {
+  const bool display_capture = mode == CaptureTargetMode::kDisplay;
+  const char* type = display_capture ? "klip_gdi_monitor_capture" : "game_capture";
+  if (display_capture) {
     if (!selected) { error = Error{ErrorComponent::kCapture, "select display", "OBS found no displays"}; return false; }
     obs_data_set_string(settings.get(), "monitor_id", selected->value.c_str());
-    Properties properties(obs_get_source_properties(type), obs_properties_destroy);
-    auto* method = properties ? obs_properties_get(properties.get(), "method") : nullptr;
-    bool supported = false;
-    if (method) for (std::size_t i = 0; i < obs_property_list_item_count(method); ++i)
-      if (!obs_property_list_item_disabled(method, i) && obs_property_list_item_int(method, i) == config_.obs_display_method) supported = true;
-    if (!supported) { error = Error{ErrorComponent::kCapture, "select display method", "The selected OBS display method is unsupported"}; return false; }
-    obs_data_set_int(settings.get(), "method", config_.obs_display_method);
     obs_data_set_bool(settings.get(), "capture_cursor", config_.capture_cursor);
   } else {
     pending_game_label_ = !selected && !label.empty() ? label : "";
@@ -352,7 +340,7 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     obs_data_set_bool(settings.get(), "capture_audio", false); // Desktop audio is captured once.
     obs_data_set_bool(settings.get(), "anti_cheat_hook", true); // Official OBS compatibility mode only.
   }
-  auto* next = obs_source_create(type, "Klip gameplay", settings.get(), nullptr);
+  auto* next = obs_source_create(type, display_capture ? "Klip display (GDI)" : "Klip gameplay", settings.get(), nullptr);
   if (!next) { error = Error{ErrorComponent::kCapture, "create OBS source", std::string(type) + " creation failed"}; return false; }
   if (capture_item_) obs_sceneitem_remove(capture_item_);
   if (capture_) obs_source_release(capture_);
