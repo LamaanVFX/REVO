@@ -44,3 +44,4 @@ Expand-PinnedPackage 'ninja' 'https://github.com/ninja-build/ninja/releases/down
 Expand-PinnedPackage 'ffmpeg-8.1' 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-shared-8.1.zip' 'ec30bde63b8e36ebdc7ba5b37140a43a2d2afe884650269fadeb033a57098cfc'
 Expand-PinnedPackage 'winsdk' 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2705/microsoft.windows.sdk.cpp.10.0.28000.2705.nupkg' 'a74ca8f9af98bd61925d9e2932ad98f746306123167b8f0bba99cd9ea9f03807'
 Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
+

@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: ["feature/five-audio-tracks-mp4"]
+    branches:
+      - "feature/five-audio-tracks-mp4"
+      - "fix/dxgi-duplicateoutput-fallback"
     tags: ["v*"]
 
 permissions:
@@ -46,7 +48,7 @@ jobs:
           & packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-2 -SourcesDirectory "work/release-sources-$version" -InnoSetupCompiler $compiler
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: Klip-win64-beta-${{ github.run_number }}
+          name: Klip-win64-dxgi-fix-${{ github.run_number }}
           path: |
             artifacts/**/Klip-*-win64-setup.exe
             artifacts/**/Klip-*-win64-portable.zip
@@ -54,7 +56,4 @@ jobs:
             artifacts/**/SHA256SUMS.txt
           if-no-files-found: error
 
-# Artifact builds do not automatically publish a stable release or replace
-# user-tested binaries. Publishing requires review of exact package evidence,
-# hardware limitations, source/license inventory and hashes. Stable releases
-# additionally require signing and clean-machine/hardware acceptance.
+# Diagnostic builds are unsigned artifacts only; they don't replace stable releases.

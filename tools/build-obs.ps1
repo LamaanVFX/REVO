@@ -5,6 +5,13 @@ $ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 & "$PSScriptRoot/prepare-obs.ps1"
 if($LASTEXITCODE){exit $LASTEXITCODE}
+
+# Build the DXGI DuplicateOutput fallback into the OBS backend itself. Klip #72
+# otherwise ships the stock precompiled backend, so changing source alone does
+# not affect the capture behavior.
+& "$PSScriptRoot/build-patched-d3d11.ps1" -OutputDirectory "$repo/work/obs-sdk-32.1.2/bin/64bit"
+if($LASTEXITCODE){exit $LASTEXITCODE}
+
 $deps=Join-Path $repo 'work/validation-tools'
 $llvm=(Get-ChildItem "$deps/llvm" -Directory | Select-Object -First 1).FullName.Replace('\','/')
 $cmake=(Get-ChildItem "$deps/cmake" -Directory | Select-Object -First 1).FullName

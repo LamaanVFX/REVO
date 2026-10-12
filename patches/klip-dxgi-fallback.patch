@@ -1,0 +1,58 @@
+--- a/libobs-d3d11/d3d11-duplicator.cpp
++++ b/libobs-d3d11/d3d11-duplicator.cpp
+@@ -48,31 +48,43 @@ void gs_duplicator::Start()
+ 	if (!get_monitor(device, idx, output.Assign()))
+ 		throw "Invalid monitor index";
+ 
+-	hr = output->QueryInterface(IID_PPV_ARGS(output5.Assign()));
+ 	hdr = false;
+ 	sdr_white_nits = 80.f;
+-	if (SUCCEEDED(hr)) {
++
++	// Prefer DuplicateOutput1 for HDR/format-aware capture, but don't let a
++	// failure there prevent desktop capture on drivers/outputs that only work
++	// with the legacy Desktop Duplication API.
++	hr = output->QueryInterface(IID_PPV_ARGS(output5.Assign()));
++	if (SUCCEEDED(hr)) {
+ 		constexpr DXGI_FORMAT supportedFormats[]{
+ 			DXGI_FORMAT_R16G16B16A16_FLOAT,
+ 			DXGI_FORMAT_B8G8R8A8_UNORM,
+ 		};
+ 		hr = output5->DuplicateOutput1(device->device, 0, _countof(supportedFormats), supportedFormats,
+ 					       duplicator.Assign());
+-		if (FAILED(hr))
+-			throw HRError("Failed to DuplicateOutput1", hr);
+-		DXGI_OUTPUT_DESC desc;
+-		if (SUCCEEDED(output->GetDesc(&desc))) {
+-			gs_monitor_color_info info = device->GetMonitorColorInfo(desc.Monitor);
+-			hdr = info.hdr;
+-			sdr_white_nits = (float)info.sdr_white_nits;
++		if (SUCCEEDED(hr)) {
++			DXGI_OUTPUT_DESC desc;
++			if (SUCCEEDED(output->GetDesc(&desc))) {
++				gs_monitor_color_info info = device->GetMonitorColorInfo(desc.Monitor);
++				hdr = info.hdr;
++				sdr_white_nits = (float)info.sdr_white_nits;
++			}
++		} else {
++			blog(LOG_WARNING,
++			     "DuplicateOutput1 failed (%08lX); falling back to DuplicateOutput",
++			     hr);
+ 		}
+-	} else {
++	}
++
++	// The legacy API provides the broadly compatible SDR path. It is also the
++	// fallback when IDXGIOutput5 exists but DuplicateOutput1 itself fails.
++	if (!duplicator) {
+ 		hr = output->QueryInterface(IID_PPV_ARGS(output1.Assign()));
+ 		if (FAILED(hr))
+ 			throw HRError("Failed to query IDXGIOutput1", hr);
+ 
+ 		hr = output1->DuplicateOutput(device->device, duplicator.Assign());
+ 		if (FAILED(hr))
+-			throw HRError("Failed to DuplicateOutput", hr);
++			throw HRError("Failed to DuplicateOutput (fallback after DuplicateOutput1)", hr);
+ 	}
+ }
+*** End Patch
