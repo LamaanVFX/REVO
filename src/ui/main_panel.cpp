@@ -719,7 +719,7 @@ void MainPanel::Render(const ApplicationSnapshot& snapshot, const AppConfig& con
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0.0F, 0.0F});
   ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
-  ImGui::Begin("Klip", nullptr, window_flags);
+  ImGui::Begin("REVO", nullptr, window_flags);
 
   RenderDashboard(snapshot, config, commands, hotkeys_available);
   if (settings_open_) RenderSettings(snapshot, config, commands);
@@ -1437,8 +1437,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   ImGui::InvisibleButton("##open-clips-folder", folder_size);
   const bool folder_clicked = ImGui::IsItemClicked();
   const bool folder_hovered = ImGui::IsItemHovered();
-  DrawCard(draw, folder_pos, folder_size, folder_hovered, IM_COL32(22, 19, 29, 255),
-           IM_COL32(166, 101, 235, 230), 7.0F);
+  DrawCard(draw, folder_pos, folder_size, folder_hovered, IM_COL32(5, 25, 31, 255),
+           IM_COL32(10, 211, 222, 230), 7.0F);
   DrawFolderIcon(draw, {folder_pos.x + 34.0F, folder_pos.y + 26.0F}, kPurpleBright);
   DrawText(draw, semibold, 14.0F, {folder_pos.x + 59.0F, folder_pos.y + 17.0F}, kPurpleBright,
            "open clips folder");
@@ -1535,8 +1535,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const bool settings_clicked = ImGui::IsItemClicked();
   const bool settings_hovered = ImGui::IsItemHovered();
   DrawCard(draw, settings_pos, settings_size, settings_hovered,
-           settings_hovered ? IM_COL32(52, 31, 77, 255) : IM_COL32(29, 22, 39, 255),
-           IM_COL32(164, 93, 235, 235), 8.0F);
+           settings_hovered ? IM_COL32(0, 75, 86, 255) : IM_COL32(5, 23, 30, 255),
+           IM_COL32(10, 211, 222, 235), 8.0F);
   const ImVec2 gear_center{settings_pos.x + 18.0F, settings_pos.y + 17.0F};
   draw->AddCircle(gear_center, 7.0F, kPurpleBright, 16, 2.0F);
   draw->AddCircle(gear_center, 2.5F, kPurpleBright, 12, 1.5F);
@@ -1911,7 +1911,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
                          "Choose any key or key combination for each global shortcut.");
       const char* shortcut_labels[] = {"save replay 1", "save replay 2", "save replay 3",
                                           "start / stop recording 1", "start / stop recording 2",
-                                          "start / stop recording 3", "show / hide Klip"};
+                                          "start / stop recording 3", "show / hide REVO"};
       unsigned int* shortcut_modifiers[] = {
           &draft_.hotkeys.save_modifiers, &draft_.hotkeys.save2_modifiers,
           &draft_.hotkeys.save3_modifiers, &draft_.hotkeys.record_modifiers,
@@ -2077,7 +2077,7 @@ void MainPanel::RenderCompatibility(const ApplicationSnapshot& snapshot, const A
   const bool windows_supported = windows_build.has_value() && *windows_build >= 18362;
   row("Windows", windows_supported, WindowsBuildSummary(), !windows_build.has_value());
   row("64-bit processor", IsSupportedArchitecture(),
-      IsSupportedArchitecture() ? "x64 build / supported architecture" : "Klip currently targets x64 Windows");
+      IsSupportedArchitecture() ? "x64 build / supported architecture" : "REVO currently targets x64 Windows");
 #if defined(KLIP_USE_LIBOBS)
   row("Dashboard D3D11", IsSupportedD3dLevel(snapshot.graphics_feature_level),
 #else
