@@ -157,6 +157,7 @@ target_sources(klip_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/revo.rc")
 set_target_properties(klip_app PROPERTIES OUTPUT_NAME REVO)
 if(KLIP_BUILD_TESTS)
   add_executable(klip_windows_tests tests/windows_tests.cpp)
+  target_sources(klip_windows_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/revo.rc")
   target_include_directories(klip_windows_tests PRIVATE "${FFMPEG_INCLUDE_DIR}")
   target_link_libraries(klip_windows_tests PRIVATE klip_media "${FFMPEG_AVCODEC_LIBRARY}"
     "${FFMPEG_AVFORMAT_LIBRARY}")
