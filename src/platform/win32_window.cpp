@@ -66,7 +66,7 @@ bool PointInRoundedLeftBar(float x, float y) {
   return dx * dx + dy * dy <= radius * radius;
 }
 
-HICON CreateKlipIcon(int size) {
+HICON CreateRevoIcon(int size) {
   BITMAPINFO bitmap_info{};
   bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
   bitmap_info.bmiHeader.biWidth = size;
@@ -84,9 +84,9 @@ HICON CreateKlipIcon(int size) {
       {{8.0F, 15.0F}, {24.0F, 0.0F}, {35.0F, 0.0F}, {17.0F, 18.0F}}};
   constexpr std::array<LogoPoint, 4> lower{
       {{9.0F, 18.0F}, {18.0F, 10.0F}, {36.0F, 34.0F}, {23.0F, 34.0F}}};
-  constexpr std::array<std::uint8_t, 3> left_color{139, 67, 247};
-  constexpr std::array<std::uint8_t, 3> upper_color{177, 90, 255};
-  constexpr std::array<std::uint8_t, 3> lower_color{103, 48, 219};
+  constexpr std::array<std::uint8_t, 3> left_color{0, 190, 205};
+  constexpr std::array<std::uint8_t, 3> upper_color{38, 250, 246};
+  constexpr std::array<std::uint8_t, 3> lower_color{0, 128, 163};
   constexpr int samples = 4;
   constexpr int sample_count = samples * samples;
   const float scale = static_cast<float>(size) * 0.82F / 36.0F;
@@ -163,8 +163,8 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   window_class.style = CS_CLASSDC;
   window_class.lpfnWndProc = WindowProc;
   window_class.hInstance = instance;
-  large_icon_ = CreateKlipIcon(64);
-  small_icon_ = CreateKlipIcon(32);
+  large_icon_ = CreateRevoIcon(64);
+  small_icon_ = CreateRevoIcon(32);
   window_class.hIcon = large_icon_;
   window_class.hIconSm = small_icon_;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -192,7 +192,7 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   const int height = rectangle.bottom - rectangle.top;
   const int x = monitor.rcWork.left + (monitor.rcWork.right - monitor.rcWork.left - width) / 2;
   const int y = monitor.rcWork.top + (monitor.rcWork.bottom - monitor.rcWork.top - height) / 2;
-  window_ = CreateWindowW(kWindowClass, L"Klip", style, x, y, width, height, nullptr, nullptr,
+  window_ = CreateWindowW(kWindowClass, L"REVO", style, x, y, width, height, nullptr, nullptr,
                           instance, this);
   if (window_ == nullptr) {
     error = MakeWin32Error(ErrorComponent::kWindow, "create main window", GetLastError());
@@ -219,7 +219,7 @@ void Win32Window::UpdateTray(bool add) noexcept {
   icon.cbSize = sizeof(icon); icon.hWnd = window_; icon.uID = 1;
   icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
   icon.uCallbackMessage = WM_APP + 54; icon.hIcon = small_icon_;
-  wcscpy_s(icon.szTip, L"Klip / open or quit from the tray");
+  wcscpy_s(icon.szTip, L"REVO / open or quit from the tray");
   if (add) tray_added_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
   else { Shell_NotifyIconW(NIM_DELETE, &icon); tray_added_ = false; }
 #else
