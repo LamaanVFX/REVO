@@ -1,65 +1,31 @@
-# Klip 2.0
+# REVO 2.0
 
-A focused Windows x64 clipping app built around stock OBS/libobs 32.1.2.
-The new engine handles Game Capture, Display Capture, WASAPI audio, hardware
-encoding, replay buffering and recording. Klip keeps its native C++20,
-Win32/D3D11/ImGui dashboard and customizable global shortcuts.
+**A lightweight Windows clipping and recording app.**
 
-## Public beta
+REVO is built on OBS/libobs 32.1.2 with a native C++20, Win32, D3D11 and ImGui interface.
 
-This is the new-engine edition (current patch 2.0.1), replacing the legacy
-3.0.x downloads. It is unsigned, and compatibility/performance vary by game,
-GPU and drivers. No universal OBS-parity, zero-overhead or stable-release
-claim is made. NVIDIA RTX 3060 capture has been tested; broader hardware,
-live microphone and clean-machine testing remain incomplete.
+## Features
 
-- Save recent gameplay with Alt+C or your custom shortcut.
-- Record full sessions and save clips while recording using one shared encoder.
-- Adjust desktop/microphone levels, devices and separate audio tracks.
-- Select 60 or 120 FPS and a supported hardware encoder; unavailable selections
-  fail visibly rather than silently changing quality.
-- Use explicit NVENC Performance tuning when its quality/compression tradeoff
-  suits you. Balanced remains unchanged. The optional game-copy limiter is not
-  a guaranteed smoothness fix and does not cap your game's frame rate.
-- Hidden/minimized dashboards stop rendering and computing visualization-only
-  audio meters. Actual capture/audio continue.
-- Duration-first replay fits video bitrate to the chosen time and memory budget.
-  Allow the buffer to warm up after starting/changing capture. Constant quality
-  is optional and can still shorten clips. Clips and recordings use MKV.
+- **Instant Replay** — Save recent gameplay with `Alt+C` or a custom shortcut.
+- **Game Capture** — Capture gameplay with hardware-accelerated encoding.
+- **Display Capture** — Record your screen.
+- **Recording** — Record full sessions and save clips simultaneously.
+- **Audio Controls** — Configure desktop audio, microphone input and separate audio tracks.
+- **Performance Options** — Choose 60 or 120 FPS and supported hardware encoders.
+- **Local Storage** — Recordings, clips, settings and logs stay on your device.
 
-## Download and run
+## Download & Installation
 
-[Website](https://klip-ten-zeta.vercel.app/) ·
-[Releases and sources](https://github.com/andrewkernel/klip/releases)
+Download the latest release and install REVO, or extract the portable ZIP and launch `REVO.exe`.
 
-Install the complete `Klip-2.0.1-win64-setup.exe`, or extract the complete
-portable ZIP and open its root `Klip.exe`. Keep bin, data, obs-plugins and
-licenses together. Requires Windows x64, supported graphics drivers and the
-[Microsoft VC++ 2015–2022 x64 runtime](https://aka.ms/vs/17/release/vc_redist.x64.exe).
-Verify the release SHA256SUMS; do not disable antivirus or Windows security.
-Close old Klip instances before upgrading. The × button hides the dashboard;
-use the tray menu's Quit Klip to stop capture and exit.
+**Requirements:** Windows x64, compatible graphics drivers and the [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe).
 
-Media, settings and logs stay local. Review logs for private target/device
-names before sharing. See [privacy](PRIVACY.md).
+Keep all files included in the installation or portable package together.
 
-## Source, build and verification
+## Public Beta
 
-Klip is **GPL-3.0-or-later**; see [LICENSE](LICENSE) and
-[third-party notices](THIRD_PARTY_NOTICES.md). The previous proprietary EULA
-is superseded for Klip 2.0. Corresponding upstream source/build archives are
-published alongside each 2.0 release, not merely linked to an upstream tip.
+REVO is currently in beta. Compatibility and performance may vary depending on your hardware, drivers and games. Some features and configurations have not been fully tested.
 
-See [2.0 build/release instructions](docs/release-2.0.md),
-[architecture](docs/architecture.md),
-[gameplay performance evidence](docs/gameplay-performance-results.md) and
-[libobs verification](docs/libobs-results.md). The legacy custom WGC/FFmpeg
-engine remains in source behind `KLIP_USE_LIBOBS=OFF`; it is not the shipping
-2.0 engine. The default and release builds use libobs with diagnostic hooks OFF.
+## License
 
-## Original project demonstration
-
-https://x.com/andrew1x_/status/2079314121766396172
-
-This earlier video demonstrates the original concept, not a benchmark or
-verification of the current 2.0 beta.
+REVO is licensed under **GPL-3.0-or-later**. See `LICENSE` and `THIRD_PARTY_NOTICES.md` for details.
