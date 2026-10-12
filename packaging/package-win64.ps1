@@ -29,12 +29,12 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
   $OutputDirectory = Join-Path $repositoryRoot "artifacts"
 }
 $outputRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
-$stageRoot = Join-Path $outputRoot "Klip-$Version-win64"
-$portableArchive = Join-Path $outputRoot "Klip-$Version-win64-portable.zip"
+$stageRoot = Join-Path $outputRoot "REVO-$Version-win64"
+$portableArchive = Join-Path $outputRoot "REVO-$Version-win64-portable.zip"
 
-$executable = Join-Path $buildRoot "Klip.exe"
+$executable = Join-Path $buildRoot "REVO.exe"
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-  throw "Klip.exe was not found in $buildRoot"
+  throw "REVO.exe was not found in $buildRoot"
 }
 $requiredDllPatterns = @("avcodec-*.dll", "avformat-*.dll", "avutil-*.dll", "swresample-*.dll")
 foreach ($pattern in $requiredDllPatterns) {
@@ -146,12 +146,12 @@ Write-Host "Staged application: $stageRoot"
 if ($SkipInstaller) {
   Write-Host "Installer creation was explicitly skipped."
 } else {
-  Write-Host "Installer: $(Join-Path $outputRoot "Klip-$Version-win64-setup.exe")"
+  Write-Host "Installer: $(Join-Path $outputRoot "REVO-$Version-win64-setup.exe")"
 }
 
 $artifacts = @($portableArchive)
 if (-not $SkipInstaller) {
-  $artifacts += Join-Path $outputRoot "Klip-$Version-win64-setup.exe"
+  $artifacts += Join-Path $outputRoot "REVO-$Version-win64-setup.exe"
 }
 $checksums = foreach ($artifact in $artifacts) {
   if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) {
