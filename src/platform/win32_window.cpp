@@ -18,7 +18,7 @@ namespace klip {
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"KlipWindowClass";
-constexpr wchar_t kToastWindowClass[] = L"KlipStatusToastClass";
+constexpr wchar_t kToastWindowClass[] = L"REVOStatusToastClass";
 constexpr UINT_PTR kToastDismissTimer = 1;
 constexpr UINT_PTR kToastKeepTopmostTimer = 2;
 constexpr UINT kToastKeepTopmostIntervalMs = 50;
@@ -330,7 +330,7 @@ void Win32Window::ShowToast(const std::wstring& message) {
         continue;
       }
       if (!SetLayeredWindowAttributes(toast, 0, 224, LWA_ALPHA))
-        OutputDebugStringW(L"[Klip] Could not configure toast transparency.\\n");
+        OutputDebugStringW(L"[REVO] Could not configure toast transparency.\\n");
     }
 
     const RECT& work = work_areas[index];
