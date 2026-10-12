@@ -289,7 +289,7 @@ bool Win32Window::EnsureToastClass() {
   toast_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
   toast_class.lpszClassName = kToastWindowClass;
   if (!RegisterClassExW(&toast_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
-    OutputDebugStringW(L"[Klip] Could not register toast window class.\\n");
+    OutputDebugStringW(L"[REVO] Could not register toast window class.\\n");
     return false;
   }
   toast_class_registered_ = true;
@@ -323,7 +323,7 @@ void Win32Window::ShowToast(const std::wstring& message) {
     if (!toast || !IsWindow(toast)) {
       toast = CreateWindowExW(
           WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
-          kToastWindowClass, L"Klip status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
+          kToastWindowClass, L"REVO status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
           nullptr, nullptr, instance_, this);
       if (!toast) {
         OutputDebugStringW(L"[Klip] Could not create a monitor toast popup.\\n");
@@ -478,8 +478,8 @@ LRESULT Win32Window::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param)
       } else if (l_param == WM_RBUTTONUP) {
         POINT position{}; GetCursorPos(&position);
         HMENU menu = CreatePopupMenu();
-        AppendMenuW(menu, MF_STRING, 1, L"Open Klip");
-        AppendMenuW(menu, MF_STRING, 2, L"Quit Klip");
+        AppendMenuW(menu, MF_STRING, 1, L"Open REVO");
+        AppendMenuW(menu, MF_STRING, 2, L"Quit REVO");
         SetForegroundWindow(window_);
         const auto command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, position.x, position.y, 0, window_, nullptr);
         DestroyMenu(menu);
