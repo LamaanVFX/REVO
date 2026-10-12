@@ -90,6 +90,10 @@ constexpr ImU32 kPurpleBright = IM_COL32(24, 229, 234, 255);
 constexpr ImU32 kGreen = IM_COL32(22, 223, 199, 255);
 constexpr ImU32 kWarning = IM_COL32(250, 176, 65, 255);
 constexpr ImU32 kRed = IM_COL32(255, 97, 110, 255);
+
+void DrawText(ImDrawList* draw, ImFont* font, float size, ImVec2 position, ImU32 color,
+              std::string_view text);
+
 constexpr float kMinGainDb = -60.0F;
 constexpr float kMaxGainDb = 6.0F;
 
