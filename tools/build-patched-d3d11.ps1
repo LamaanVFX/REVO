@@ -84,6 +84,25 @@ if ($subsystemText.Contains('#include <d3dkmthk.h>')) {
 if ($subsystemText.Contains('d3dkmthk.h') -or $subsystemText.Contains('GetAdapterHagsStatus(&desc)')) {
   throw 'WDK-dependent diagnostic code remains in D3D11 backend source.'
 }
+if (-not $subsystemText.Contains('#include <errno.h>')) {
+  $subsystemText = $subsystemText.Replace('#include <algorithm>', "#include <algorithm>`r`n#include <errno.h>")
+  Set-Content -LiteralPath $subsystemPath -Value $subsystemText -Encoding utf8NoBOM
+}
+if ($subsystemText.Contains('ETIMEDOUT') -and -not $subsystemText.Contains('#include <errno.h>')) {
+  throw 'ETIMEDOUT is used but errno.h was not included.'
+}
+
+$shaderPath = Join-Path $source 'libobs-d3d11/d3d11-shader.cpp'
+$shaderText = Get-Content -LiteralPath $shaderPath -Raw
+if ($shaderText.Contains('throw std::exception("Checksum mismatch");')) {
+  $shaderText = $shaderText.Replace('throw std::exception("Checksum mismatch");', 'throw std::runtime_error("Checksum mismatch");')
+  if (-not $shaderText.Contains('#include <stdexcept>')) {
+    $shaderText = $shaderText.Replace('#include <fstream>', "#include <fstream>`r`n#include <stdexcept>")
+  }
+  Set-Content -LiteralPath $shaderPath -Value $shaderText -Encoding utf8NoBOM
+} elseif (-not $shaderText.Contains('throw std::runtime_error("Checksum mismatch");')) {
+  throw 'Expected OBS shader-cache checksum exception was not found.'
+}
 
 $includeArgs = @(
   "-I$configDir",
@@ -101,6 +120,8 @@ $arguments = @(
   '-shared',
   '-D_WIN32_WINNT=0x0A00',
   '-DWINVER=0x0A00',
+  '-DUNICODE',
+  '-D_UNICODE',
   '-DWIN32_LEAN_AND_MEAN',
   '-DNOMINMAX'
 ) + $includeArgs + $cpp + @(
