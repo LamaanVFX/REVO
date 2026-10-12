@@ -1,13 +1,21 @@
 # REVO 2.0 — LICENSE NOTICE
 
-Copyright (C) 2026 REVO contributors
+Copyright (C) 2026 Andrewkernel and contributors
 
-REVO 2.0 is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+REVO 2.0 is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version.
 
-REVO is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See `LICENSE` for the complete GNU GPL terms.
+REVO is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See LICENSE for the complete GNU GPL terms.
 
-This notice adds no restrictions on use, modification or redistribution. Installation acknowledges this notice; running the program does not require accepting additional contractual terms.
+This notice adds no restrictions on use, modification or redistribution.
+Running REVO does not require accepting additional contractual terms.
 
-Source code, build instructions and third-party sources accompany the release. See the official REVO repository and release archives for details.
+Source, build instructions and third-party source archives are available in
+the official repository and release archives:
+https://github.com/LamaanVFX/REVO/releases
 
-Record only content you are authorized to capture. See `PRIVACY.md` for information about local settings, media and log handling, and `THIRD_PARTY_NOTICES.md` for details about other components.
+Record only content you are authorized to capture. See PRIVACY.md for local
+settings/media/log handling, and THIRD_PARTY_NOTICES.md for other components.
