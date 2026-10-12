@@ -77,7 +77,9 @@ class ObsEngine {
   std::chrono::steady_clock::time_point next_source_refresh_{};
   std::chrono::steady_clock::time_point next_game_detection_{};
   std::filesystem::path clips_root_;
+  std::filesystem::path recordings_root_;
   std::string active_game_;
+  std::string active_game_filename_prefix_;
   std::chrono::steady_clock::time_point capture_started_{};
   obs_scene* scene_ = nullptr;
   obs_scene_item* capture_item_ = nullptr;
