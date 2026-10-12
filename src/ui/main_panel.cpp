@@ -1505,34 +1505,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
 
   const float footer_y = window_min.y + content_height - 53.0F;
   draw->AddLine({window_min.x + 1.0F, footer_y}, {window_max.x - 1.0F, footer_y}, kDivider, 1.0F);
-  const ImVec2 settings_pos{content.x - 4.0F, footer_y + 8.0F};
-  const ImVec2 settings_size{156.0F, 37.0F};
-  ImGui::SetCursorScreenPos(settings_pos);
-  ImGui::InvisibleButton("##settings-footer", settings_size);
-  const bool settings_clicked = ImGui::IsItemClicked();
-  const bool settings_hovered = ImGui::IsItemHovered();
-  DrawCard(draw, settings_pos, settings_size, settings_hovered,
-           settings_hovered ? IM_COL32(0, 75, 86, 255) : IM_COL32(5, 23, 30, 255),
-           IM_COL32(10, 211, 222, 235), 8.0F);
-  const ImVec2 gear_center{settings_pos.x + 18.0F, settings_pos.y + 17.0F};
-  draw->AddCircle(gear_center, 7.0F, kPurpleBright, 16, 2.0F);
-  draw->AddCircle(gear_center, 2.5F, kPurpleBright, 12, 1.5F);
-  for (int spoke = 0; spoke < 4; ++spoke) {
-    const float horizontal = spoke % 2 == 0 ? 1.0F : 0.0F;
-    const float vertical = spoke % 2 == 0 ? 0.0F : 1.0F;
-    const float direction = spoke < 2 ? -1.0F : 1.0F;
-    draw->AddLine({gear_center.x + horizontal * direction * 7.0F,
-                   gear_center.y + vertical * direction * 7.0F},
-                  {gear_center.x + horizontal * direction * 10.0F,
-                   gear_center.y + vertical * direction * 10.0F},
-                  kPurpleBright, 2.0F);
-  }
-  DrawText(draw, semibold, 13.0F, {settings_pos.x + 38.0F, settings_pos.y + 10.0F}, kTextU32,
-           "settings");
-  if (settings_clicked) {
-    ResetDraft(config);
-    settings_open_ = true;
-  }
   constexpr std::string_view version = "v3.0.4";
   DrawText(draw, label_font, 10.0F,
            {content.x + content_width - TextWidth(label_font, 10.0F, version), footer_y + 21.0F},
