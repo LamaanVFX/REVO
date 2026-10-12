@@ -1603,7 +1603,10 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     diagnostics_preview_open_ = false;
     return;
   }
-  ImGui::SameLine(0.0F, 18.0F);
+  DrawLogo(ImGui::GetWindowDrawList(),
+           {settings_window_origin.x + 138.0F, settings_window_origin.y + 20.0F},
+           0.58F);
+  ImGui::SameLine(0.0F, 46.0F);
   ImGui::PushFont(UiFont(2));
   ImGui::TextUnformatted("REVO / SETTINGS");
   ImGui::PopFont();
