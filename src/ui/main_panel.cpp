@@ -1588,6 +1588,13 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 
   if (!draft_initialized_) ResetDraft(config);
   const ImVec2 settings_window_size = ImGui::GetWindowSize();
+  const ImVec2 settings_window_origin = ImGui::GetWindowPos();
+  auto* settings_draw = ImGui::GetWindowDrawList();
+  settings_draw->AddRectFilled(
+      settings_window_origin,
+      {settings_window_origin.x + settings_window_size.x,
+       settings_window_origin.y + settings_window_size.y},
+      kBackgroundBottom);
 
   ImGui::SetCursorPos({22.0F, 18.0F});
   if (ImGui::Button("< home", {98.0F, 36.0F})) {
@@ -1600,7 +1607,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
   ImGui::PushFont(UiFont(2));
   ImGui::TextUnformatted("REVO / SETTINGS");
   ImGui::PopFont();
-  ImGui::SameLine(18.0F, 0.0F);
+  ImGui::SameLine(0.0F, 18.0F);
   ImGui::TextColored(kMuted, "All controls on one scrollable page");
 
   ImGui::SetCursorPos({22.0F, 68.0F});
@@ -2049,7 +2056,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     if (commands.save_settings(draft_)) {
       hotkey_capture_message_.clear();
       settings_open_ = false;
-      }
+    }
   }
   ImGui::EndDisabled();
   ImGui::PopStyleColor(3);
