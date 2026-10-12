@@ -8,11 +8,11 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int show) {
   if (!size || size >= 32740) return 2;
   wchar_t* slash = wcsrchr(path, L'\\');
   if (!slash) return 2;
-  wcscpy(slash + 1, L"bin\\64bit\\Klip.exe");
+  wcscpy(slash + 1, L"bin\\64bit\\REVO.exe");
   HMODULE runtime = LoadLibraryExW(L"vcruntime140.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
   HMODULE cpp = LoadLibraryExW(L"msvcp140.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
   if (!runtime || !cpp) {
-    MessageBoxW(nullptr, L"Klip requires the Microsoft Visual C++ 2015-2022 x64 runtime.\nInstall it from Microsoft's official site, then open Klip again:\nhttps://aka.ms/vs/17/release/vc_redist.x64.exe\n\nDo not disable Windows security.", L"Klip — runtime required", MB_OK | MB_ICONINFORMATION);
+    MessageBoxW(nullptr, L"REVO requires the Microsoft Visual C++ 2015-2022 x64 runtime.\nInstall it from Microsoft's official site, then open REVO again:\nhttps://aka.ms/vs/17/release/vc_redist.x64.exe\n\nDo not disable Windows security.", L"REVO — runtime required", MB_OK | MB_ICONINFORMATION);
     if (runtime) FreeLibrary(runtime);
     if (cpp) FreeLibrary(cpp);
     return 2;
@@ -29,7 +29,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR arguments, int show) {
   const BOOL started = CreateProcessW(path, command, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &child);
   HeapFree(GetProcessHeap(), 0, command);
   if (!started) {
-    MessageBoxW(nullptr, L"Klip could not start. Extract the complete portable ZIP or reinstall the complete package; do not move Klip.exe out of its folder.", L"Klip — package incomplete", MB_OK | MB_ICONERROR);
+    MessageBoxW(nullptr, L"REVO could not start. Extract the complete portable ZIP or reinstall the complete package; do not move REVO.exe out of its folder.", L"REVO — package incomplete", MB_OK | MB_ICONERROR);
     return 2;
   }
   CloseHandle(child.hThread);
