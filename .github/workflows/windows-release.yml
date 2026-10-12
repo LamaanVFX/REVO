@@ -33,6 +33,33 @@ jobs:
       - name: Build and test Release
         shell: pwsh
         run: '& tools/build-obs.ps1 -Configuration Release -BuildSuffix release-2'
+      - name: Pack diagnostic portable build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $version=& packaging/resolve-version.ps1
+          $repo=(Resolve-Path '.').Path
+          $build=(Resolve-Path 'build-obs-Release-release-2').Path
+          $stage=Join-Path $env:RUNNER_TEMP "Klip-$version-win64-dxgi-diagnostic"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          foreach($name in @('bin','data','obs-plugins','licenses')) { Copy-Item -LiteralPath "$build/$name" -Destination $stage -Recurse }
+          foreach($name in @('LICENSE','EULA.txt','PRIVACY.md','README.md','THIRD_PARTY_NOTICES.md')) { Copy-Item -LiteralPath "$repo/$name" -Destination $stage }
+          Copy-Item "$build/obs-pin.json" $stage
+          $imgui=(Get-ChildItem "$repo/work/validation-tools/imgui-1.92.8" -Directory | Select-Object -First 1).FullName
+          $llvm=(Get-ChildItem "$repo/work/validation-tools/llvm" -Directory | Select-Object -First 1).FullName
+          Copy-Item "$imgui/LICENSE.txt" "$stage/licenses/ImGui-MIT.txt"
+          Copy-Item "$llvm/LICENSE.TXT" "$stage/licenses/LLVM-runtime.txt"
+          Copy-Item "$repo/LICENSE" "$stage/licenses/Klip-GPL.txt"
+          & "$llvm/bin/clang++.exe" -std=c++20 -O2 -municode -mwindows -static -nostdlib++ "$repo/packaging/launcher.cpp" "$build/CMakeFiles/klip_app.dir/klip.rc.res" -o "$stage/Klip.exe" -luser32
+          if ($LASTEXITCODE) { throw 'Diagnostic launcher compilation failed' }
+          New-Item -ItemType Directory -Force 'artifacts' | Out-Null
+          Compress-Archive -Path "$stage/*" -DestinationPath "artifacts/Klip-$version-win64-dxgi-diagnostic.zip" -CompressionLevel Fastest
+      - name: Upload diagnostic portable build
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Klip-win64-dxgi-diagnostic-${{ github.run_number }}
+          path: artifacts/Klip-*-win64-dxgi-diagnostic.zip
+          if-no-files-found: error
       - name: Obtain corresponding sources
         shell: pwsh
         run: '& packaging/prepare-obs-sources.ps1'
