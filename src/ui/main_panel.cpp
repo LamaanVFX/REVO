@@ -162,9 +162,12 @@ void DrawCard(ImDrawList* draw, ImVec2 minimum, ImVec2 size, bool hovered = fals
   draw->AddRect(minimum, maximum, border, rounding, 0, 1.0F);
 }
 
-void DrawLogo(ImDrawList* draw, ImVec2 position, float scale) {
+void DrawLogo(ImDrawList* draw, ImVec2 center, float scale) {
+  // Incoming point is the visual center so the mark is aligned consistently
+  // across the sidebar, hero, and settings header.
   const auto p = [&](float x, float y) {
-    return ImVec2{position.x + x * scale, position.y + y * scale};
+    return ImVec2{center.x + (x - 25.0F) * scale,
+                  center.y + (y - 24.0F) * scale};
   };
   const ImU32 glow = IM_COL32(0, 226, 239, 34);
   const ImU32 shadow = IM_COL32(0, 88, 105, 150);
@@ -823,8 +826,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   auto* number_font = UiFont(3);
   auto* label_font = UiFont(4);
 
-  // Compact navigation mark with explicit clearance from the REVO wordmark.
-  DrawLogo(draw, {window_min.x + 20.0F, window_min.y + 58.0F}, 0.72F);
+  // Centered, slightly larger navigation mark with clear wordmark spacing.
+  DrawLogo(draw, {window_min.x + 38.0F, window_min.y + 75.0F}, 0.82F);
   DrawText(draw, title_font, 25.0F, {window_min.x + 71.0F, window_min.y + 39.0F},
            kTextU32, "REVO");
   DrawText(draw, label_font, 9.0F, {window_min.x + 71.0F, window_min.y + 72.0F},
@@ -900,12 +903,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
            kMutedU32, snapshot.status == CaptureStatus::kBuffering
                           ? "Live capture / replay buffer"
                           : "Capture status / details");
-  constexpr std::string_view sidebar_version = "v3.0.4";
-  DrawText(draw, label_font, 10.0F,
-           {window_min.x + 20.0F,
-            window_max.y - 26.0F},
-           kMutedU32, sidebar_version);
-
   const float margin_x = sidebar_width + 30.0F;
   const float content_width = window_size.x - margin_x - 30.0F;
   const ImVec2 content{window_min.x + margin_x, window_min.y};
@@ -913,7 +910,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   // REVO hero banner, with restrained cyan linework echoing the brand mark.
   DrawText(draw, label_font, 10.0F, {content.x + 18.0F, window_min.y + 18.0F},
            kMutedU32, "C A P T U R E   T H E   M O M E N T");
-  DrawLogo(draw, {content.x + 26.0F, window_min.y + 67.0F}, 0.95F);
+  DrawLogo(draw, {content.x + 50.0F, window_min.y + 90.0F}, 1.05F);
   DrawText(draw, title_font, 54.0F, {content.x + 82.0F, window_min.y + 37.0F},
            kTextU32, "REVO");
   DrawText(draw, label_font, 10.0F, {content.x + 84.0F, window_min.y + 98.0F},
@@ -1503,12 +1500,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     ImGui::End();
   }
 
-  const float footer_y = window_min.y + content_height - 53.0F;
-  draw->AddLine({window_min.x + 1.0F, footer_y}, {window_max.x - 1.0F, footer_y}, kDivider, 1.0F);
-  constexpr std::string_view version = "v3.0.4";
-  DrawText(draw, label_font, 10.0F,
-           {content.x + content_width - TextWidth(label_font, 10.0F, version), footer_y + 21.0F},
-           kMutedU32, version);
+
 }
 
 void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppConfig& config,
@@ -1537,8 +1529,8 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     return;
   }
   DrawLogo(ImGui::GetWindowDrawList(),
-           {settings_window_origin.x + 132.0F, settings_window_origin.y + 20.0F},
-           0.50F);
+           {settings_window_origin.x + 144.5F, settings_window_origin.y + 32.0F},
+           0.56F);
   ImGui::SameLine(0.0F, 46.0F);
   ImGui::PushFont(UiFont(2));
   ImGui::TextUnformatted("REVO / SETTINGS");
