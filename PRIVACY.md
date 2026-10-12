@@ -19,7 +19,7 @@ Diagnostic logs may contain application status, hardware and encoder names, sele
 
 ## Sharing and Retention
 
-REVO does not transmit these files to its developers or any third party. Media and diagnostic logs remain on your device until you delete them.
+REVO does not transmit these files to a third party. Media and diagnostic logs remain on your device until you delete them.
 
 Uninstalling REVO does not automatically delete clips, recordings, settings, or logs.
 
@@ -29,4 +29,4 @@ If you choose to share a clip, recording, or diagnostic log, the destination's t
 
 If a future REVO release introduces network services or materially changes how data is handled, this notice will be updated before those changes are released.
 
-For questions or privacy-related concerns, use the project's official GitHub Issues page.
+For questions or privacy-related concerns, use the Issues page in the official REVO repository: https://github.com/LamaanVFX/REVO/issues.
