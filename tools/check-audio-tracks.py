@@ -22,8 +22,8 @@ audio_streams = [s for s in probe["streams"] if s.get("codec_type") == "audio"]
 if len(audio_streams) != 5:
     raise SystemExit(f"expected 5 audio streams, found {len(audio_streams)}")
 expected_titles = [
-    "Klip desktop AAC", "Klip microphone AAC", "Klip game AAC",
-    "Klip Discord AAC", "Klip Spotify AAC",
+    "REVO desktop AAC", "REVO microphone AAC", "REVO game AAC",
+    "REVO Discord AAC", "REVO Spotify AAC",
 ]
 for index, (stream, expected_title) in enumerate(zip(audio_streams, expected_titles)):
     actual_title = stream.get("tags", {}).get("title", "")
