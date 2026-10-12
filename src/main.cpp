@@ -149,7 +149,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
                   MB_OK | MB_ICONWARNING);
     } else if (!settings_exist &&
                !klip::SaveConfig(user_paths.settings_file, config, settings_diagnostic)) {
-      MessageBoxA(nullptr, settings_diagnostic.c_str(), "Klip settings warning",
+      MessageBoxA(nullptr, settings_diagnostic.c_str(), "REVO settings warning",
                   MB_OK | MB_ICONWARNING);
     }
 
@@ -353,7 +353,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     MessageBoxA(nullptr, exception.what(), "REVO fatal error", MB_OK | MB_ICONERROR);
     return 1;
   } catch (...) {
-    MessageBoxA(nullptr, "Unknown REVO fatal error", "Klip fatal error", MB_OK | MB_ICONERROR);
+    MessageBoxA(nullptr, "Unknown REVO fatal error", "REVO fatal error", MB_OK | MB_ICONERROR);
     return 1;
   }
 }
