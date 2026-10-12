@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 project(REVO VERSION 3.0.4 LANGUAGES CXX)
 
-option(KLIP_BUILD_TESTS "Build deterministic Klip core tests" ON)
+option(KLIP_BUILD_TESTS "Build deterministic REVO core tests" ON)
 option(KLIP_BUILD_APP "Build the Windows capture application" ON)
 option(KLIP_ENABLE_TEST_HOOKS "Enable test-only runtime fault injection" OFF)
 option(KLIP_USE_LIBOBS "Use OBS capture, encoding, audio and replay output" ON)
