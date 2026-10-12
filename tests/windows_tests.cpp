@@ -97,6 +97,22 @@ void TestAudioRecoveryBackoff() {
   CHECK(klip::audio_detail::ShouldRetryCapture(true, false, false, retry_after, retry_after));
 }
 
+void TestModifierFreeHotkeyRegistration() {
+  HWND app = CreateWindowExW(0, L"STATIC", L"Klip single-key test", 0, 0, 0, 0, 0,
+                             HWND_MESSAGE, nullptr, nullptr, nullptr);
+  CHECK(app != nullptr);
+  if (!app) return;
+  klip::HotkeyConfig config;
+  config.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  config.save_virtual_key = VK_F20;
+  klip::Hotkeys hotkeys;
+  klip::Error error;
+  CHECK(hotkeys.Register(app, config, error));
+  CHECK(hotkeys.SaveRegistered());
+  hotkeys.Unregister();
+  DestroyWindow(app);
+}
+
 void TestPartialHotkeyRegistration() {
   HWND app = CreateWindowExW(0, L"STATIC", L"Klip test", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr,
                              nullptr, nullptr);
@@ -133,6 +149,29 @@ void TestHotkeyWindowDispatch() {
   klip::Error error;
   CHECK(window.Create(GetModuleHandleW(nullptr), SW_HIDE, error));
   if (window.Handle() == nullptr) return;
+
+  // The status notification must be a distinct, visible topmost popup located on
+  // the primary monitor, even while the main Klip window is hidden.
+  window.ShowToast(L"CLIP SAVED");
+  HWND toast = FindWindowW(L"KlipStatusToastClass", L"Klip status");
+  CHECK(toast != nullptr);
+  if (toast) {
+    CHECK(IsWindowVisible(toast));
+    CHECK((GetWindowLongPtrW(toast, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+    RECT toast_rect{}, work{};
+    MONITORINFO primary_info{};
+    primary_info.cbSize = sizeof(primary_info);
+    const auto primary = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    if (GetMonitorInfoW(primary, &primary_info)) {
+      work = primary_info.rcWork;
+      CHECK(GetWindowRect(toast, &toast_rect));
+      CHECK(toast_rect.right <= work.right);
+      CHECK(toast_rect.top >= work.top && toast_rect.top < work.top + 40);
+      CHECK(toast_rect.right > work.right - 380);
+    } else {
+      CHECK(false);
+    }
+  }
 
   int save_clip_calls = 0;
   int recording_calls = 0;
@@ -611,6 +650,7 @@ int main() {
   TestNativeCaptureDefaults();
   TestWaveFormats();
   TestAudioRecoveryBackoff();
+  TestModifierFreeHotkeyRegistration();
   TestPartialHotkeyRegistration();
   TestHotkeyWindowDispatch();
   TestRecordingOverloadStops();
