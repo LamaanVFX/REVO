@@ -1,5 +1,5 @@
 param(
-  [Parameter(Mandatory)][string]$BuildDirectory
+  [Parameter(Mandatory)][string]$OutputDirectory
 )
 $ErrorActionPreference = 'Stop'
 
@@ -12,23 +12,33 @@ $compiler = Join-Path $llvm 'bin/clang++.exe'
 $patch = Join-Path $repo 'patches/klip-dxgi-fallback.patch'
 $duplicatorSource = Join-Path $source 'libobs-d3d11/d3d11-duplicator.cpp'
 
-if (-not (Test-Path $duplicatorSource)) { throw "Pinned OBS source missing: $duplicatorSource" }
-if (-not (Test-Path $patch)) { throw "DXGI fallback patch missing: $patch" }
-if (-not (Test-Path $compiler)) { throw "Pinned clang++ missing: $compiler" }
-if (-not (Test-Path (Join-Path $obsSdk 'lib/libobs.dll.a'))) { throw 'Pinned OBS import library missing; run tools/prepare-obs.ps1 first.' }
+foreach ($required in @($duplicatorSource, $patch, $compiler, (Join-Path $obsSdk 'lib/libobs.dll.a'))) {
+  if (-not (Test-Path $required)) { throw "Required input missing: $required" }
+}
 
+# Re-apply only when the expected code isn't present. This script runs for both
+# Debug and Release builds, against the same pinned OBS source checkout.
 $sourceText = Get-Content -LiteralPath $duplicatorSource -Raw
 if ($sourceText -notmatch 'falling back to DuplicateOutput') {
   & git -C $source apply --check $patch
-  if ($LASTEXITCODE -ne 0) { throw 'DXGI fallback patch does not apply cleanly to the pinned OBS source.' }
+  if ($LASTEXITCODE -ne 0) { throw 'DXGI fallback patch does not apply cleanly to pinned OBS 32.1.2.' }
   & git -C $source apply $patch
-  if ($LASTEXITCODE -ne 0) { throw 'Could not apply DXGI fallback patch to the pinned OBS source.' }
+  if ($LASTEXITCODE -ne 0) { throw 'Could not apply DXGI fallback patch to pinned OBS 32.1.2.' }
 }
 
-$build = (Resolve-Path $BuildDirectory).Path
-$bin = Join-Path $build 'bin/64bit'
-if (-not (Test-Path $bin)) { throw "Build output directory missing: $bin" }
+$bin = (New-Item -ItemType Directory -Force -Path $OutputDirectory).FullName
 $output = Join-Path $bin 'libobs-d3d11.dll'
+$configDir = Join-Path $repo 'work/patched-d3d11-config'
+New-Item -ItemType Directory -Force -Path $configDir | Out-Null
+@'
+#pragma once
+#define OBS_DATA_PATH "data"
+#define OBS_PLUGIN_PATH "obs-plugins/64bit"
+#define OBS_PLUGIN_DESTINATION "obs-plugins/64bit"
+#define OBS_INSTALL_PREFIX "."
+#define OBS_RELEASE_CANDIDATE 0
+#define OBS_BETA 0
+'@ | Set-Content -LiteralPath (Join-Path $configDir 'obsconfig.h') -Encoding ascii
 
 $cpp = @(
   'd3d11-duplicator.cpp',
@@ -46,14 +56,17 @@ $cpp = @(
 ) | ForEach-Object { Join-Path (Join-Path $source 'libobs-d3d11') $_ }
 
 $includeArgs = @(
+  "-I$configDir",
   "-I$(Join-Path $source 'libobs')",
   "-I$(Join-Path $source 'libobs-d3d11')",
   "-I$(Join-Path $source 'libobs/graphics')",
   "-I$(Join-Path $source 'libobs/util')",
-  "-I$(Join-Path $obsSdk 'include')"
+  "-I$(Join-Path $obsSdk 'include')",
+  '-isystem',
+  ((Get-ChildItem (Join-Path $deps 'winsdk/c/Include') -Directory | Select-Object -First 1).FullName + '/cppwinrt')
 )
 $arguments = @(
-  '-std=c++17',
+  '-std=c++20',
   '-O2',
   '-shared',
   '-D_WIN32_WINNT=0x0A00',
@@ -75,14 +88,13 @@ $arguments = @(
   $output
 )
 
-Write-Output 'Building patched OBS Direct3D 11 backend using the pinned Klip #72 toolchain...'
+Write-Output 'Compiling patched Direct3D 11 backend against the pinned OBS 32.1.2 runtime...'
 & $compiler @arguments
 if ($LASTEXITCODE -ne 0) { throw "Building patched libobs-d3d11.dll failed with exit code $LASTEXITCODE" }
 if (-not (Test-Path $output) -or (Get-Item $output).Length -lt 100000) { throw 'Patched libobs-d3d11.dll is missing or unexpectedly small.' }
 
 $readobj = Join-Path $llvm 'bin/llvm-readobj.exe'
-if (Test-Path $readobj) {
-  & $readobj --coff-exports $output | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'Patched backend failed PE export validation.' }
-}
-Write-Output "Patched DXGI backend built: $output ($((Get-Item $output).Length) bytes)"
+& $readobj --file-headers --coff-exports $output | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Patched backend failed PE/export validation.' }
+
+Write-Output "Patched backend built: $output ($((Get-Item $output).Length) bytes)"
