@@ -1,22 +1,13 @@
-KLIP 2.0 — LICENSE NOTICE
-Copyright (C) 2026 Andrewkernel and contributors
+# REVO 2.0 — LICENSE NOTICE
 
-Klip 2.0 is free software: you can redistribute it and/or modify it under
- the GNU General Public License as published by the Free Software Foundation,
- either version 3 of the License, or (at your option) any later version.
+Copyright (C) 2026 REVO contributors
 
-Klip is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-FOR A PARTICULAR PURPOSE. See LICENSE for the complete GNU GPL terms.
+REVO 2.0 is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-The earlier proprietary Klip EULA does not apply to Klip 2.0. This notice
-adds no restrictions on use, modification or redistribution. Installation
-acknowledges this notice; running the program does not require accepting
-additional contractual terms.
+REVO is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See `LICENSE` for the complete GNU GPL terms.
 
-Source, build instructions and third-party sources accompany the release:
-https://github.com/andrewkernel/klip/releases/tag/v2.0.0
-https://github.com/andrewkernel/klip/tree/v2.0.0
+This notice adds no restrictions on use, modification or redistribution. Installation acknowledges this notice; running the program does not require accepting additional contractual terms.
 
-Record only content you are authorized to capture. See PRIVACY.md for local
-settings/media/log handling, and THIRD_PARTY_NOTICES.md for other components.
+Source code, build instructions and third-party sources accompany the release. See the official REVO repository and release archives for details.
+
+Record only content you are authorized to capture. See `PRIVACY.md` for information about local settings, media and log handling, and `THIRD_PARTY_NOTICES.md` for details about other components.
