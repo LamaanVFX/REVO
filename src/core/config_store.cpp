@@ -294,7 +294,7 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   // Migrate older settings to the requested five-track recording layout.
   loaded.obs_separate_audio_tracks = true;
   loaded.capture_border = false;
-  loaded.obs_display_method = 2;
+  loaded.obs_display_method = 1;  // Display capture uses GDI/BitBlt; never default to WGC.
   loaded.obs_limit_game_capture_fps = true;
   if (loaded.discord_audio_window.empty()) loaded.discord_audio_window = "::Discord.exe";
   if (loaded.music_audio_window.empty()) loaded.music_audio_window = "::Spotify.exe";
