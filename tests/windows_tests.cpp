@@ -172,7 +172,7 @@ void TestHotkeyWindowDispatch() {
         if (!IsWindowVisible(candidate)) return TRUE;
         wchar_t class_name[128]{};
         GetClassNameW(candidate, class_name, 128);
-        if (lstrcmpW(class_name, L"KlipStatusToastClass") == 0)
+        if (lstrcmpW(class_name, L"REVOStatusToastClass") == 0)
           reinterpret_cast<std::vector<HWND>*>(parameter)->push_back(candidate);
         return TRUE;
       },
