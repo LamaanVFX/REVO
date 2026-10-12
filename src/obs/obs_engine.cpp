@@ -393,10 +393,13 @@ bool ObsEngine::ConfigureOverlay(Error& error) {
     pending_overlay_label_ = selected ? "" : config_.live_overlay_window_title;
     obs_data_set_string(settings.get(), "window", selected ? selected->value.c_str() : "");
     Properties properties(obs_get_source_properties(type), obs_properties_destroy);
-    if (!properties || !SetListInt(properties.get(), settings.get(), "method", 2) ||
+    // Keep live-window overlays on OBS's BitBlt path too. Method 2 is
+    // Windows Graphics Capture and can trigger the Windows capture border.
+    // Method 1 is METHOD_BITBLT in the pinned OBS 32.1.2 win-capture module.
+    if (!properties || !SetListInt(properties.get(), settings.get(), "method", 1) ||
         !SetListInt(properties.get(), settings.get(), "priority", 0)) {
       error = Error{ErrorComponent::kCapture, "configure live overlay",
-                    "OBS Windows Graphics Capture with exact-title matching is unavailable on this system"}; return false;
+                    "OBS BitBlt window capture with exact-title matching is unavailable on this system"}; return false;
     }
     obs_data_set_bool(settings.get(), "cursor", false);
     obs_data_set_bool(settings.get(), "client_area", true);
