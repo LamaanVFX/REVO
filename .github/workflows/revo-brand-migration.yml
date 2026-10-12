@@ -1,0 +1,103 @@
+name: One-time REVO source migration
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  rebrand:
+    if: github.event.head_commit.message == 'Run one-time REVO branding migration'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Rebrand tracked text and paths
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          import subprocess
+          from pathlib import Path
+
+          root = Path(".")
+          migration_file = ".github/workflows/revo-brand-migration.yml"
+          tracked = subprocess.check_output(["git", "ls-files", "-z"]).decode().split("\0")
+          tracked = [p for p in tracked if p]
+
+          def is_copyright(line):
+              return bool(re.search(r"copyright|all rights reserved|©", line, re.I))
+
+          def rewrite_text(path):
+              p = Path(path)
+              try:
+                  raw = p.read_bytes()
+                  if b"\0" in raw:
+                      return
+                  text = raw.decode("utf-8")
+              except (OSError, UnicodeDecodeError):
+                  return
+
+              if path in {"LICENSE", "website/public/LICENSE.txt"}:
+                  return
+
+              text = text.replace("https://github.com/andrewkernel/klip", "https://github.com/LamaanVFX/REVO")
+              text = text.replace("https://github.com/andrewkernel", "https://github.com/LamaanVFX/REVO")
+              text = text.replace("https://x.com/andrew1x_/status/2079314121766396172", "")
+              lines = []
+              for line in text.splitlines(keepends=True):
+                  legal = is_copyright(line)
+                  line = line.replace("Klip", "REVO").replace("KLIP", "REVO").replace("klip", "revo")
+                  if not legal:
+                      line = line.replace("Andrewkernel", "REVO Project").replace("andrewkernel", "REVO Project")
+                      line = line.replace("Andrew Dang", "REVO Project").replace("andrew dang", "REVO Project")
+                      line = line.replace("andrew1x_", "REVO Project")
+                  lines.append(line)
+              output = "".join(lines)
+              if output != text:
+                  p.write_text(output, encoding="utf-8", newline="")
+
+          for path in tracked:
+              if path != migration_file and Path(path).is_file():
+                  rewrite_text(path)
+
+          # Rename every tracked path with old product casing; handle the legacy
+          # RC template specially because the corrected REVO template already exists.
+          moves = []
+          for old in tracked:
+              if old == migration_file or not any(token in old for token in ("Klip", "KLIP", "klip")):
+                  continue
+              new = old.replace("Klip", "REVO").replace("KLIP", "REVO").replace("klip", "revo")
+              if old == "packaging/klip.rc.in" and Path("packaging/revo.rc.in").exists():
+                  subprocess.run(["git", "rm", "-f", "--", old], check=True)
+                  continue
+              if old != new:
+                  if Path(new).exists() and new != old:
+                      raise RuntimeError(f"Refusing filename collision: {old} -> {new}")
+                  Path(new).parent.mkdir(parents=True, exist_ok=True)
+                  subprocess.run(["git", "mv", "--", old, new], check=True)
+                  moves.append((old, new))
+
+          # This workflow is intentionally one-shot; remove it in the migration commit.
+          subprocess.run(["git", "rm", "-f", "--", migration_file], check=True)
+
+          # Validate the shared portable core before publishing the migrated tree.
+          subprocess.run([
+              "cmake", "-S", ".", "-B", "/tmp/revo-core-build",
+              "-DREVO_BUILD_APP=OFF", "-DREVO_USE_LIBOBS=ON",
+              "-DCMAKE_BUILD_TYPE=Release"
+          ], check=True)
+          subprocess.run(["cmake", "--build", "/tmp/revo-core-build", "--parallel", "2"], check=True)
+          subprocess.run(["ctest", "--test-dir", "/tmp/revo-core-build", "--output-on-failure"], check=True)
+
+          subprocess.run(["git", "config", "user.name", "github-actions[bot]"], check=True)
+          subprocess.run(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
+          subprocess.run(["git", "add", "-A"], check=True)
+          subprocess.run(["git", "commit", "-m", "Rebrand source tree and paths for REVO"], check=True)
+          subprocess.run(["git", "push", "origin", "HEAD:main"], check=True)
+          print(f"Rebranded {len(tracked)} tracked paths; renamed {len(moves)} filenames.")
+          PY
