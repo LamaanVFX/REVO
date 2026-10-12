@@ -174,13 +174,29 @@ void KlipApplication::UpdateRollingMetrics() { engine_.Tick(); }
 bool KlipApplication::StartRecording(Error& error) { return engine_.StartRecording(error); }
 
 void KlipApplication::HandleHotkey(int id) {
-  if (id == Hotkeys::kSaveClip) {
-    if (!engine_.SaveReplayClip()) state_.SetError(Error{ErrorComponent::kClipWriter, "save replay", "OBS replay is not ready, or the save queue is full"});
+  if (Hotkeys::IsSaveClip(id)) {
+    if (!engine_.SaveReplayClip()) {
+      state_.SetError(Error{ErrorComponent::kClipWriter, "save replay",
+                            "OBS replay is not ready, or the save queue is full"});
+    } else {
+      window_.ShowToast(L"CLIP SAVED");
+    }
     engine_.Tick();
-  } else if (id == Hotkeys::kToggleRecording) {
-    if (engine_.IsRecording()) engine_.StopRecording();
-    else { Error error; if (!StartRecording(error)) state_.SetError(error); }
-  } else if (id == Hotkeys::kToggleUi) window_.ToggleVisibility();
+  } else if (Hotkeys::IsToggleRecording(id)) {
+    if (engine_.IsRecording()) {
+      engine_.StopRecording();
+      window_.ShowToast(L"RECORDING STOPPED");
+    } else {
+      Error error;
+      if (!StartRecording(error)) {
+        state_.SetError(error);
+      } else {
+        window_.ShowToast(L"RECORDING STARTED");
+      }
+    }
+  } else if (id == Hotkeys::kToggleUi) {
+    window_.ToggleVisibility();
+  }
 }
 
 UiCommands KlipApplication::BuildUiCommands() {
