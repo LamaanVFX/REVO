@@ -34,109 +34,6 @@ BOOL CALLBACK CollectMonitorWorkArea(HMONITOR monitor, HDC, LPRECT, LPARAM param
 }
 
 
-struct LogoPoint {
-  float x;
-  float y;
-};
-
-bool PointInPolygon(float x, float y, const std::array<LogoPoint, 4>& polygon) {
-  bool inside = false;
-  for (std::size_t current = 0, previous = polygon.size() - 1; current < polygon.size();
-       previous = current++) {
-    const auto& a = polygon[current];
-    const auto& b = polygon[previous];
-    if (((a.y > y) != (b.y > y)) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-bool PointInRoundedLeftBar(float x, float y) {
-  constexpr float width = 11.0F;
-  constexpr float height = 34.0F;
-  constexpr float radius = 4.0F;
-  if (x < 0.0F || x > width || y < 0.0F || y > height) return false;
-  if (x >= radius && x <= width - radius) return true;
-  if (y >= radius && y <= height - radius) return true;
-  const float center_x = x < radius ? radius : width - radius;
-  const float center_y = y < radius ? radius : height - radius;
-  const float dx = x - center_x;
-  const float dy = y - center_y;
-  return dx * dx + dy * dy <= radius * radius;
-}
-
-HICON CreateRevoIcon(int size) {
-  BITMAPINFO bitmap_info{};
-  bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bitmap_info.bmiHeader.biWidth = size;
-  bitmap_info.bmiHeader.biHeight = -size;
-  bitmap_info.bmiHeader.biPlanes = 1;
-  bitmap_info.bmiHeader.biBitCount = 32;
-  bitmap_info.bmiHeader.biCompression = BI_RGB;
-
-  std::uint32_t* pixels = nullptr;
-  HBITMAP color_bitmap = CreateDIBSection(nullptr, &bitmap_info, DIB_RGB_COLORS,
-                                          reinterpret_cast<void**>(&pixels), nullptr, 0);
-  if (color_bitmap == nullptr || pixels == nullptr) return nullptr;
-
-  constexpr std::array<LogoPoint, 4> upper{
-      {{8.0F, 15.0F}, {24.0F, 0.0F}, {35.0F, 0.0F}, {17.0F, 18.0F}}};
-  constexpr std::array<LogoPoint, 4> lower{
-      {{9.0F, 18.0F}, {18.0F, 10.0F}, {36.0F, 34.0F}, {23.0F, 34.0F}}};
-  constexpr std::array<std::uint8_t, 3> left_color{0, 190, 205};
-  constexpr std::array<std::uint8_t, 3> upper_color{38, 250, 246};
-  constexpr std::array<std::uint8_t, 3> lower_color{0, 128, 163};
-  constexpr int samples = 4;
-  constexpr int sample_count = samples * samples;
-  const float scale = static_cast<float>(size) * 0.82F / 36.0F;
-  const float offset_x = (static_cast<float>(size) - 36.0F * scale) * 0.5F;
-  const float offset_y = (static_cast<float>(size) - 34.0F * scale) * 0.5F;
-
-  for (int pixel_y = 0; pixel_y < size; ++pixel_y) {
-    for (int pixel_x = 0; pixel_x < size; ++pixel_x) {
-      int red = 0;
-      int green = 0;
-      int blue = 0;
-      int alpha = 0;
-      for (int sample_y = 0; sample_y < samples; ++sample_y) {
-        for (int sample_x = 0; sample_x < samples; ++sample_x) {
-          const float x =
-              (static_cast<float>(pixel_x) + (sample_x + 0.5F) / samples - offset_x) / scale;
-          const float y =
-              (static_cast<float>(pixel_y) + (sample_y + 0.5F) / samples - offset_y) / scale;
-          const std::array<std::uint8_t, 3>* color = nullptr;
-          if (PointInRoundedLeftBar(x, y)) color = &left_color;
-          if (PointInPolygon(x, y, upper)) color = &upper_color;
-          if (PointInPolygon(x, y, lower)) color = &lower_color;
-          if (color != nullptr) {
-            red += (*color)[0];
-            green += (*color)[1];
-            blue += (*color)[2];
-            ++alpha;
-          }
-        }
-      }
-      const auto channel = [](int value) {
-        return static_cast<std::uint32_t>(value / sample_count);
-      };
-      pixels[pixel_y * size + pixel_x] = (channel(alpha * 255) << 24U) | (channel(red) << 16U) |
-                                         (channel(green) << 8U) | channel(blue);
-    }
-  }
-
-  std::vector<std::uint8_t> mask(static_cast<std::size_t>(((size + 15) / 16) * 2 * size), 0);
-  HBITMAP mask_bitmap = CreateBitmap(size, size, 1, 1, mask.data());
-  ICONINFO icon_info{};
-  icon_info.fIcon = TRUE;
-  icon_info.hbmMask = mask_bitmap;
-  icon_info.hbmColor = color_bitmap;
-  HICON icon = mask_bitmap != nullptr ? CreateIconIndirect(&icon_info) : nullptr;
-  if (mask_bitmap != nullptr) DeleteObject(mask_bitmap);
-  DeleteObject(color_bitmap);
-  return icon;
-}
-
 void ApplyDarkWindowChrome(HWND window) {
   constexpr DWORD kUseImmersiveDarkMode = 20;
   constexpr DWORD kBorderColor = 34;
@@ -163,8 +60,12 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   window_class.style = CS_CLASSDC;
   window_class.lpfnWndProc = WindowProc;
   window_class.hInstance = instance;
-  large_icon_ = CreateRevoIcon(64);
-  small_icon_ = CreateRevoIcon(32);
+  // Use the exact same compiled REVO icon resource for the title bar, taskbar,
+  // and notification area instead of separately rasterizing a similar-looking mark.
+  large_icon_ = static_cast<HICON>(LoadImageW(
+      instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, 64, 64, LR_DEFAULTCOLOR));
+  small_icon_ = static_cast<HICON>(LoadImageW(
+      instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR));
   window_class.hIcon = large_icon_;
   window_class.hIconSm = small_icon_;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
