@@ -27,7 +27,18 @@ if(KLIP_ENABLE_TEST_HOOKS)
   target_compile_definitions(klip_media PUBLIC KLIP_ENABLE_TEST_HOOKS)
 endif()
 add_executable(klip_app WIN32 src/app/application_obs.cpp src/main.cpp)
-set(KLIP_ICON_RESOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/klip.ico")
+
+# Generate the REVO icon used by the window/taskbar and the executable resource.
+set(REVO_ICON_BASE64_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/revo.ico.base64")
+set(KLIP_ICON_RESOURCE_PATH "${CMAKE_CURRENT_BINARY_DIR}/revo.ico")
+execute_process(
+  COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -Command
+    "$base64 = [System.IO.File]::ReadAllText('${REVO_ICON_BASE64_PATH}').Trim(); [System.IO.File]::WriteAllBytes('${KLIP_ICON_RESOURCE_PATH}', [System.Convert]::FromBase64String($base64))"
+  RESULT_VARIABLE REVO_ICON_GENERATION_RESULT
+  ERROR_VARIABLE REVO_ICON_GENERATION_ERROR)
+if(NOT REVO_ICON_GENERATION_RESULT EQUAL 0 OR NOT EXISTS "${KLIP_ICON_RESOURCE_PATH}")
+  message(FATAL_ERROR "Could not generate the REVO application icon: ${REVO_ICON_GENERATION_ERROR}")
+endif()
 configure_file(packaging/klip.rc.in "${CMAKE_CURRENT_BINARY_DIR}/klip.rc" @ONLY)
 target_sources(klip_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/klip.rc")
 set_target_properties(klip_app PROPERTIES OUTPUT_NAME Klip RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/64bit")
