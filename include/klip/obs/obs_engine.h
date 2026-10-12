@@ -19,7 +19,6 @@ struct obs_scene;
 struct obs_scene_item;
 struct obs_encoder;
 struct obs_output;
-struct obs_volmeter;
 struct calldata;
 
 namespace klip {
@@ -47,11 +46,9 @@ class ObsEngine {
   static void ReplaySaved(void* self, calldata* data) noexcept;
   static void ReplayStopped(void* self, calldata* data) noexcept;
   static void RecordingStopped(void* self, calldata* data) noexcept;
-  static void MeterUpdated(void* level, const float* magnitude, const float* peak, const float* input_peak) noexcept;
   bool ConfigureEncoder(Error& error);
   bool ConfigureOverlay(Error& error);
   void UpdateSceneLayout();
-  void UpdateAudioMeters();
   bool StartReplayBuffer(Error& error);
   void SetOutputError(obs_output* output, const char* operation,
                       ErrorComponent component = ErrorComponent::kRollingBuffer);
@@ -66,7 +63,6 @@ class ObsEngine {
   HWND window_ = nullptr;
   std::string core_data_path_;
   bool initialized_ = false;
-  bool dashboard_active_ = true;
   bool shutting_down_ = false;
   bool replay_waiting_for_source_ = false;
   bool display_fallback_attempted_ = false;
@@ -98,13 +94,6 @@ class ObsEngine {
   obs_encoder* microphone_encoder_ = nullptr;
   obs_encoder* discord_encoder_ = nullptr;
   obs_encoder* music_encoder_ = nullptr;
-  obs_volmeter* desktop_audio_meter_ = nullptr;
-  obs_volmeter* game_audio_meter_ = nullptr;
-  obs_volmeter* microphone_meter_ = nullptr;
-  obs_volmeter* discord_audio_meter_ = nullptr;
-  obs_volmeter* music_audio_meter_ = nullptr;
-  std::atomic<float> desktop_audio_level_{0.0F}, game_audio_level_{0.0F},
-      microphone_level_{0.0F}, discord_audio_level_{0.0F}, music_audio_level_{0.0F};
   obs_output* replay_ = nullptr;
   obs_output* recording_ = nullptr;
   std::vector<SourceChoice> games_, displays_, microphones_, overlay_windows_;
