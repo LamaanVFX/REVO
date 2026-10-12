@@ -12,19 +12,26 @@ REVO processes the display or game/window source you select, Windows desktop aud
 when you enable it—the microphone you select. This data is processed on your PC to maintain a
 replay buffer and create clips or recordings.
 
-REVO writes the following data locally:
+For new installs, REVO writes the following data locally:
 
 - clips in `%USERPROFILE%\Videos\REVO\Clips`;
 - recordings in `%USERPROFILE%\Videos\REVO\Recordings`;
 - settings in `%LOCALAPPDATA%\REVO\settings.ini`; and
-- diagnostic logs in `%LOCALAPPDATA%\REVO\klip.log`.
+- diagnostic logs in `%LOCALAPPDATA%\REVO\revo.log`.
+
+If `%LOCALAPPDATA%\REVO\settings.ini` does not exist but a legacy
+`%LOCALAPPDATA%\Klip\settings.ini` does, REVO copies the legacy settings file forward.
+It does not delete the previous settings file or move media. Existing/custom media destinations
+saved in that configuration remain selected until you change them in Settings. The
+`REVO_DATA_ROOT` environment variable selects an alternate data root; `KLIP_DATA_ROOT`
+remains supported as a legacy override.
 
 The diagnostic log can contain application status, hardware/encoder names, selected capture
 source labels, and error details. It does not intentionally contain recorded video or audio.
 
-Existing settings are copied from the legacy %LOCALAPPDATA%\\Klip folder only when no REVO settings file exists. The old settings file and media are not deleted. Previously configured media locations may therefore continue to point to their original folder until you change them in Settings.\n\n## Sharing and retention
+## Sharing and retention
 
-REVO does not transmit these files to Andrewkernel or any third party. Media and diagnostics
+REVO does not transmit these files to LamaanVFX or any third party. Media and diagnostics
 remain until you delete them. Uninstalling REVO does not automatically delete clips,
 recordings, settings, or logs.
 
