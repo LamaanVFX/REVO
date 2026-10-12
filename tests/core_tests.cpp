@@ -668,6 +668,9 @@ int main() {
   CHECK(std::string(performance_obs.preset) == "p3" && std::string(performance_obs.multipass) == "disabled" && !performance_obs.adaptive_quantization);
   const auto maximum_obs = klip::ObsNvencPolicyFor(klip::EncoderQuality::kQuality);
   CHECK(std::string(maximum_obs.preset) == "p7" && std::string(maximum_obs.multipass) == "fullres" && maximum_obs.adaptive_quantization);
+  CHECK(klip::ObsNvencEncoderForGame("Minecraft") == "obs_nvenc_hevc_tex");
+  CHECK(klip::ObsNvencEncoderForGame("Valorant") == "obs_nvenc_h264_tex");
+  CHECK(klip::ObsNvencEncoderForGame("") == "obs_nvenc_h264_tex");
   CHECK(klip::DashboardWorkEnabled(true, false));
   CHECK(!klip::DashboardWorkEnabled(true, true));
   CHECK(!klip::DashboardWorkEnabled(false, false));
