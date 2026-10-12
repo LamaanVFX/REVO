@@ -550,7 +550,13 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     if (!source) source = obs_source_create("wasapi_process_output_capture", name, settings.get(), nullptr);
     else obs_source_update(source, settings.get());
     if (!source) throw std::runtime_error(std::string("OBS application-audio capture is unavailable for ") + name);
-    obs_source_set_audio_mixers(source, config.obs_separate_audio_tracks ? dedicated_mix : 1U);
+    // Spotify is also part of the composite desktop+mic mix (Track 1),
+    // while retaining its dedicated isolated stem (Track 5).
+    const bool spotify_source = std::string_view(name) == "Klip Spotify audio";
+    const auto source_mixers = config.obs_separate_audio_tracks
+        ? (dedicated_mix | (spotify_source ? 1U : 0U))
+        : 1U;
+    obs_source_set_audio_mixers(source, source_mixers);
     const float gain = std::string_view(name) == "Klip Discord audio"
                            ? static_cast<float>(config.discord_audio_gain)
                            : std::string_view(name) == "Klip Spotify audio"
