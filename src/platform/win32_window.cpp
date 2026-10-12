@@ -74,6 +74,18 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   small_icon_ = static_cast<HICON>(LoadImageW(
       instance_, MAKEINTRESOURCEW(101), IMAGE_ICON, small_icon_width, small_icon_height,
       LR_DEFAULTCOLOR));
+  // Refuse to silently display Windows' generic icon if the shared REVO icon
+  // resource could not be loaded. The app and its native window/tray must use
+  // the same compiled, multi-resolution icon asset.
+  if (!large_icon_ || !small_icon_) {
+    const DWORD icon_error = GetLastError();
+    if (small_icon_) DestroyIcon(small_icon_);
+    if (large_icon_) DestroyIcon(large_icon_);
+    small_icon_ = nullptr;
+    large_icon_ = nullptr;
+    error = MakeWin32Error(ErrorComponent::kWindow, "load REVO application icon", icon_error);
+    return false;
+  }
   window_class.hIcon = large_icon_;
   window_class.hIconSm = small_icon_;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -110,8 +122,15 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   }
   EnsureToastClass();
   ApplyDarkWindowChrome(window_);
+
+  // Set both the registered-class icons and per-window icons. Windows may use
+  // either source for the caption and taskbar; assigning both avoids a stale
+  // generic icon when Explorer refreshes the window.
+  SetClassLongPtrW(window_, GCLP_HICON, reinterpret_cast<LONG_PTR>(large_icon_));
+  SetClassLongPtrW(window_, GCLP_HICONSM, reinterpret_cast<LONG_PTR>(small_icon_));
   SendMessageW(window_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large_icon_));
   SendMessageW(window_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon_));
+  RedrawWindow(window_, nullptr, nullptr, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW);
   visible_ = show_command != SW_HIDE;
   ShowWindow(window_, show_command);
   UpdateWindow(window_);
@@ -129,8 +148,16 @@ void Win32Window::UpdateTray(bool add) noexcept {
   icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
   icon.uCallbackMessage = WM_APP + 54; icon.hIcon = small_icon_;
   wcscpy_s(icon.szTip, L"REVO / open or quit from the tray");
-  if (add) tray_added_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
-  else { Shell_NotifyIconW(NIM_DELETE, &icon); tray_added_ = false; }
+  if (add) {
+    // Re-add after Explorer restarts, or refresh a prior icon if Windows still
+    // has the notification-area entry. The icon handle is always the same
+    // small-size variant used by the title bar.
+    tray_added_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
+    if (!tray_added_) tray_added_ = Shell_NotifyIconW(NIM_MODIFY, &icon) != FALSE;
+  } else {
+    Shell_NotifyIconW(NIM_DELETE, &icon);
+    tray_added_ = false;
+  }
 #else
   (void)add;
 #endif
