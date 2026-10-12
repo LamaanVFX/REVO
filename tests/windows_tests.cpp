@@ -150,6 +150,17 @@ void TestHotkeyWindowDispatch() {
   CHECK(window.Create(GetModuleHandleW(nullptr), SW_HIDE, error));
   if (window.Handle() == nullptr) return;
 
+  // The compiled REVO resource should populate both Win32 window icon slots,
+  // plus the class icon that Windows also consults for the taskbar.
+  const auto large_icon =
+      reinterpret_cast<HICON>(SendMessageW(window.Handle(), WM_GETICON, ICON_BIG, 0));
+  const auto small_icon =
+      reinterpret_cast<HICON>(SendMessageW(window.Handle(), WM_GETICON, ICON_SMALL, 0));
+  CHECK(large_icon != nullptr);
+  CHECK(small_icon != nullptr);
+  CHECK(reinterpret_cast<HICON>(GetClassLongPtrW(window.Handle(), GCLP_HICON)) == large_icon);
+  CHECK(reinterpret_cast<HICON>(GetClassLongPtrW(window.Handle(), GCLP_HICONSM)) == small_icon);
+
   // A popup should be visible in the top-right of every connected display,
   // even while the main REVO window is hidden.
   std::vector<RECT> monitor_areas;
