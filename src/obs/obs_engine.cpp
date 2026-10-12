@@ -616,32 +616,61 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     std::vector<std::string> available;
     const char* id = nullptr;
     for (std::size_t i = 0; obs_enum_encoder_types(i, &id); ++i) {
-      if (std::string_view(id) == "obs_nvenc_h264_tex" || std::string_view(id) == "h264_texture_amf" ||
-          std::string_view(id) == "obs_qsv11_v2" || std::string_view(id) == "obs_x264")
+      if (std::string_view(id) == kObsNvencH264EncoderId ||
+          std::string_view(id) == kObsNvencHevcEncoderId ||
+          std::string_view(id) == "h264_texture_amf" || std::string_view(id) == "obs_qsv11_v2" ||
+          std::string_view(id) == "obs_x264")
         available.emplace_back(id);
     }
     state_.SetAvailableEncoders(available);
+
+    // The game profile is the authoritative codec switch. Override a manually
+    // selected HEVC encoder outside Minecraft so normal clips and recordings
+    // remain H.264; when Minecraft is detected, use the native NVENC HEVC encoder.
+    const bool minecraft_profile = active_game_ == "Minecraft";
+    bool minecraft_hevc_unavailable = false;
     std::string selected = config_.obs_encoder_id;
-    if (selected == "auto") {
+    if (minecraft_profile) {
+      selected = std::string(kObsNvencHevcEncoderId);
+      if (std::find(available.begin(), available.end(), selected) == available.end()) {
+        minecraft_hevc_unavailable = true;
+        selected.clear();
+      }
+    } else if (selected == "auto" || selected == kObsNvencHevcEncoderId) {
+      selected.clear();
+    }
+
+    if (selected.empty() || selected == "auto") {
       for (const char* candidate : {"obs_nvenc_h264_tex", "h264_texture_amf", "obs_qsv11_v2", "obs_x264"}) {
-        if (std::find(available.begin(), available.end(), candidate) != available.end()) { selected = candidate; break; }
+        if (std::find(available.begin(), available.end(), candidate) != available.end()) {
+          selected = candidate;
+          break;
+        }
       }
     }
-    if (std::find(available.begin(), available.end(), selected) == available.end())
-      throw std::runtime_error("The selected OBS encoder is unavailable: " + selected);
+    if (selected.empty() || std::find(available.begin(), available.end(), selected) == available.end())
+      throw std::runtime_error(minecraft_hevc_unavailable
+          ? "Minecraft was detected, but OBS NVIDIA NVENC HEVC is unavailable; no H.264 fallback encoder is available"
+          : "The selected OBS encoder is unavailable: " + selected);
+
+    if (minecraft_hevc_unavailable) {
+      logger_.Warning("Minecraft detected but OBS NVENC HEVC is unavailable; explicitly falling back to H.264");
+    }
     Data settings(obs_encoder_defaults(selected.c_str()), obs_data_release);
     Properties props(obs_get_encoder_properties(selected.c_str()), obs_properties_destroy);
     if (!settings || !props) throw std::runtime_error("Could not inspect OBS encoder properties");
     const bool performance = config_.encoder_quality == EncoderQuality::kPerformance;
     const bool maximum = config_.encoder_quality == EncoderQuality::kQuality;
-    if (selected == "obs_nvenc_h264_tex") {
+    if (selected == kObsNvencH264EncoderId || selected == kObsNvencHevcEncoderId) {
       const auto policy = ObsNvencPolicyFor(config_.encoder_quality);
       SetList(props.get(), settings.get(), "rate_control", config_.obs_duration_priority ? "CBR" : "CQP");
       SetInt(props.get(), settings.get(), "cqp", config_.obs_cq);
       SetList(props.get(), settings.get(), "preset", policy.preset);
       SetList(props.get(), settings.get(), "tune", "hq");
       SetList(props.get(), settings.get(), "multipass", policy.multipass);
-      SetList(props.get(), settings.get(), "profile", "high");
+      // OBS NVENC HEVC uses the Main profile, not H.264's High profile.
+      SetList(props.get(), settings.get(), "profile",
+              selected == kObsNvencHevcEncoderId ? "main" : "high");
       SetInt(props.get(), settings.get(), "bf", 2);
       if (obs_properties_get(props.get(), "adaptive_quantization"))
         obs_data_set_bool(settings.get(), "adaptive_quantization", policy.adaptive_quantization);
@@ -694,7 +723,15 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
       obs_encoder_set_audio(music_encoder_, obs_get_audio());
     }
     state_.SetEncoder(selected);
-    state_.SetEncoderStatus(selected == "obs_x264" ? "Software x264 selected; CPU encoding is active" : "OBS hardware encoder selected: " + selected);
+    if (minecraft_hevc_unavailable) {
+      state_.SetEncoderStatus("Minecraft detected; NVENC HEVC is unavailable, so H.264 is active");
+    } else if (selected == kObsNvencHevcEncoderId) {
+      state_.SetEncoderStatus("NVIDIA NVENC HEVC active for Minecraft; H.264 is used outside Minecraft");
+    } else if (selected == "obs_x264") {
+      state_.SetEncoderStatus("Software x264 selected; CPU encoding is active");
+    } else {
+      state_.SetEncoderStatus("OBS H.264 encoder selected: " + selected);
+    }
     return true;
   } catch (const std::exception& exception) {
     error = Error{ErrorComponent::kVideoEncoder, "configure OBS encoder", exception.what()};
