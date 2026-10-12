@@ -417,12 +417,12 @@ LRESULT CALLBACK Win32Window::ToastWindowProc(HWND window, UINT message,
       HDC dc = BeginPaint(window, &paint);
       RECT client{};
       GetClientRect(window, &client);
-      HBRUSH background = CreateSolidBrush(RGB(43, 29, 58));
-      HPEN outline = CreatePen(PS_SOLID, 1, RGB(139, 82, 190));
+      HBRUSH background = CreateSolidBrush(RGB(5, 25, 31));
+      HPEN outline = CreatePen(PS_SOLID, 1, RGB(0, 159, 177));
       HGDIOBJ old_brush = SelectObject(dc, background);
       HGDIOBJ old_pen = SelectObject(dc, outline);
       RoundRect(dc, client.left, client.top, client.right, client.bottom, 16, 16);
-      HBRUSH accent = CreateSolidBrush(RGB(184, 112, 255));
+      HBRUSH accent = CreateSolidBrush(RGB(25, 232, 239));
       RECT accent_rect{client.left + 10, client.top + 14,
                        client.left + 14, client.bottom - 14};
       FillRect(dc, &accent_rect, accent);
@@ -433,7 +433,7 @@ LRESULT CALLBACK Win32Window::ToastWindowProc(HWND window, UINT message,
       DeleteObject(outline);
 
       SetBkMode(dc, TRANSPARENT);
-      SetTextColor(dc, RGB(246, 242, 255));
+      SetTextColor(dc, RGB(235, 249, 250));
       HFONT font = CreateFontW(-20, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
                                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
