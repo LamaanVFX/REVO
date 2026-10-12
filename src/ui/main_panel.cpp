@@ -813,32 +813,139 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const float content_height = std::max(window_size.y, 800.0F);
   const ImVec2 window_min{visible_min.x, visible_min.y - ImGui::GetScrollY()};
   const ImVec2 window_max{window_min.x + window_size.x, window_min.y + content_height};
+  constexpr float sidebar_width = 246.0F;
   draw->AddRectFilledMultiColor(window_min, window_max, kBackgroundTop, kBackgroundTop,
                                 kBackgroundBottom, kBackgroundBottom);
-  draw->AddCircleFilled({window_min.x + 185.0F, window_min.y + 85.0F}, 255.0F,
-                        IM_COL32(0, 221, 230, 14), 64);
-  draw->AddCircleFilled({window_max.x - 95.0F, window_min.y + 345.0F}, 300.0F,
-                        IM_COL32(0, 192, 210, 8), 64);
-  draw->AddRect(window_min, window_max, IM_COL32(54, 53, 60, 210), 10.0F, 0, 1.0F);
+  draw->AddCircleFilled({window_max.x - 85.0F, window_min.y + 74.0F}, 295.0F,
+                        IM_COL32(0, 224, 235, 14), 64);
+  draw->AddCircleFilled({window_max.x - 150.0F, window_min.y + 165.0F}, 210.0F,
+                        IM_COL32(0, 173, 194, 10), 64);
+  draw->AddRectFilled(window_min, {window_min.x + sidebar_width, window_max.y},
+                      IM_COL32(4, 16, 22, 252));
+  draw->AddLine({window_min.x + sidebar_width, window_min.y + 1.0F},
+                {window_min.x + sidebar_width, window_max.y - 1.0F},
+                IM_COL32(22, 67, 75, 210), 1.0F);
+  draw->AddRect(window_min, window_max, IM_COL32(21, 65, 74, 210), 10.0F, 0, 1.0F);
 
   auto* regular = UiFont(0);
   auto* semibold = UiFont(1);
   auto* title_font = UiFont(2);
   auto* number_font = UiFont(3);
   auto* label_font = UiFont(4);
-  constexpr float margin_x = 42.0F;
-  const float content_width = window_size.x - margin_x * 2.0F;
+
+  // Permanent REVO navigation rail.
+  DrawLogo(draw, {window_min.x + 48.0F, window_min.y + 56.0F}, 1.25F);
+  DrawText(draw, title_font, 25.0F, {window_min.x + 83.0F, window_min.y + 39.0F},
+           kTextU32, "REVO");
+  DrawText(draw, label_font, 9.0F, {window_min.x + 84.0F, window_min.y + 72.0F},
+           kMutedU32, "CAPTURE / REPLAY");
+  draw->AddLine({window_min.x + 20.0F, window_min.y + 111.0F},
+                {window_min.x + sidebar_width - 20.0F, window_min.y + 111.0F},
+                IM_COL32(18, 69, 78, 220), 1.0F);
+
+  const auto draw_nav_item = [&](const char* id, const char* label, float y, bool active) {
+    const ImVec2 position{window_min.x + 16.0F, window_min.y + y};
+    const ImVec2 size{sidebar_width - 32.0F, 50.0F};
+    ImGui::SetCursorScreenPos(position);
+    ImGui::InvisibleButton(id, size);
+    const bool clicked = ImGui::IsItemClicked();
+    const bool hovered = ImGui::IsItemHovered();
+    if (active || hovered) {
+      draw->AddRectFilled(position, {position.x + size.x, position.y + size.y},
+                          active ? IM_COL32(0, 109, 121, 190)
+                                 : IM_COL32(7, 37, 44, 220), 9.0F);
+      draw->AddRect(position, {position.x + size.x, position.y + size.y},
+                    active ? IM_COL32(16, 225, 230, 210) : IM_COL32(16, 87, 95, 180),
+                    9.0F, 0, 1.0F);
+    }
+    if (active)
+      draw->AddRectFilled({position.x, position.y + 7.0F},
+                          {position.x + 3.0F, position.y + size.y - 7.0F},
+                          kPurpleBright, 2.0F);
+    const ImU32 text_color = active ? kPurpleBright : kTextU32;
+    if (label[0] == 'H') {
+      // Minimal house glyph.
+      draw->AddLine({position.x + 22.0F, position.y + 24.0F},
+                    {position.x + 31.0F, position.y + 16.0F}, text_color, 2.0F);
+      draw->AddLine({position.x + 31.0F, position.y + 16.0F},
+                    {position.x + 40.0F, position.y + 24.0F}, text_color, 2.0F);
+      draw->AddRect({position.x + 24.0F, position.y + 23.0F},
+                    {position.x + 38.0F, position.y + 35.0F}, text_color, 2.0F);
+    } else {
+      const ImVec2 center{position.x + 31.0F, position.y + 25.0F};
+      draw->AddCircle(center, 7.0F, text_color, 20, 2.0F);
+      draw->AddCircle(center, 2.2F, text_color, 16, 1.5F);
+      for (int spoke = 0; spoke < 8; ++spoke) {
+        const float angle = static_cast<float>(spoke) * 0.785398163F;
+        const ImVec2 inner{center.x + std::cos(angle) * 7.0F,
+                           center.y + std::sin(angle) * 7.0F};
+        const ImVec2 outer{center.x + std::cos(angle) * 10.0F,
+                           center.y + std::sin(angle) * 10.0F};
+        draw->AddLine(inner, outer, text_color, 1.8F);
+      }
+    }
+    DrawText(draw, semibold, 14.0F, {position.x + 52.0F, position.y + 17.0F},
+             active ? kTextU32 : kMutedU32, label);
+    return clicked;
+  };
+  if (draw_nav_item("##revo-home", "Home", 132.0F, !settings_open_)) {
+    settings_open_ = false;
+  }
+  if (draw_nav_item("##revo-settings", "Settings", 190.0F, settings_open_)) {
+    ResetDraft(config);
+    settings_open_ = true;
+    ImGui::OpenPopup("settings###klip-settings-modal");
+  }
+
+  const char* sidebar_status =
+      snapshot.status == CaptureStatus::kBuffering ? "Ready to capture" : StatusText(snapshot.status);
+  const ImU32 status_color = ImGui::ColorConvertFloat4ToU32(StatusColor(snapshot.status));
+  const ImVec2 sidebar_status_pos{window_min.x + 18.0F, window_max.y - 96.0F};
+  DrawCard(draw, sidebar_status_pos, {sidebar_width - 36.0F, 48.0F}, false,
+           IM_COL32(5, 24, 30, 240), IM_COL32(15, 68, 76, 210), 9.0F);
+  draw->AddCircleFilled({sidebar_status_pos.x + 20.0F, sidebar_status_pos.y + 19.0F},
+                        5.5F, status_color);
+  DrawText(draw, semibold, 11.0F, {sidebar_status_pos.x + 34.0F, sidebar_status_pos.y + 8.0F},
+           kTextU32, sidebar_status);
+  DrawText(draw, label_font, 9.0F, {sidebar_status_pos.x + 34.0F, sidebar_status_pos.y + 27.0F},
+           kMutedU32, snapshot.status == CaptureStatus::kBuffering
+                          ? "Live capture / replay buffer"
+                          : "Capture status / details");
+  constexpr std::string_view version = "v3.0.3";
+  DrawText(draw, label_font, 10.0F,
+           {window_min.x + 20.0F,
+            window_max.y - 26.0F},
+           kMutedU32, version);
+
+  const float margin_x = sidebar_width + 30.0F;
+  const float content_width = window_size.x - margin_x - 30.0F;
   const ImVec2 content{window_min.x + margin_x, window_min.y};
 
-  DrawLogo(draw, {content.x, window_min.y + 28.0F}, 1.0F);
-  DrawText(draw, title_font, 29.0F, {content.x + 50.0F, window_min.y + 29.0F}, kTextU32, "Klip");
-  const char* status_text =
-      snapshot.status == CaptureStatus::kBuffering ? "ready" : StatusText(snapshot.status);
-  const ImU32 status_color = ImGui::ColorConvertFloat4ToU32(StatusColor(snapshot.status));
-  const float status_width = TextWidth(label_font, 12.0F, status_text);
-  const float status_x = content.x + content_width - status_width;
-  draw->AddCircleFilled({status_x - 18.0F, window_min.y + 45.0F}, 5.5F, status_color);
-  DrawText(draw, label_font, 12.0F, {status_x, window_min.y + 37.0F}, kMutedU32, status_text);
+  // REVO hero banner, with restrained cyan linework echoing the brand mark.
+  DrawText(draw, label_font, 10.0F, {content.x + 18.0F, window_min.y + 18.0F},
+           kMutedU32, "C A P T U R E   T H E   M O M E N T");
+  DrawLogo(draw, {content.x + 28.0F, window_min.y + 67.0F}, 1.25F);
+  DrawText(draw, title_font, 54.0F, {content.x + 75.0F, window_min.y + 37.0F},
+           kTextU32, "REVO");
+  DrawText(draw, label_font, 10.0F, {content.x + 80.0F, window_min.y + 98.0F},
+           kPurpleBright, "C L I P S   •   R E C O R D I N G S   •   R E P L A Y S");
+
+  // Abstract contour lines in the hero keep the top panel polished without
+  // importing raster art or affecting the capture/render path.
+  const float contour_right = content.x + content_width - 12.0F;
+  for (int layer = 0; layer < 7; ++layer) {
+    const float inset = static_cast<float>(layer) * 12.0F;
+    const ImU32 color = IM_COL32(0, 210, 224, 20 + layer * 2);
+    draw->AddLine({contour_right - 240.0F + inset, window_min.y + 20.0F},
+                  {contour_right - 112.0F + inset, window_min.y + 20.0F},
+                  color, 2.0F);
+    draw->AddLine({contour_right - 112.0F + inset, window_min.y + 20.0F},
+                  {contour_right - 40.0F + inset, window_min.y + 64.0F},
+                  color, 2.0F);
+    draw->AddLine({contour_right - 40.0F + inset, window_min.y + 64.0F},
+                  {contour_right + 8.0F, window_min.y + 128.0F + inset},
+                  color, 2.0F);
+  }
 
   const double requested_seconds = std::max(1.0, config.clip_duration_seconds);
   const double buffered_seconds =
