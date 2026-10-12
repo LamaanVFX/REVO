@@ -184,8 +184,8 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &monitor);
   const int work_width = monitor.rcWork.right - monitor.rcWork.left;
   const int work_height = monitor.rcWork.bottom - monitor.rcWork.top;
-  const int client_width = std::min(1260, std::max(960, work_width - 32));
-  const int client_height = std::min(800, std::max(620, work_height - 48));
+  const int client_width = std::min(1600, std::max(1120, work_width - 32));
+  const int client_height = std::min(860, std::max(620, work_height - 48));
   RECT rectangle{0, 0, client_width, client_height};
   AdjustWindowRect(&rectangle, style, FALSE);
   const int width = rectangle.right - rectangle.left;
