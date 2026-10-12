@@ -25,6 +25,7 @@ class Win32Window {
   bool PumpMessages();
   void ToggleVisibility();
   void SetHotkeyCallback(HotkeyCallback callback);
+  void ShowToast(const std::wstring& message);
   bool TakeResize(UINT& width, UINT& height);
   bool TakeRedrawRequest() noexcept { return std::exchange(redraw_requested_, false); }
   [[nodiscard]] HWND Handle() const noexcept { return window_; }
@@ -33,11 +34,15 @@ class Win32Window {
 
  private:
   static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param);
+  static LRESULT CALLBACK ToastWindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param);
   LRESULT HandleMessage(UINT message, WPARAM w_param, LPARAM l_param);
   void UpdateTray(bool add) noexcept;
 
   HINSTANCE instance_ = nullptr;
   HWND window_ = nullptr;
+  HWND toast_window_ = nullptr;
+  std::wstring toast_text_;
+  bool toast_class_registered_ = false;
   HICON large_icon_ = nullptr;
   HICON small_icon_ = nullptr;
   bool visible_ = true;
