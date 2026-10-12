@@ -167,8 +167,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   }
   try {
     if (!config.excluded_audio_process.empty()) {
-      throw std::runtime_error("Stock OBS desktop audio cannot exclude one application's process tree. "
-          "Clear the previous excluded-app setting under Audio to record all desktop audio; this change is not applied silently.");
+      logger_.Warning("Ignoring legacy per-application audio exclusion; desktop capture now records all Windows output.");
     }
     std::filesystem::create_directories(config.output_directory);
     std::filesystem::create_directories(config.recording_directory);
