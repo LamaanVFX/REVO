@@ -161,7 +161,7 @@ void KlipApplication::Shutdown() noexcept {
   imgui_.Shutdown();
   graphics_.Shutdown();
   window_.Destroy();
-  if (initialized) logger_.Info("Klip libobs shutdown complete");
+  if (initialized) logger_.Info("REVO shutdown complete");
   logger_.Close();
 }
 bool KlipApplication::StartMediaPipeline(const AppConfig& config, Error& error) {
