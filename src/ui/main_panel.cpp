@@ -131,7 +131,7 @@ void DrawAudioMeter(ImDrawList* draw, ImFont* font, float x, float y, float peak
     if (segment < lit) {
       if (segment >= 15) color = kRed;
       else if (segment >= 12) color = kWarning;
-      else color = kMint;
+      else color = IM_COL32(31, 224, 198, 255);
     }
     draw->AddRectFilled({x + segment * step, y + 20.0F},
                         {x + segment * step + bar_width, y + 20.0F + bar_height},
@@ -915,11 +915,11 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
            kMutedU32, snapshot.status == CaptureStatus::kBuffering
                           ? "Live capture / replay buffer"
                           : "Capture status / details");
-  constexpr std::string_view version = "v3.0.3";
+  constexpr std::string_view sidebar_version = "v3.0.3";
   DrawText(draw, label_font, 10.0F,
            {window_min.x + 20.0F,
             window_max.y - 26.0F},
-           kMutedU32, version);
+           kMutedU32, sidebar_version);
 
   const float margin_x = sidebar_width + 30.0F;
   const float content_width = window_size.x - margin_x - 30.0F;
