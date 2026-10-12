@@ -18,10 +18,10 @@ LLVM/MinGW, CMake, Ninja, Windows SDK and ImGui, validating archive hashes.
 ```powershell
 & tools/bootstrap-validation.ps1
 & tools/build-obs.ps1 -Configuration Release -BuildSuffix release-304
-& tools/build-obs.ps1 -Configuration Debug -BuildSuffix release-201
-& tools/run-obs-test.ps1 -Mode game -BuildSuffix release-201 -ReplayDurationTest -NoiseScene -GlobalHotkeys -Name release-check-new
+& tools/build-obs.ps1 -Configuration Debug -BuildSuffix release-304
+& tools/run-obs-test.ps1 -Mode game -BuildSuffix release-304 -ReplayDurationTest -NoiseScene -GlobalHotkeys -Name release-revo-check
 & packaging/prepare-obs-sources.ps1 -Destination work/release-sources-3.0.4
-& packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-201 -SourcesDirectory work/release-sources-3.0.4
+& packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-304 -SourcesDirectory work/release-sources-3.0.4
 ```
 
 Run from the unpacked source root. Use fresh evidence/output names; do not
@@ -52,7 +52,7 @@ VC++ runtime are separately installed system prerequisites.
 Before publication, verify the exact packaged executable and portable ZIP,
 manifest/checksums, consecutive saves while recording, real hotkeys and decoded
 cadence/audio markers. Installer entry points must target the new engine, and
-the old EULA must not ship. Do not claim clean-machine/hardware-matrix tests
+the superseded proprietary EULA must not ship. Do not claim clean-machine/hardware-matrix tests
 that have not actually been performed. This is an unsigned public beta, not
 stable release certification; see gameplay-performance-results.md and
 libobs-results.md for measured results and remaining limitations. Never
