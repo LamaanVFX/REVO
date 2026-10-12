@@ -142,8 +142,6 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   for (const auto& [modifiers, key] : shortcuts) {
     if ((modifiers & ~kAllowedHotkeyModifiers) != 0)
       reject("hotkeys", "contains unsupported modifier flags");
-    if ((modifiers & kChordModifiers) == 0)
-      reject("hotkeys", "each shortcut must include Ctrl, Alt, Shift, or Windows");
     if (key == 0 || key > 0xFE)
       reject("hotkeys", "shortcut keys must be valid Windows virtual keys");
   }
