@@ -189,22 +189,7 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
     UnregisterClassW(kWindowClass, instance_);
     return false;
   }
-  WNDCLASSEXW toast_class{};
-  toast_class.cbSize = sizeof(toast_class);
-  toast_class.style = CS_DROPSHADOW;
-  toast_class.lpfnWndProc = ToastWindowProc;
-  toast_class.hInstance = instance_;
-  toast_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-  toast_class.lpszClassName = kToastWindowClass;
-  toast_class_registered_ = RegisterClassExW(&toast_class) != 0;
-  if (toast_class_registered_) {
-    toast_window_ = CreateWindowExW(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
-        kToastWindowClass, L"Klip status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
-        nullptr, nullptr, instance_, this);
-    if (toast_window_)
-      SetLayeredWindowAttributes(toast_window_, 0, 248, LWA_ALPHA);
-  }
+  EnsureToastWindow();
   ApplyDarkWindowChrome(window_);
   SendMessageW(window_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(large_icon_));
   SendMessageW(window_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(small_icon_));
@@ -283,31 +268,66 @@ void Win32Window::SetHotkeyCallback(HotkeyCallback callback) {
   hotkey_callback_ = std::move(callback);
 }
 
+bool Win32Window::EnsureToastWindow() {
+  if (toast_window_ && IsWindow(toast_window_)) return true;
+  if (!instance_) return false;
+
+  if (!toast_class_registered_) {
+    WNDCLASSEXW toast_class{};
+    toast_class.cbSize = sizeof(toast_class);
+    toast_class.lpfnWndProc = ToastWindowProc;
+    toast_class.hInstance = instance_;
+    toast_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    toast_class.lpszClassName = kToastWindowClass;
+    if (!RegisterClassExW(&toast_class) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+      OutputDebugStringW(L"[Klip] Could not register toast window class.\n");
+      return false;
+    }
+    toast_class_registered_ = true;
+  }
+
+  toast_window_ = CreateWindowExW(
+      WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED,
+      kToastWindowClass, L"Klip status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
+      nullptr, nullptr, instance_, this);
+  if (!toast_window_) {
+    OutputDebugStringW(L"[Klip] Could not create toast popup window.\n");
+    return false;
+  }
+  if (!SetLayeredWindowAttributes(toast_window_, 0, 224, LWA_ALPHA)) {
+    OutputDebugStringW(L"[Klip] Could not configure toast transparency.\n");
+  }
+  return true;
+}
+
 void Win32Window::ShowToast(const std::wstring& message) {
-  if (message.empty() || !toast_window_ || !IsWindow(toast_window_)) return;
+  if (message.empty() || !EnsureToastWindow()) return;
   toast_text_ = message;
 
-  POINT cursor{};
-  GetCursorPos(&cursor);
-  const HMONITOR monitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY);
+  // Always use the Windows primary display, regardless of the cursor, Klip's
+  // current window position, or which display is capturing.
+  const HMONITOR monitor = MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
   MONITORINFO info{};
   info.cbSize = sizeof(info);
-  RECT work{};
+  RECT work{0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
   if (GetMonitorInfoW(monitor, &info)) work = info.rcWork;
-  else {
-    work.right = GetSystemMetrics(SM_CXSCREEN);
-    work.bottom = GetSystemMetrics(SM_CYSCREEN);
-  }
 
   const int x = std::max(work.left + kToastMargin,
                          work.right - kToastWidth - kToastMargin);
   const int y = work.top + kToastMargin;
   KillTimer(toast_window_, kToastTimer);
+  if (!SetWindowPos(toast_window_, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
+                    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER)) {
+    OutputDebugStringW(L"[Klip] Could not place topmost toast popup.\n");
+    return;
+  }
+  ShowWindow(toast_window_, SW_SHOWNOACTIVATE);
   SetWindowPos(toast_window_, HWND_TOPMOST, x, y, kToastWidth, kToastHeight,
-               SWP_NOACTIVATE | SWP_SHOWWINDOW);
-  SetTimer(toast_window_, kToastTimer, 3000, nullptr);
-  InvalidateRect(toast_window_, nullptr, TRUE);
-  UpdateWindow(toast_window_);
+               SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+  if (!SetTimer(toast_window_, kToastTimer, 3000, nullptr))
+    OutputDebugStringW(L"[Klip] Could not start toast dismissal timer.\n");
+  RedrawWindow(toast_window_, nullptr, nullptr,
+               RDW_INVALIDATE | RDW_UPDATENOW | RDW_ERASE | RDW_ALLCHILDREN);
 }
 
 bool Win32Window::TakeResize(UINT& width, UINT& height) {
