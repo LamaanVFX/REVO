@@ -1,12 +1,12 @@
-#define AppName "Klip"
+#define AppName "REVO"
 #ifndef AppVersion
   #error AppVersion must be supplied by package-win64.ps1
 #endif
 #define AppPublisher "Andrewkernel"
-#define AppUrl "https://github.com/andrewkernel/klip"
-#define AppExeName "Klip.exe"
+#define AppUrl "https://github.com/LamaanVFX/klipedit"
+#define AppExeName "REVO.exe"
 #ifndef AppRelativeExe
-  #define AppRelativeExe "Klip.exe"
+  #define AppRelativeExe "REVO.exe"
 #endif
 #ifndef BuildRoot
   #define BuildRoot "..\build\Release"
@@ -24,7 +24,7 @@ AppPublisherURL={#AppUrl}
 AppSupportURL={#AppUrl}/issues
 AppUpdatesURL={#AppUrl}/releases
 VersionInfoCompany={#AppPublisher}
-VersionInfoDescription=Klip game capture and replay recorder
+VersionInfoDescription=REVO game capture and replay recorder
 VersionInfoCopyright=Copyright (C) 2026 Andrewkernel
 DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
@@ -36,7 +36,7 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 OutputDir={#OutputRoot}
-OutputBaseFilename=Klip-{#AppVersion}-win64-setup
+OutputBaseFilename=REVO-{#AppVersion}-win64-setup
 PrivilegesRequired=lowest
 MinVersion=10.0.18362
 CloseApplications=yes
