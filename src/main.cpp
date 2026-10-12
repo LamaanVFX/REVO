@@ -58,7 +58,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     const bool package_smoke_test = HasCommandLineFlag(command_line, L"--package-smoke-test");
 #if defined(KLIP_USE_LIBOBS) && defined(KLIP_ENABLE_TEST_HOOKS)
     const bool obs_background_benchmark = HasCommandLineFlag(command_line, L"--obs-background-benchmark");
-    if (obs_background_benchmark && GetEnvironmentVariableW(L"KLIP_DATA_ROOT", nullptr, 0) == 0) return 2;
+    const bool has_data_root = GetEnvironmentVariableW(L"REVO_DATA_ROOT", nullptr, 0) != 0 ||
+                               GetEnvironmentVariableW(L"KLIP_DATA_ROOT", nullptr, 0) != 0;
+    if (obs_background_benchmark && !has_data_root) return 2;
 #else
     constexpr bool obs_background_benchmark = false;
     // Diagnostic control is compiled out of ordinary shipping binaries.
