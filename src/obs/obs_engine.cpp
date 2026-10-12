@@ -513,12 +513,16 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
   if (config.obs_separate_audio_tracks && config.desktop_audio_enabled && desktop_audio_) {
     logger_.Info("Desktop audio captures the default Windows render endpoint (all system output)");
   }
-  const auto configure_process = [&](obs_source_t*& source, const char* name, const std::string& window,
-                                     std::uint32_t channel, std::uint32_t dedicated_mix) {
+  const auto configure_process = [&](obs_source_t*& source, const char* name,
+                                     const std::string& window, std::uint32_t channel,
+                                     std::uint32_t dedicated_mix, obs_volmeter_t*& meter,
+                                     std::atomic<float>& level) {
     if (window.empty()) {
       obs_set_output_source(channel, nullptr);
+      if (meter) { obs_volmeter_destroy(meter); meter = nullptr; }
       if (source) obs_source_release(source);
       source = nullptr;
+      level.store(0.0F, std::memory_order_relaxed);
       return;
     }
     auto settings = MakeData();
@@ -566,14 +570,24 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
                                  : static_cast<float>(config.game_audio_gain);
     obs_source_set_volume(source, gain);
     obs_set_output_source(channel, source);
+    if (!meter && dashboard_active_) {
+      meter = obs_volmeter_create(OBS_FADER_LOG);
+      if (meter) {
+        obs_volmeter_add_callback(meter, MeterUpdated, &level);
+        obs_volmeter_attach_source(meter, source);
+      }
+    }
   };
-  configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 2);
+  configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 2,
+                    game_audio_meter_, game_audio_level_);
   configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available,
             "wasapi_input_capture", "Klip microphone", 2, device,
             static_cast<float>(config.microphone_audio_gain),
             config.obs_separate_audio_tracks ? (1U | (1U << 1)) : 1U);
-  configure_process(discord_audio_, "Klip Discord audio", config.discord_audio_window, 3, 1U << 3);
-  configure_process(music_audio_, "Klip Spotify audio", config.music_audio_window, 4, 1U << 4);
+  configure_process(discord_audio_, "Klip Discord audio", config.discord_audio_window, 3, 1U << 3,
+                    discord_audio_meter_, discord_audio_level_);
+  configure_process(music_audio_, "Klip Spotify audio", config.music_audio_window, 4, 1U << 4,
+                    music_audio_meter_, music_audio_level_);
   config_.desktop_audio_enabled = config.desktop_audio_enabled;
   config_.microphone_enabled = config.microphone_enabled;
   config_.preferred_microphone_name = config.preferred_microphone_name;
@@ -611,6 +625,8 @@ void ObsEngine::UpdateAudioMeters() {
   update(desktop_audio_, desktop_audio_meter_, desktop_audio_level_);
   update(game_audio_, game_audio_meter_, game_audio_level_);
   update(microphone_, microphone_meter_, microphone_level_);
+  update(discord_audio_, discord_audio_meter_, discord_audio_level_);
+  update(music_audio_, music_audio_meter_, music_audio_level_);
 }
 
 bool ObsEngine::ConfigureEncoder(Error& error) {
@@ -1345,6 +1361,9 @@ void ObsEngine::Tick() {
                   microphone_ && obs_source_audio_active(microphone_),
                   desktop_audio_level_.load(std::memory_order_relaxed),
                   microphone_level_.load(std::memory_order_relaxed));
+  state_.SetProcessAudioLevels(game_audio_level_.load(std::memory_order_relaxed),
+                               discord_audio_level_.load(std::memory_order_relaxed),
+                               music_audio_level_.load(std::memory_order_relaxed));
   const auto buffered = obs_output_active(replay_) ? std::chrono::duration<double>(std::chrono::steady_clock::now() - replay_started_).count() : 0.0;
   state_.SetRollingMetrics(std::min(buffered, config_.clip_duration_seconds), 0, 0);
   if (IsRecording()) state_.SetRecording(true, false, recording_path_,
@@ -1404,6 +1423,8 @@ void ObsEngine::Shutdown() noexcept {
   if (desktop_audio_meter_) { obs_volmeter_destroy(desktop_audio_meter_); desktop_audio_meter_ = nullptr; }
   if (game_audio_meter_) { obs_volmeter_destroy(game_audio_meter_); game_audio_meter_ = nullptr; }
   if (microphone_meter_) { obs_volmeter_destroy(microphone_meter_); microphone_meter_ = nullptr; }
+  if (discord_audio_meter_) { obs_volmeter_destroy(discord_audio_meter_); discord_audio_meter_ = nullptr; }
+  if (music_audio_meter_) { obs_volmeter_destroy(music_audio_meter_); music_audio_meter_ = nullptr; }
   if (initialized_) for (std::uint32_t i = 0; i < 6; ++i) obs_set_output_source(i, nullptr);
   if (scene_) { obs_scene_release(scene_); scene_ = nullptr; capture_item_ = nullptr; overlay_item_ = nullptr; }
   if (capture_) { obs_source_release(capture_); capture_ = nullptr; }
