@@ -87,8 +87,13 @@ void TestConfig() {
   missing_live_overlay.live_overlay_enabled = true;
   CHECK(!klip::ValidateConfig(missing_live_overlay).empty());
 
+  klip::AppConfig plain_key_hotkeys;
+  plain_key_hotkeys.hotkeys.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  plain_key_hotkeys.hotkeys.save_virtual_key = 'V';
+  CHECK(klip::ValidateConfig(plain_key_hotkeys).empty());
+
   klip::AppConfig invalid_hotkeys;
-  invalid_hotkeys.hotkeys.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  invalid_hotkeys.hotkeys.save_modifiers = 0x8000;  // Unsupported modifier flag.
   CHECK(!klip::ValidateConfig(invalid_hotkeys).empty());
 
   klip::AppConfig duplicate_hotkeys;
