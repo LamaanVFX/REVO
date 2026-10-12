@@ -1157,8 +1157,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8.0F, 8.0F});
   ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 10.0F);
   ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 1.0F);
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.052F, 0.055F, 0.063F, 1.0F});
-  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4{0.29F, 0.23F, 0.36F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.018F, 0.052F, 0.064F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4{0.06F, 0.35F, 0.39F, 1.0F});
   if (ImGui::BeginPopup("capture-source-popup", ImGuiWindowFlags_NoTitleBar)) {
     if (ImGui::IsWindowAppearing() && commands.refresh_capture_sources) commands.refresh_capture_sources();
     for (const auto& source : sources) {
@@ -1580,7 +1580,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {26.0F, 22.0F});
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0F);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0F);
-  ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4{0.01F, 0.01F, 0.02F, 0.76F});
+  ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4{0.005F, 0.02F, 0.025F, 0.76F});
   ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.018F, 0.052F, 0.064F, 1.0F});
   bool popup_open = true;
   if (!ImGui::BeginPopupModal(
