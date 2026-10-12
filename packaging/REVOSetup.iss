@@ -1,8 +1,8 @@
 #define AppName "REVO"
 #ifndef AppVersion
-  #error AppVersion must be supplied by package-win64.ps1
+  #error AppVersion must be supplied by package-obs-win64.ps1
 #endif
-#define AppPublisher "Andrewkernel"
+#define AppPublisher "REVO"
 #define AppUrl "https://github.com/LamaanVFX/klipedit"
 #define AppExeName "REVO.exe"
 #ifndef AppRelativeExe
