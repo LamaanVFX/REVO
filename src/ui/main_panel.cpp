@@ -889,20 +889,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     settings_open_ = true;
   }
 
-  const char* sidebar_status =
-      snapshot.status == CaptureStatus::kBuffering ? "Ready to capture" : StatusText(snapshot.status);
-  const ImU32 status_color = ImGui::ColorConvertFloat4ToU32(StatusColor(snapshot.status));
-  const ImVec2 sidebar_status_pos{window_min.x + 18.0F, window_max.y - 96.0F};
-  DrawCard(draw, sidebar_status_pos, {sidebar_width - 36.0F, 48.0F}, false,
-           IM_COL32(5, 24, 30, 240), IM_COL32(15, 68, 76, 210), 9.0F);
-  draw->AddCircleFilled({sidebar_status_pos.x + 20.0F, sidebar_status_pos.y + 19.0F},
-                        5.5F, status_color);
-  DrawText(draw, semibold, 11.0F, {sidebar_status_pos.x + 34.0F, sidebar_status_pos.y + 8.0F},
-           kTextU32, sidebar_status);
-  DrawText(draw, label_font, 9.0F, {sidebar_status_pos.x + 34.0F, sidebar_status_pos.y + 27.0F},
-           kMutedU32, snapshot.status == CaptureStatus::kBuffering
-                          ? "Live capture / replay buffer"
-                          : "Capture status / details");
+  // The sidebar footer status card was removed; status remains visible in the
+  // main dashboard and diagnostics, keeping the navigation area uncluttered.
   const float margin_x = sidebar_width + 30.0F;
   const float content_width = window_size.x - margin_x - 30.0F;
   const ImVec2 content{window_min.x + margin_x, window_min.y};
@@ -1925,7 +1913,6 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
 #if defined(KLIP_USE_LIBOBS)
       ImGui::InputText("clip filename format", obs_filename_format_.data(), obs_filename_format_.size());
       ImGui::TextColored(kMuted, "OBS tokens: %%CCYY-%%MM-%%DD / %%hh-%%mm-%%ss. Consecutive saves get unique names.");
-      ImGui::TextColored(kMuted, "MKV clips and recordings / closing the dashboard keeps capture in the tray.");
       int memory_cap = static_cast<int>(draft_.rolling_buffer_bytes / (1024 * 1024));
       if (ImGui::SliderInt("replay memory cap", &memory_cap, 128, 2048, "%d MiB"))
         draft_.rolling_buffer_bytes = static_cast<std::size_t>(memory_cap) * 1024 * 1024;
