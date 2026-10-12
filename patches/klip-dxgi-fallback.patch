@@ -1,6 +1,6 @@
 --- a/libobs-d3d11/d3d11-duplicator.cpp
 +++ b/libobs-d3d11/d3d11-duplicator.cpp
-@@ -48,31 +48,48 @@ void gs_duplicator::Start()
+@@ -48,31 +48,43 @@ void gs_duplicator::Start()
  	if (!get_monitor(device, idx, output.Assign()))
  		throw "Invalid monitor index";
  
