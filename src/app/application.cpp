@@ -618,7 +618,7 @@ bool KlipApplication::StartRecording(Error& error) {
 
 void KlipApplication::HandleHotkey(int id) {
   if (Hotkeys::IsSaveClip(id)) {
-    clip_writer_.RequestClip();
+    if (clip_writer_.RequestClip()) window_.ShowToast(L"CLIP SAVED");
   } else if (Hotkeys::IsToggleRecording(id)) {
     Error error;
     if (recording_writer_.IsRecording()) {
@@ -643,7 +643,9 @@ void KlipApplication::HandleHotkey(int id) {
 
 UiCommands KlipApplication::BuildUiCommands() {
   return UiCommands{
-      .save_clip = [this] { clip_writer_.RequestClip(); },
+      .save_clip = [this] {
+        if (clip_writer_.RequestClip()) window_.ShowToast(L"CLIP SAVED");
+      },
       .toggle_recording =
           [this] {
             Error error;
@@ -930,13 +932,6 @@ void KlipApplication::UpdateRollingMetrics() {
   state_.SetRollingMetrics(buffer.duration_seconds, buffer.bytes, buffer.packets);
   recording_writer_.Tick();
 
-  // Clip completion happens asynchronously. Detect it here so the notification
-  // appears even when Klip's dashboard is hidden or minimized.
-  const auto saved_clip = state_.Snapshot().last_saved_clip;
-  if (!saved_clip.empty() && saved_clip != last_notified_clip_) {
-    last_notified_clip_ = saved_clip;
-    window_.ShowToast(L"CLIP SAVED");
-  }
 }
 
 }  // namespace klip
