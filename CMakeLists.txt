@@ -139,7 +139,7 @@ klip_project_warnings(klip_media)
 add_executable(klip_app WIN32
   src/app/application.cpp
   src/main.cpp)
-set(KLIP_ICON_RESOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/klip.ico")
+set(KLIP_ICON_RESOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/revo.ico")
 configure_file(packaging/klip.rc.in "${CMAKE_CURRENT_BINARY_DIR}/klip.rc" @ONLY)
 target_sources(klip_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/klip.rc")
 set_target_properties(klip_app PROPERTIES OUTPUT_NAME Klip)
