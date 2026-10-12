@@ -24,7 +24,7 @@ BEGIN
       VALUE "FileVersion", "@PROJECT_VERSION@\0"
       VALUE "InternalName", "REVO\0"
       VALUE "LegalCopyright", "Copyright (C) 2026 Andrewkernel\0"
-      VALUE "OriginalFilename", "Klip.exe\0"
+      VALUE "OriginalFilename", "REVO.exe\0"
       VALUE "ProductName", "REVO\0"
       VALUE "ProductVersion", "@PROJECT_VERSION@\0"
     END
