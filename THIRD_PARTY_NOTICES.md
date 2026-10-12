@@ -46,8 +46,8 @@ Source/build provenance: https://github.com/mstorsjo/llvm-mingw/tree/20260922
 Copyright 2016 The Inter Project Authors. SIL Open Font License 1.1; complete
 license is in bin/64bit/fonts/LICENSE-Inter.txt. https://rsms.me/inter/
 
-Complete Klip source and build scripts are published at the release tag,
-and upstream source/build archives accompany the installer/portable download:
-https://github.com/andrewkernel/klip/releases/tag/v2.0.0
+REVO source/build scripts and corresponding upstream source archives/build recipes
+are included with the matching unsigned beta artifact and tracked in this repository:
+https://github.com/LamaanVFX/klipedit
 
 This inventory is not a legal opinion or a hardware-compatibility guarantee.
