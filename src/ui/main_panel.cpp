@@ -1747,15 +1747,21 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     if (begin_settings_tab("shortcuts", 4)) {
       SectionLabel("shortcuts / global keybinds");
       ImGui::TextColored(kMuted,
-                         "click a shortcut, then press Ctrl, Alt, Shift, or Win plus another key.");
-      const char* shortcut_labels[] = {"save replay", "start / stop recording", "show / hide Klip"};
-      unsigned int* shortcut_modifiers[] = {&draft_.hotkeys.save_modifiers,
-                                            &draft_.hotkeys.record_modifiers,
-                                            &draft_.hotkeys.toggle_ui_modifiers};
-      unsigned int* shortcut_keys[] = {&draft_.hotkeys.save_virtual_key,
-                                       &draft_.hotkeys.record_virtual_key,
-                                       &draft_.hotkeys.toggle_ui_virtual_key};
-      for (int index = 0; index < 3; ++index) {
+                         "Set three global shortcuts each for saving clips and starting/stopping recording.");
+      const char* shortcut_labels[] = {"save replay 1", "save replay 2", "save replay 3",
+                                          "start / stop recording 1", "start / stop recording 2",
+                                          "start / stop recording 3", "show / hide Klip"};
+      unsigned int* shortcut_modifiers[] = {
+          &draft_.hotkeys.save_modifiers, &draft_.hotkeys.save2_modifiers,
+          &draft_.hotkeys.save3_modifiers, &draft_.hotkeys.record_modifiers,
+          &draft_.hotkeys.record2_modifiers, &draft_.hotkeys.record3_modifiers,
+          &draft_.hotkeys.toggle_ui_modifiers};
+      unsigned int* shortcut_keys[] = {
+          &draft_.hotkeys.save_virtual_key, &draft_.hotkeys.save2_virtual_key,
+          &draft_.hotkeys.save3_virtual_key, &draft_.hotkeys.record_virtual_key,
+          &draft_.hotkeys.record2_virtual_key, &draft_.hotkeys.record3_virtual_key,
+          &draft_.hotkeys.toggle_ui_virtual_key};
+      for (int index = 0; index < 7; ++index) {
         ImGui::PushID(index);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(shortcut_labels[index]);
@@ -1793,7 +1799,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
             break;
           }
           bool duplicate = false;
-          for (int other = 0; other < 3; ++other) {
+          for (int other = 0; other < 7; ++other) {
             if (other != hotkey_capture_target_ &&
                 SameChord(modifiers, *virtual_key, *shortcut_modifiers[other],
                           *shortcut_keys[other])) {
