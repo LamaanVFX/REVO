@@ -326,7 +326,7 @@ void Win32Window::ShowToast(const std::wstring& message) {
           kToastWindowClass, L"REVO status", WS_POPUP, 0, 0, kToastWidth, kToastHeight,
           nullptr, nullptr, instance_, this);
       if (!toast) {
-        OutputDebugStringW(L"[Klip] Could not create a monitor toast popup.\\n");
+        OutputDebugStringW(L"[REVO] Could not create a monitor toast popup.\\n");
         continue;
       }
       if (!SetLayeredWindowAttributes(toast, 0, 224, LWA_ALPHA))
