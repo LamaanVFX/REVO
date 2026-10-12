@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "klip/core/error.h"
 #include "klip/platform/dashboard_activity.h"
@@ -41,7 +42,7 @@ class Win32Window {
 
   HINSTANCE instance_ = nullptr;
   HWND window_ = nullptr;
-  HWND toast_window_ = nullptr;
+  std::vector<HWND> toast_windows_;
   std::wstring toast_text_;
   bool toast_class_registered_ = false;
   HICON large_icon_ = nullptr;
