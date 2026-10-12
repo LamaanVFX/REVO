@@ -1838,12 +1838,33 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         draft_.audio_bitrate = static_cast<std::int64_t>(audio_bitrate) * 1000;
         ResizeReplayBudget(draft_);
       }
-      int desktop_volume = static_cast<int>(draft_.desktop_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("desktop volume", &desktop_volume, 0, 200, "%d%%"))
-        draft_.desktop_audio_gain = static_cast<double>(desktop_volume) / 100.0;
-      int game_volume = static_cast<int>(draft_.game_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("game volume", &game_volume, 0, 200, "%d%%"))
-        draft_.game_audio_gain = static_cast<double>(game_volume) / 100.0;
+      int desktop_volume_db = static_cast<int>(std::lround(GainToDb(
+          static_cast<float>(draft_.desktop_audio_gain))));
+      if (ImGui::SliderInt("desktop gain", &desktop_volume_db, -60, 6, "%d dB"))
+        draft_.desktop_audio_gain = static_cast<double>(DbToGain(
+            static_cast<float>(desktop_volume_db)));
+      int game_volume_db = static_cast<int>(std::lround(GainToDb(
+          static_cast<float>(draft_.game_audio_gain))));
+      if (ImGui::SliderInt("game gain", &game_volume_db, -60, 6, "%d dB"))
+        draft_.game_audio_gain = static_cast<double>(DbToGain(
+            static_cast<float>(game_volume_db)));
+      int discord_volume_db = static_cast<int>(std::lround(GainToDb(
+          static_cast<float>(draft_.discord_audio_gain))));
+      if (ImGui::SliderInt("Discord gain", &discord_volume_db, -60, 6, "%d dB"))
+        draft_.discord_audio_gain = static_cast<double>(DbToGain(
+            static_cast<float>(discord_volume_db)));
+      int music_volume_db = static_cast<int>(std::lround(GainToDb(
+          static_cast<float>(draft_.music_audio_gain))));
+      if (ImGui::SliderInt("Spotify gain", &music_volume_db, -60, 6, "%d dB"))
+        draft_.music_audio_gain = static_cast<double>(DbToGain(
+            static_cast<float>(music_volume_db)));
+
+      ImGui::TextColored(kMuted, "game audio / live peak");
+      const ImVec2 game_meter_position = ImGui::GetCursorScreenPos();
+      DrawAudioMeter(ImGui::GetWindowDrawList(), UiFont(4),
+                     game_meter_position.x + 70.0F, game_meter_position.y + 1.0F,
+                     snapshot.game_audio_level);
+      ImGui::Dummy({220.0F, 32.0F});
 #if defined(KLIP_USE_LIBOBS)
       ImGui::TextWrapped("Track 1 mixes all Windows output, microphone, and Spotify; track 2 is microphone-only. Tracks 3–5 isolate game, Discord, and Spotify. Desktop audio follows the default Windows playback device, while Spotify is also routed into Track 1.");
       if (!draft_.excluded_audio_process.empty()) {
@@ -1870,9 +1891,11 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       ImGui::TextColored(kMuted,
                          "low-overhead process-tree exclusion; it does not mute playback for you.");
 #endif
-      int microphone_volume = static_cast<int>(draft_.microphone_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("microphone volume", &microphone_volume, 0, 200, "%d%%"))
-        draft_.microphone_audio_gain = static_cast<double>(microphone_volume) / 100.0;
+      int microphone_volume_db = static_cast<int>(std::lround(GainToDb(
+          static_cast<float>(draft_.microphone_audio_gain))));
+      if (ImGui::SliderInt("microphone gain", &microphone_volume_db, -60, 6, "%d dB"))
+        draft_.microphone_audio_gain = static_cast<double>(DbToGain(
+            static_cast<float>(microphone_volume_db)));
       ImGui::Checkbox("enable microphone (voice / keyboard clicks) on launch",
                       &draft_.microphone_enabled);
       ImGui::EndTabItem();
