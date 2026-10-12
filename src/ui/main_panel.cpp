@@ -1747,7 +1747,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     if (begin_settings_tab("shortcuts", 4)) {
       SectionLabel("shortcuts / global keybinds");
       ImGui::TextColored(kMuted,
-                         "Set three global shortcuts each for saving clips and starting/stopping recording.");
+                         "Choose any key or key combination for each global shortcut.");
       const char* shortcut_labels[] = {"save replay 1", "save replay 2", "save replay 3",
                                           "start / stop recording 1", "start / stop recording 2",
                                           "start / stop recording 3", "show / hide Klip"};
@@ -1792,12 +1792,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
           if (io.KeyAlt) modifiers |= HotkeyConfig::kAlt;
           if (io.KeyShift) modifiers |= HotkeyConfig::kShift;
           if (io.KeySuper) modifiers |= HotkeyConfig::kWindows;
-          constexpr unsigned int chord_mask = HotkeyConfig::kControl | HotkeyConfig::kAlt |
-                                              HotkeyConfig::kShift | HotkeyConfig::kWindows;
-          if ((modifiers & chord_mask) == 0) {
-            hotkey_capture_message_ = "add Ctrl, Alt, Shift, or Win to that key";
-            break;
-          }
+          // Plain keys are valid global shortcuts too; modifier keys are optional.
           bool duplicate = false;
           for (int other = 0; other < 7; ++other) {
             if (other != hotkey_capture_target_ &&
