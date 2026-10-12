@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   pull_request:
   push:
-    branches: ["feature/five-audio-tracks-mp4"]
+    branches:
+      - "feature/five-audio-tracks-mp4"
+      - "fix/five-track-system-audio-gdi"
     tags: ["v*"]
 
 permissions:
@@ -31,7 +33,7 @@ jobs:
       - name: Build and test Release
         shell: pwsh
         run: '& tools/build-obs.ps1 -Configuration Release -BuildSuffix release-2'
-      - name: Validate separate game, Discord, music and desktop audio in saved clips
+      - name: Validate five-track desktop, mic, game, Discord and Spotify audio in saved clips
         shell: pwsh
         run: |
           & tools/run-obs-test.ps1 -Mode game -Configuration Release -BuildSuffix release-2 -Fps 30 -SourceFps 60 -OutputWidth 1280 -OutputHeight 720 -Encoder obs_x264 -EncoderQuality performance -LimitGameCapture -DisplayMethod 1 -SeparateAudioTracks -Name release-five-track-smoke
