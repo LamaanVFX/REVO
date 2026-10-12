@@ -1,7 +1,7 @@
-#include "klip/ui/main_panel.h"
-#include "klip/ui/event_driven_tabs.h"
-#include "klip/core/path_text.h"
-#include "klip/obs/replay_policy.h"
+#include "revo/ui/main_panel.h"
+#include "revo/ui/event_driven_tabs.h"
+#include "revo/core/path_text.h"
+#include "revo/obs/replay_policy.h"
 
 #include <Windows.h>
 #include <imgui.h>
@@ -13,7 +13,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace klip {
+namespace revo {
 namespace {
 
 constexpr ImVec4 kMuted{0.48F, 0.49F, 0.46F, 1.0F};
@@ -270,7 +270,7 @@ std::string CompactSourceLabel(std::string_view label) {
   return std::string(label);
 }
 
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
 int EncoderProfile(const std::vector<std::string>& preferences) {
   if (preferences.size() > 1) return 0;
   if (preferences.empty()) return 0;
@@ -308,7 +308,7 @@ std::filesystem::path ParsePath(const char* text) {
 
 void ResizeReplayBudget(AppConfig& config) {
   config.rolling_buffer_seconds = config.clip_duration_seconds + 15.0;
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   // CQ bitrate is scene-dependent; the legacy fixed-bitrate estimate used to
   // shrink OBS's buffer when selecting a duration. Keep its explicit budget.
   return;
@@ -320,7 +320,7 @@ void ResizeReplayBudget(AppConfig& config) {
 }
 
 void ApplyPerformanceMode(AppConfig& config, bool enabled) {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   config.encoder_quality = enabled ? EncoderQuality::kPerformance : EncoderQuality::kBalanced;
 #else
   config.target_fps = 60;
@@ -339,7 +339,7 @@ void ApplyPerformanceMode(AppConfig& config, bool enabled) {
 }
 
 bool IsPerformanceMode(const AppConfig& config) {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   return config.encoder_quality == EncoderQuality::kPerformance;
 #else
   return config.target_fps == 60 && config.output_width == 1280 && config.output_height == 720 &&
@@ -520,7 +520,7 @@ std::string SystemHardwareSummary() {
 std::string BuildDiagnostics(const ApplicationSnapshot& snapshot, const AppConfig& config,
                              bool include_private_details) {
   std::ostringstream report;
-  report << "Klip v3.0.3 diagnostics\n"
+  report << "REVO v3.0.3 diagnostics\n"
          << "Application build: Windows x64\n"
          << "Windows version: " << WindowsBuildSummary() << '\n'
          << "System: " << SystemHardwareSummary() << '\n'
@@ -611,13 +611,13 @@ void MainPanel::Render(const ApplicationSnapshot& snapshot, const AppConfig& con
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0.0F, 0.0F});
   ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar;
-  ImGui::Begin("Klip", nullptr, window_flags);
+  ImGui::Begin("REVO", nullptr, window_flags);
 
   RenderDashboard(snapshot, config, commands, hotkeys_available);
   if (settings_open_) RenderSettings(snapshot, config, commands);
   ImGui::End();
   ImGui::PopStyleVar();
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
   if (config.capture_preview_enabled) RenderCapturePreview(preview, config);
 #else
   (void)preview;  // No preview render path in the lightweight libobs build.
@@ -634,7 +634,7 @@ void MainPanel::RenderCapturePreview(const CapturePreviewView& preview, const Ap
   ImGui::SetNextWindowSize({preview_width, preview_height}, ImGuiCond_FirstUseEver);
   ImGui::SetNextWindowBgAlpha(0.97F);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {12.0F, 12.0F});
-  if (ImGui::Begin("capture preview###klip-capture-preview", nullptr,
+  if (ImGui::Begin("capture preview###revo-capture-preview", nullptr,
                    ImGuiWindowFlags_NoSavedSettings)) {
     ImGui::TextColored(kMuted, "preview / 15 fps / display only");
     const auto available = ImGui::GetContentRegionAvail();
@@ -727,7 +727,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const ImVec2 content{window_min.x + margin_x, window_min.y};
 
   DrawLogo(draw, {content.x, window_min.y + 28.0F}, 1.0F);
-  DrawText(draw, title_font, 29.0F, {content.x + 50.0F, window_min.y + 29.0F}, kTextU32, "Klip");
+  DrawText(draw, title_font, 29.0F, {content.x + 50.0F, window_min.y + 29.0F}, kTextU32, "REVO");
   const char* status_text =
       snapshot.status == CaptureStatus::kBuffering ? "ready" : StatusText(snapshot.status);
   const ImU32 status_color = ImGui::ColorConvertFloat4ToU32(StatusColor(snapshot.status));
@@ -740,7 +740,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const double buffered_seconds =
       std::clamp(snapshot.metrics.rolling_buffer_seconds, 0.0, requested_seconds);
   const float hero_y = window_min.y + 96.0F;
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   DrawText(draw, label_font, 11.0F, {content.x, hero_y}, kMutedU32, "clip limit / replay");
 #else
   DrawText(draw, label_font, 11.0F, {content.x, hero_y}, kMutedU32, "clip length / replay");
@@ -751,7 +751,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const float seconds_x = content.x + TextWidth(number_font, 42.0F, clip_seconds) + 12.0F;
   DrawText(draw, regular, 17.0F, {seconds_x, hero_y + 48.0F}, kMutedU32, "seconds");
   char replay_copy[64]{};
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   if (config.obs_duration_priority && buffered_seconds < requested_seconds)
     std::snprintf(replay_copy, sizeof(replay_copy), "warming up / %.0f of %.0f seconds", buffered_seconds, requested_seconds);
   else
@@ -762,7 +762,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
                 requested_seconds);
 #endif
   DrawText(draw, regular, 14.0F, {content.x, hero_y + 88.0F}, kMutedU32, replay_copy);
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
   DrawProgress(draw, {content.x, hero_y + 111.0F}, {210.0F, 4.0F},
                static_cast<float>(buffered_seconds / requested_seconds));
 #endif
@@ -772,7 +772,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const bool can_save = snapshot.status == CaptureStatus::kBuffering &&
                         !snapshot.finalizing_recording && buffered_seconds >= 1.0;
   char save_label[80]{};
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   std::snprintf(save_label, sizeof(save_label), "save up to %.0f seconds", requested_seconds);
 #else
   if (buffered_seconds + 0.5 >= requested_seconds) {
@@ -855,7 +855,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
                 kDivider, 1.0F);
   DrawText(draw, label_font, 11.0F, {content.x, section_line_y + 25.0F}, kMutedU32,
            "capture source / choose one");
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
   bool show_capture_preview = config.capture_preview_enabled;
   ImGui::SetCursorScreenPos({content.x + content_width - 390.0F, section_line_y + 17.0F});
   if (ImGui::Checkbox("live preview", &show_capture_preview) &&
@@ -878,7 +878,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const bool source_disabled = snapshot.recording || snapshot.finalizing_recording ||
                                snapshot.status == CaptureStatus::kSaving;
   int mode = snapshot.target_mode == CaptureTargetMode::kDisplay ? 1 : 0;
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   constexpr const char* modes[] = {"game capture / OBS", "display / OBS"};
 #else
   constexpr const char* modes[] = {"game / window", "display"};
@@ -1113,7 +1113,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
            "system status / capture health");
   const float metric_y = system_line_y + 49.0F;
   constexpr float metric_width = 190.0F;
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   const char* metric_labels[] = {"OBS render fps", "encoder", "replay memory cap", "render lagged"};
 #else
   const char* metric_labels[] = {"output fps", "encoder", "buffer ram", "frames skipped"};
@@ -1123,7 +1123,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   char dropped_value[24]{};
   std::snprintf(fps_value, sizeof(fps_value), "%.1f", snapshot.metrics.capture_fps);
   std::snprintf(buffer_value, sizeof(buffer_value), "%.0f MiB",
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
                 static_cast<double>(config.rolling_buffer_bytes) / (1024.0 * 1024.0));
 #else
                 static_cast<double>(snapshot.metrics.rolling_buffer_bytes) / (1024.0 * 1024.0));
@@ -1144,7 +1144,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
                     {x + metric_width - 26.0F, metric_y + 56.0F}, kDivider, 1.0F);
   }
   char source_fps_value[40]{};
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   std::snprintf(source_fps_value, sizeof(source_fps_value), "source cadence / inspect decoded clips");
 #else
   std::snprintf(source_fps_value, sizeof(source_fps_value), "WGC arrivals %.1f / sec",
@@ -1152,7 +1152,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
 #endif
   DrawText(draw, label_font, 9.0F, {content.x, metric_y + 51.0F}, kMutedU32, source_fps_value);
   if (!snapshot.encoder_status.empty()) {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
     const char* encoder_status = !config.obs_replay_enabled ? "buffering disabled"
         : snapshot.encoder_status.find("fallback") != std::string::npos ? "capture fallback / hover for cause"
         : snapshot.selected_encoder == "obs_x264" ? "software encoding / hover for details"
@@ -1170,7 +1170,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   ImGui::SetCursorScreenPos({content.x, metric_y - 4.0F});
   ImGui::InvisibleButton("##wgc-arrivals-help", {metric_width - 26.0F, 62.0F});
   if (ImGui::IsItemHovered())
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
     ImGui::SetTooltip("OBS video-render FPS is not a count of unique captured images. Inspect decoded frame IDs or game motion to verify source cadence.");
 #else
     ImGui::SetTooltip(
@@ -1190,7 +1190,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   ImGui::SetCursorScreenPos({content.x + metric_width * 3.0F, metric_y - 4.0F});
   ImGui::InvisibleButton("##frame-skips-help", {metric_width - 26.0F, 62.0F});
   if (ImGui::IsItemHovered())
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
     ImGui::SetTooltip("OBS video-render frames that missed their scheduled deadline. Encoder-skipped frames are reported separately in diagnostics and the OBS log.");
 #else
     ImGui::SetTooltip(
@@ -1242,7 +1242,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
       if (!settings_open_) {
         ResetDraft(config);
         settings_open_ = true;
-        ImGui::OpenPopup("settings###klip-settings-modal");
+        ImGui::OpenPopup("settings###revo-settings-modal");
       }
     }
     if (ImGui::BeginPopup("capture-error-details")) {
@@ -1270,7 +1270,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   if (now < clip_toast_until_) {
     ImGui::SetNextWindowPos({window_max.x - 352.0F, window_min.y + 10.0F}, ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.96F);
-    if (ImGui::Begin("clip saved###klip-clip-saved", nullptr,
+    if (ImGui::Begin("clip saved###revo-clip-saved", nullptr,
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing)) {
       ImGui::TextColored(kMint, "clip saved");
@@ -1285,7 +1285,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   } else if (now < diagnostics_copied_until_) {
     ImGui::SetNextWindowPos({window_max.x - 270.0F, window_min.y + 10.0F}, ImGuiCond_Always);
     ImGui::SetNextWindowBgAlpha(0.96F);
-    if (ImGui::Begin("diagnostics copied###klip-diagnostics-copied", nullptr,
+    if (ImGui::Begin("diagnostics copied###revo-diagnostics-copied", nullptr,
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoDecoration |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing))
       ImGui::TextColored(kMint, "diagnostics copied / review before sharing");
@@ -1321,7 +1321,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   if (settings_clicked) {
     ResetDraft(config);
     settings_open_ = true;
-    ImGui::OpenPopup("settings###klip-settings-modal");
+    ImGui::OpenPopup("settings###revo-settings-modal");
   }
   constexpr std::string_view version = "v3.0.3";
   DrawText(draw, label_font, 10.0F,
@@ -1344,9 +1344,9 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
   ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.047F, 0.047F, 0.059F, 1.0F});
   bool popup_open = true;
   if (!ImGui::BeginPopupModal(
-          "settings###klip-settings-modal", &popup_open,
+          "settings###revo-settings-modal", &popup_open,
           ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar)) {
-    if (!ImGui::IsPopupOpen("settings###klip-settings-modal")) settings_open_ = false;
+    if (!ImGui::IsPopupOpen("settings###revo-settings-modal")) settings_open_ = false;
     ImGui::PopStyleColor(2);
     ImGui::PopStyleVar(3);
     return;
@@ -1365,7 +1365,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
   } else if (ImGui::BeginTabBar("##settings-tabs")) {
     const int requested_tab = std::exchange(requested_settings_tab_, -1);
     const auto begin_settings_tab = [&](const char* label, int index) {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       return BeginEventDrivenTab(label, index, requested_tab, requested_settings_tab_);
 #else
       const bool visible = ImGui::BeginTabItem(label, nullptr,
@@ -1384,7 +1384,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       if (ImGui::Checkbox("performance mode", &performance_mode))
         ApplyPerformanceMode(draft_, performance_mode);
       ImGui::TextColored(
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
           kMuted, "OBS encoder preset only; your resolution, FPS, and CQ stay selected.");
       ImGui::Checkbox("enable replay buffering", &draft_.obs_replay_enabled);
 #else
@@ -1416,7 +1416,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       if (ImGui::Combo("scaling", &scaling, scaling_modes, IM_ARRAYSIZE(scaling_modes)))
         draft_.scaling_mode = scaling == 0 ? VideoScalingMode::kFit : VideoScalingMode::kStretch;
 
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       ImGui::Checkbox("prioritize full replay duration", &draft_.obs_duration_priority);
       if (draft_.obs_duration_priority) {
         ImGui::SliderInt("target video bitrate / kbps", &draft_.obs_replay_bitrate_kbps, 1000, 60000);
@@ -1450,7 +1450,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       constexpr const char* qualities[] = {"performance", "balanced", "maximum quality"};
       if (ImGui::Combo("encoder load", &quality, qualities, IM_ARRAYSIZE(qualities)))
         draft_.encoder_quality = static_cast<EncoderQuality>(quality);
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       if (draft_.encoder_quality == EncoderQuality::kPerformance)
         ImGui::TextWrapped("performance uses lighter encoder tuning. image quality and file size may differ; resolution, fps and cq stay unchanged.");
 #endif
@@ -1458,14 +1458,14 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     }
 
     if (begin_settings_tab("capture", 2)) {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       constexpr const char* methods[] = {"OBS automatic", "OBS DXGI duplication", "OBS Windows Graphics Capture"};
       ImGui::Combo("display capture method", &draft_.obs_display_method, methods, 3);
       ImGui::Checkbox("reduce game capture copies", &draft_.obs_limit_game_capture_fps);
       ImGui::TextWrapped("Limits OBS game-capture copies to clip FPS, not game FPS. Quality settings stay unchanged; disable if motion looks less smooth.");
 #endif
       ImGui::Checkbox("capture mouse cursor", &draft_.capture_cursor);
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
       ImGui::Checkbox("show Windows capture highlight", &draft_.capture_border);
       ImGui::Checkbox("show low-rate capture preview", &draft_.capture_preview_enabled);
       ImGui::TextColored(kMuted,
@@ -1485,7 +1485,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       if (ImGui::Checkbox("live window overlay / handcam", &draft_.live_overlay_enabled) &&
           draft_.live_overlay_enabled) {
         draft_.static_overlay_enabled = false;
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
         const auto& overlay_sources = snapshot.overlay_sources;
 #else
         const auto& overlay_sources = snapshot.game_sources;
@@ -1503,7 +1503,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       ImGui::BeginDisabled(!draft_.live_overlay_enabled);
       if (ImGui::BeginCombo("handcam window", live_overlay_label)) {
         if (ImGui::IsWindowAppearing() && commands.refresh_capture_sources) commands.refresh_capture_sources();
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
         const auto& overlay_sources = snapshot.overlay_sources;
 #else
         const auto& overlay_sources = snapshot.game_sources;
@@ -1541,7 +1541,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         draft_.static_overlay_opacity = static_cast<double>(overlay_opacity) / 100.0;
       }
       ImGui::EndDisabled();
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       ImGui::TextWrapped("One image or window is composed by OBS before encoding, so it is included in both replays and recordings. Open Camera for a handcam source.");
 #else
       ImGui::TextColored(kMuted,
@@ -1554,7 +1554,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     if (begin_settings_tab("audio", 3)) {
       SectionLabel("clips / audio");
       ImGui::Checkbox("record desktop audio", &draft_.desktop_audio_enabled);
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       ImGui::Checkbox("separate desktop and microphone tracks", &draft_.obs_separate_audio_tracks);
       ImGui::TextColored(kMuted, "track 1: mixed / track 2: desktop / track 3: microphone");
       constexpr int durations[] = {15, 30, 60, 120};
@@ -1590,7 +1590,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       int desktop_volume = static_cast<int>(draft_.desktop_audio_gain * 100.0 + 0.5);
       if (ImGui::SliderInt("desktop volume", &desktop_volume, 0, 200, "%d%%"))
         draft_.desktop_audio_gain = static_cast<double>(desktop_volume) / 100.0;
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       ImGui::TextWrapped("Desktop audio records all applications. Excluding one application is not supported by stock OBS desktop audio.");
       if (!draft_.excluded_audio_process.empty()) {
         ImGui::Text("Previous exclusion: %s", draft_.excluded_audio_process.c_str());
@@ -1628,7 +1628,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       SectionLabel("shortcuts / global keybinds");
       ImGui::TextColored(kMuted,
                          "click a shortcut, then press Ctrl, Alt, Shift, or Win plus another key.");
-      const char* shortcut_labels[] = {"save replay", "start / stop recording", "show / hide Klip"};
+      const char* shortcut_labels[] = {"save replay", "start / stop recording", "show / hide REVO"};
       unsigned int* shortcut_modifiers[] = {&draft_.hotkeys.save_modifiers,
                                             &draft_.hotkeys.record_modifiers,
                                             &draft_.hotkeys.toggle_ui_modifiers};
@@ -1702,7 +1702,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       SectionLabel("storage / local files");
       ImGui::InputText("clips folder", clips_path_.data(), clips_path_.size());
       ImGui::InputText("recordings folder", recordings_path_.data(), recordings_path_.size());
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
       ImGui::InputText("clip filename format", obs_filename_format_.data(), obs_filename_format_.size());
       ImGui::TextColored(kMuted, "OBS tokens: %%CCYY-%%MM-%%DD / %%hh-%%mm-%%ss. Consecutive saves get unique names.");
       ImGui::TextColored(kMuted, "MKV clips and recordings / closing the dashboard keeps capture in the tray.");
@@ -1753,7 +1753,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     draft_.output_directory = ParsePath(clips_path_.data());
     draft_.recording_directory = ParsePath(recordings_path_.data());
     draft_.static_overlay_path = ParsePath(overlay_path_.data());
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
     draft_.obs_filename_format = obs_filename_format_.data();
 #endif
     if (commands.save_settings(draft_)) {
@@ -1788,15 +1788,15 @@ void MainPanel::RenderCompatibility(const ApplicationSnapshot& snapshot, const A
   const bool windows_supported = windows_build.has_value() && *windows_build >= 18362;
   row("Windows", windows_supported, WindowsBuildSummary(), !windows_build.has_value());
   row("64-bit processor", IsSupportedArchitecture(),
-      IsSupportedArchitecture() ? "x64 build / supported architecture" : "Klip currently targets x64 Windows");
-#if defined(KLIP_USE_LIBOBS)
+      IsSupportedArchitecture() ? "x64 build / supported architecture" : "REVO currently targets x64 Windows");
+#if defined(REVO_USE_LIBOBS)
   row("Dashboard D3D11", IsSupportedD3dLevel(snapshot.graphics_feature_level),
 #else
   row("Direct3D graphics", IsSupportedD3dLevel(snapshot.graphics_feature_level),
 #endif
       snapshot.graphics_feature_level.empty() ? "device feature level unavailable"
                                                : "feature level " + snapshot.graphics_feature_level);
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   const bool buffering_enabled = config.obs_replay_enabled;
   row("OBS video engine", !buffering_enabled || !snapshot.capture_adapter.empty(),
       !buffering_enabled ? "disabled / no video processing" : snapshot.capture_adapter.empty()
@@ -2007,4 +2007,4 @@ void MainPanel::ResetDraft(const AppConfig& config) {
   hotkey_capture_message_.clear();
 }
 
-}  // namespace klip
+}  // namespace revo

@@ -1,4 +1,4 @@
-# Klip release-candidate system design
+# REVO release-candidate system design
 
 Status: target invariants for the implementation model, not a claim that the current code satisfies all of them. Astra owns orchestration and acceptance review; see `implementation-handoff.md` for current evidence and execution order.
 
@@ -93,7 +93,7 @@ Static content naturally repeats. Do not show a low WGC update rate on a static 
 
 ## OBS comparison boundary
 
-Compare scheduling, frame ownership, texture reuse, and output handling with OBS's open-source video code. Compare WGC with WGC where possible. OBS Game Capture hooks a game's graphics path and is not equivalent to Klip's WGC window/display capture. Do not copy GPL implementation into the project without an explicit license review and authorization.
+Compare scheduling, frame ownership, texture reuse, and output handling with OBS's open-source video code. Compare WGC with WGC where possible. OBS Game Capture hooks a game's graphics path and is not equivalent to REVO's WGC window/display capture. Do not copy GPL implementation into the project without an explicit license review and authorization.
 
 Relevant sources already consulted:
 

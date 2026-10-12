@@ -1,7 +1,7 @@
-#include "klip/app/application.h"
-#include "klip/core/config_store.h"
-#include "klip/core/path_text.h"
-#include "klip/ui/event_driven_tabs.h"
+#include "revo/app/application.h"
+#include "revo/core/config_store.h"
+#include "revo/core/path_text.h"
+#include "revo/ui/event_driven_tabs.h"
 
 #include <shellapi.h>
 #include <psapi.h>
@@ -12,7 +12,7 @@
 #include <vector>
 #include <fstream>
 
-namespace klip {
+namespace revo {
 namespace {
 bool SendAcceptanceChord(unsigned modifiers, unsigned key) {
   std::vector<WORD> keys;
@@ -38,11 +38,11 @@ std::size_t CountReplays(const std::filesystem::path& directory) {
   return count;
 }
 }
-KlipApplication::KlipApplication(AppConfig config, std::filesystem::path settings_path)
+REVOApplication::REVOApplication(AppConfig config, std::filesystem::path settings_path)
     : config_(std::move(config)), settings_path_(std::move(settings_path)), engine_(state_, logger_) {}
-KlipApplication::~KlipApplication() noexcept { Shutdown(); }
+REVOApplication::~REVOApplication() noexcept { Shutdown(); }
 
-bool KlipApplication::Initialize(HINSTANCE instance, int show, Error& error, bool register_hotkeys,
+bool REVOApplication::Initialize(HINSTANCE instance, int show, Error& error, bool register_hotkeys,
     std::optional<std::uint32_t> vendor, std::optional<D3D_FEATURE_LEVEL> feature_level,
     bool, bool) {
   const auto issues = ValidateConfig(config_);
@@ -53,7 +53,7 @@ bool KlipApplication::Initialize(HINSTANCE instance, int show, Error& error, boo
     error = Error{ErrorComponent::kApplication, "open log", "Could not open " + PathToUtf8(config_.log_path)};
     return false;
   }
-  logger_.Info("Klip libobs startup");
+  logger_.Info("REVO libobs startup");
   if (!window_.Create(instance, show, error) ||
       !graphics_.Initialize(window_.Handle(), error, vendor, feature_level) ||
       !imgui_.Initialize(window_.Handle(), graphics_.Device(), graphics_.Context(), error)) {
@@ -75,8 +75,8 @@ bool KlipApplication::Initialize(HINSTANCE instance, int show, Error& error, boo
   return true;
 }
 
-int KlipApplication::Run() {
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+int REVOApplication::Run() {
+#if defined(REVO_ENABLE_TEST_HOOKS)
   const auto benchmark_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(75);
   auto benchmark_ready = std::chrono::steady_clock::time_point{};
   bool benchmark_save = false;
@@ -95,7 +95,7 @@ int KlipApplication::Run() {
     if (window_.TakeRedrawRequest()) pending_render_frames = std::max(pending_render_frames, kInputRedrawFrames);
     if (config_.obs_replay_enabled && now >= next_tick) {
       engine_.Tick(); next_tick = now + std::chrono::milliseconds(250);
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
       if (background_benchmark_) {
         const auto snapshot = state_.Snapshot();
         if (snapshot.last_error || now > benchmark_deadline) {
@@ -140,20 +140,20 @@ int KlipApplication::Run() {
     MsgWaitForMultipleObjectsEx(0, nullptr, timeout, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
   }
   Shutdown();
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
   if (background_benchmark_) return benchmark_result;
 #endif
   return 0;
 }
 
-#if defined(KLIP_ENABLE_TEST_HOOKS)
-int KlipApplication::RunBackgroundBenchmark() {
+#if defined(REVO_ENABLE_TEST_HOOKS)
+int REVOApplication::RunBackgroundBenchmark() {
   background_benchmark_ = true;
   return Run();
 }
 #endif
 
-void KlipApplication::Shutdown() noexcept {
+void REVOApplication::Shutdown() noexcept {
   const bool initialized = initialized_.exchange(false);
   window_.SetHotkeyCallback({});
   hotkeys_.Unregister();
@@ -161,19 +161,19 @@ void KlipApplication::Shutdown() noexcept {
   imgui_.Shutdown();
   graphics_.Shutdown();
   window_.Destroy();
-  if (initialized) logger_.Info("Klip libobs shutdown complete");
+  if (initialized) logger_.Info("REVO libobs shutdown complete");
   logger_.Close();
 }
-bool KlipApplication::StartMediaPipeline(const AppConfig& config, Error& error) {
+bool REVOApplication::StartMediaPipeline(const AppConfig& config, Error& error) {
   engine_.SetDashboardActive(window_.DashboardActive());
   return engine_.Initialize(config, window_.Handle(), error);
 }
-void KlipApplication::StopMediaPipeline() noexcept { engine_.Shutdown(); }
-bool KlipApplication::RestartMediaPipeline(const AppConfig& config, Error& error) { StopMediaPipeline(); return StartMediaPipeline(config, error); }
-void KlipApplication::UpdateRollingMetrics() { engine_.Tick(); }
-bool KlipApplication::StartRecording(Error& error) { return engine_.StartRecording(error); }
+void REVOApplication::StopMediaPipeline() noexcept { engine_.Shutdown(); }
+bool REVOApplication::RestartMediaPipeline(const AppConfig& config, Error& error) { StopMediaPipeline(); return StartMediaPipeline(config, error); }
+void REVOApplication::UpdateRollingMetrics() { engine_.Tick(); }
+bool REVOApplication::StartRecording(Error& error) { return engine_.StartRecording(error); }
 
-void KlipApplication::HandleHotkey(int id) {
+void REVOApplication::HandleHotkey(int id) {
   if (id == Hotkeys::kSaveClip) {
     if (!engine_.SaveReplayClip()) state_.SetError(Error{ErrorComponent::kClipWriter, "save replay", "OBS replay is not ready, or the save queue is full"});
     engine_.Tick();
@@ -183,7 +183,7 @@ void KlipApplication::HandleHotkey(int id) {
   } else if (id == Hotkeys::kToggleUi) window_.ToggleVisibility();
 }
 
-UiCommands KlipApplication::BuildUiCommands() {
+UiCommands REVOApplication::BuildUiCommands() {
   const auto audio = [this] { engine_.ConfigureAudio(config_); };
   return UiCommands{
       .save_clip = [this] { HandleHotkey(Hotkeys::kSaveClip); },
@@ -223,7 +223,7 @@ UiCommands KlipApplication::BuildUiCommands() {
       .refresh_capture_sources = [this] {engine_.RefreshSources();}};
 }
 
-bool KlipApplication::PersistSettings(const AppConfig& config, bool) {
+bool REVOApplication::PersistSettings(const AppConfig& config, bool) {
   std::string message;
   if (!SaveConfig(settings_path_, config, message)) { state_.SetError(Error{ErrorComponent::kApplication, "save settings", message}); return false; }
   config_ = config;
@@ -231,7 +231,7 @@ bool KlipApplication::PersistSettings(const AppConfig& config, bool) {
   return true;
 }
 
-bool KlipApplication::ApplySettings(const AppConfig& desired) {
+bool REVOApplication::ApplySettings(const AppConfig& desired) {
   const auto issues = ValidateConfig(desired);
   if (!issues.empty()) { state_.SetSettingsStatus(false, issues.front().field + ": " + issues.front().message); return false; }
   const auto snapshot = state_.Snapshot();
@@ -263,7 +263,7 @@ bool KlipApplication::ApplySettings(const AppConfig& desired) {
   return true;
 }
 
-int KlipApplication::RunCaptureAcceptanceTest(std::string required_encoder, std::uint32_t duration,
+int REVOApplication::RunCaptureAcceptanceTest(std::string required_encoder, std::uint32_t duration,
     bool source_switch, std::string, bool, bool actions, bool input) {
   if (source_switch) {
     logger_.Warning("This OBS slice has not implemented the legacy source-switch acceptance protocol.");
@@ -353,14 +353,14 @@ int KlipApplication::RunCaptureAcceptanceTest(std::string required_encoder, std:
   Shutdown(); return 2;
 }
 
-int KlipApplication::RunSettingsAcceptanceTest() {
+int REVOApplication::RunSettingsAcceptanceTest() {
   auto updated = config_;
   updated.obs_cq = config_.obs_cq == 18 ? 20 : 18;
   if (!ApplySettings(updated)) { Shutdown(); return 5; }
   return RunCaptureAcceptanceTest();
 }
 
-int KlipApplication::RunSaveShutdownAcceptanceTest() {
+int REVOApplication::RunSaveShutdownAcceptanceTest() {
   const auto errors_before = state_.Snapshot().error_generation;
   const auto clips_before = CountReplays(config_.output_directory);
   const auto ready_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
@@ -392,8 +392,8 @@ int KlipApplication::RunSaveShutdownAcceptanceTest() {
   return 0;
 }
 
-int KlipApplication::RunSaveFailureRecoveryAcceptanceTest() {
-  // Only an empty, isolated test destination directly under KLIP_DATA_ROOT may
+int REVOApplication::RunSaveFailureRecoveryAcceptanceTest() {
+  // Only an empty, isolated test destination directly under REVO_DATA_ROOT may
   // be moved. Never move a user's populated clips folder or a computed broad root.
   const auto root = std::filesystem::weakly_canonical(config_.log_path.parent_path());
   const auto destination = std::filesystem::weakly_canonical(config_.output_directory);
@@ -441,7 +441,7 @@ int KlipApplication::RunSaveFailureRecoveryAcceptanceTest() {
   return RunCaptureAcceptanceTest();
 }
 
-int KlipApplication::RunIdleAcceptanceTest() {
+int REVOApplication::RunIdleAcceptanceTest() {
   if (config_.obs_replay_enabled || window_.Visible()) {
     logger_.Warning("Idle acceptance requires replay disabled and a hidden dashboard"); Shutdown(); return 3;
   }
@@ -465,4 +465,4 @@ int KlipApplication::RunIdleAcceptanceTest() {
   Shutdown();
   return percent < 1.0 ? 0 : 2;
 }
-}  // namespace klip
+}  // namespace revo

@@ -1,9 +1,9 @@
-#include "klip/core/logger.h"
+#include "revo/core/logger.h"
 
 #include <chrono>
 #include <format>
 
-namespace klip {
+namespace revo {
 
 Logger::~Logger() noexcept { Close(); }
 
@@ -36,4 +36,4 @@ void Logger::Write(std::string_view level, std::string_view message) {
   stream_.flush();
 }
 
-}  // namespace klip
+}  // namespace revo

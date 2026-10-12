@@ -14,7 +14,7 @@ $previousPath=$env:PATH
 try {
   $env:PATH="$llvm/bin;$cmake/bin;$deps/ninja;$env:PATH"
   $build=Join-Path $repo ("build-obs-$Configuration" + $(if($BuildSuffix){"-$BuildSuffix"}else{''}))
-  & cmake -S $repo -B $build -G Ninja "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_CXX_COMPILER=$llvm/bin/clang++.exe" "-DCMAKE_RC_COMPILER=$llvm/bin/llvm-windres.exe" "-DCMAKE_CXX_FLAGS=-isystem $($sdk.Replace('\','/'))/cppwinrt" "-Dimgui_DIR=$repo/cmake/validation-imgui" "-DKLIP_IMGUI_SOURCE=$imgui" '-DKLIP_USE_LIBOBS=ON' "-DKLIP_ENABLE_TEST_HOOKS=$($EnableTestHooks.IsPresent.ToString().ToUpperInvariant())" "-DOBS_ROOT=$repo/work/obs-sdk-32.1.2"
+  & cmake -S $repo -B $build -G Ninja "-DCMAKE_BUILD_TYPE=$Configuration" "-DCMAKE_CXX_COMPILER=$llvm/bin/clang++.exe" "-DCMAKE_RC_COMPILER=$llvm/bin/llvm-windres.exe" "-DCMAKE_CXX_FLAGS=-isystem $($sdk.Replace('\','/'))/cppwinrt" "-Dimgui_DIR=$repo/cmake/validation-imgui" "-DREVO_IMGUI_SOURCE=$imgui" '-DREVO_USE_LIBOBS=ON' "-DREVO_ENABLE_TEST_HOOKS=$($EnableTestHooks.IsPresent.ToString().ToUpperInvariant())" "-DOBS_ROOT=$repo/work/obs-sdk-32.1.2"
   if($LASTEXITCODE){exit $LASTEXITCODE}
   & cmake --build $build --parallel 4
   if($LASTEXITCODE){exit $LASTEXITCODE}

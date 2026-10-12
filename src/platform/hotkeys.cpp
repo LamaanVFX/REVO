@@ -1,6 +1,6 @@
-#include "klip/platform/hotkeys.h"
+#include "revo/platform/hotkeys.h"
 
-namespace klip {
+namespace revo {
 
 Hotkeys::~Hotkeys() noexcept { Unregister(); }
 
@@ -51,4 +51,4 @@ void Hotkeys::Unregister() noexcept {
   window_ = nullptr;
 }
 
-}  // namespace klip
+}  // namespace revo

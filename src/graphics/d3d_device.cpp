@@ -1,9 +1,9 @@
-#include "klip/graphics/d3d_device.h"
+#include "revo/graphics/d3d_device.h"
 
 #include <array>
 #include <sstream>
 
-namespace klip {
+namespace revo {
 
 D3dDevice::~D3dDevice() noexcept { Shutdown(); }
 
@@ -89,7 +89,7 @@ bool D3dDevice::Initialize(HWND window, Error& error,
     if (FAILED(result)) {
       error = MakeHresultError(ErrorComponent::kGraphics,
                                "initialize requested D3D11 hardware adapter", result);
-      error.message = "Klip could not initialize a matching Direct3D 11 hardware adapter";
+      error.message = "REVO could not initialize a matching Direct3D 11 hardware adapter";
       error.context = attempts.str();
       return false;
     }
@@ -134,7 +134,7 @@ bool D3dDevice::Initialize(HWND window, Error& error,
     if (FAILED(result)) {
       error = MakeHresultError(ErrorComponent::kGraphics, "initialize D3D11 hardware adapter",
                                default_adapter_result);
-      error.message = "Klip could not initialize a Direct3D 11 hardware adapter";
+      error.message = "REVO could not initialize a Direct3D 11 hardware adapter";
       error.context = attempts.str();
       return false;
     }
@@ -212,4 +212,4 @@ bool D3dDevice::CreateRenderTarget(Error& error) {
   return true;
 }
 
-}  // namespace klip
+}  // namespace revo

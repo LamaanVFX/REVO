@@ -1,17 +1,17 @@
-#include "klip/core/error.h"
+#include "revo/core/error.h"
 
 #include <Windows.h>
 
 #include <array>
 #include <sstream>
 
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
 extern "C" {
 #include <libavutil/error.h>
 }
 #endif
 
-namespace klip {
+namespace revo {
 namespace {
 
 std::string Win32Message(unsigned long code) {
@@ -99,7 +99,7 @@ Error MakeHresultError(ErrorComponent component, std::string operation, long res
 
 Error MakeFfmpegError(ErrorComponent component, std::string operation, int code,
                       std::string context) {
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
   std::array<char, AV_ERROR_MAX_STRING_SIZE> text{};
   av_strerror(code, text.data(), text.size());
   return Error{component, std::move(operation), "FFmpeg operation failed",
@@ -110,4 +110,4 @@ Error MakeFfmpegError(ErrorComponent component, std::string operation, int code,
 #endif
 }
 
-}  // namespace klip
+}  // namespace revo

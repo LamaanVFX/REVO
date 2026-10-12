@@ -1,11 +1,11 @@
-#include "klip/buffer/rolling_media_buffer.h"
+#include "revo/buffer/rolling_media_buffer.h"
 
 #include <algorithm>
 #include <exception>
 
-#include "klip/core/clip_selection.h"
+#include "revo/core/clip_selection.h"
 
-namespace klip {
+namespace revo {
 
 RollingMediaBuffer::RollingMediaBuffer(double maximum_seconds, std::size_t maximum_bytes)
     : maximum_seconds_(maximum_seconds), maximum_bytes_(maximum_bytes) {}
@@ -162,4 +162,4 @@ void RollingMediaBuffer::RefreshVideoBoundsLocked() noexcept {
   }
 }
 
-}  // namespace klip
+}  // namespace revo

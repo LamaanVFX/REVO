@@ -1,4 +1,4 @@
-#include "klip/ui/imgui_host.h"
+#include "revo/ui/imgui_host.h"
 
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
@@ -7,7 +7,7 @@
 #include <filesystem>
 #include <fstream>
 
-namespace klip {
+namespace revo {
 namespace {
 
 std::filesystem::path ExecutableDirectory() {
@@ -137,4 +137,4 @@ void ImGuiHost::Render() {
   ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
 
-}  // namespace klip
+}  // namespace revo

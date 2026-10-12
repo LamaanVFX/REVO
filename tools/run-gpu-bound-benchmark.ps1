@@ -3,7 +3,7 @@ param(
   [ValidateRange(1,256)][int]$GpuWork=256,
   [ValidateRange(100,180)][int]$SourceSeconds=120,
   [ValidateSet('balanced','limited','performance')][string[]]$Conditions=@('balanced','limited','balanced'),
-  [string]$Executable='build-obs-Release-gpu-bench/bin/64bit/Klip.exe',
+  [string]$Executable='build-obs-Release-gpu-bench/bin/64bit/REVO.exe',
   [switch]$SmoothWorkload,
   [switch]$PresentMon
 )
@@ -11,7 +11,7 @@ $ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $root=Join-Path $repo "work/$Name"
 if(Test-Path $root){throw 'Use a fresh name; benchmark evidence is preserved'}
-if(Get-Process Klip,obs64,cadence_scene -ErrorAction SilentlyContinue){throw 'Close other capture/fixture processes before benchmarking'}
+if(Get-Process REVO,obs64,cadence_scene -ErrorAction SilentlyContinue){throw 'Close other capture/fixture processes before benchmarking'}
 $exe=(Resolve-Path -LiteralPath $Executable).Path
 New-Item -ItemType Directory $root | Out-Null
 $llvm=(Get-ChildItem "$repo/work/validation-tools/llvm" -Directory|Select-Object -First 1).FullName
@@ -31,14 +31,14 @@ foreach($condition in $Conditions){
   $trial=Join-Path $root ("{0:D2}-{1}" -f $trialIndex,$condition)
   New-Item -ItemType Directory $trial|Out-Null
   $quality=if($condition -eq 'performance'){'performance'}else{'balanced'}
-  @('capture_mode=game_window','preferred_game_title="Klip cadence test scene"',
+  @('capture_mode=game_window','preferred_game_title="REVO cadence test scene"',
     'output_width=1920','output_height=1080','target_fps=60','clip_duration_seconds=15',
     'rolling_buffer_seconds=30','rolling_buffer_bytes=268435456','desktop_audio_enabled=true',
     'desktop_audio_gain=1','microphone_enabled=false','audio_bitrate=192000','capture_cursor=false',
     'obs_encoder_id="obs_nvenc_h264_tex"','obs_cq=18',"encoder_quality=$quality",'obs_separate_audio_tracks=false',
     "obs_limit_game_capture_fps=$(($condition -eq 'limited').ToString().ToLowerInvariant())",
     'static_overlay_enabled=false','live_overlay_enabled=false') | Set-Content "$trial/settings.ini"
-  $previousRoot=$env:KLIP_DATA_ROOT
+  $previousRoot=$env:REVO_DATA_ROOT
   $source=$null;$capture=$null;$gpuProcess=$null;$presentmonProcess=$null
   $phases=[Collections.Generic.List[object]]::new()
   try {
@@ -46,7 +46,7 @@ foreach($condition in $Conditions){
     if($SmoothWorkload){$sourceArgs+=' --smooth-workload'}
     $source=Start-Process $sceneExe -ArgumentList $sourceArgs -WindowStyle Hidden -RedirectStandardOutput "$trial/source.log" -RedirectStandardError "$trial/source-error.log" -PassThru
     if($PresentMon){
-      $session="KlipPerf-$([Guid]::NewGuid().ToString('N'))"
+      $session="REVOPerf-$([Guid]::NewGuid().ToString('N'))"
       $pmArgs="--process_id $($source.Id) --output_file `"$trial/presentmon.csv`" --qpc_time --no_console_stats --no_track_input --terminate_on_proc_exit --timed $($SourceSeconds+10) --terminate_after_timed --session_name $session"
       $presentmonProcess=Start-Process $presentmonExe -ArgumentList $pmArgs -WindowStyle Hidden -RedirectStandardOutput "$trial/presentmon.log" -RedirectStandardError "$trial/presentmon-error.log" -PassThru
     }
@@ -56,21 +56,21 @@ foreach($condition in $Conditions){
     $preStart=[Diagnostics.Stopwatch]::GetTimestamp()
     Start-Sleep -Seconds 15
     $phases.Add(@{name='source-before';start_qpc=$preStart;end_qpc=[Diagnostics.Stopwatch]::GetTimestamp()})
-    $env:KLIP_DATA_ROOT=$trial
+    $env:REVO_DATA_ROOT=$trial
     $capture=Start-Process $exe -WorkingDirectory (Split-Path $exe) -ArgumentList '--obs-background-benchmark' -WindowStyle Hidden -PassThru
     $readyDeadline=[DateTime]::UtcNow.AddSeconds(25)
     while([DateTime]::UtcNow -lt $readyDeadline){
       if($capture.HasExited){throw "Capture exited before ready: $($capture.ExitCode)"}
-      if((Test-Path "$trial/klip.log") -and (Select-String -LiteralPath "$trial/klip.log" -Pattern 'BACKGROUND BENCHMARK READY' -Quiet)){break}
+      if((Test-Path "$trial/revo.log") -and (Select-String -LiteralPath "$trial/revo.log" -Pattern 'BACKGROUND BENCHMARK READY' -Quiet)){break}
       Start-Sleep -Milliseconds 250
     }
-    if(-not (Select-String -LiteralPath "$trial/klip.log" -Pattern 'BACKGROUND BENCHMARK READY' -Quiet)){throw 'Capture readiness deadline exceeded'}
+    if(-not (Select-String -LiteralPath "$trial/revo.log" -Pattern 'BACKGROUND BENCHMARK READY' -Quiet)){throw 'Capture readiness deadline exceeded'}
     Start-Sleep -Seconds 8
     $captureStart=[Diagnostics.Stopwatch]::GetTimestamp()
     & "$PSScriptRoot/sample-capture-process.ps1" -CapturePid $capture.Id -SourcePid $source.Id -EvidenceRoot $trial -Phase replay -Seconds 15
     $phases.Add(@{name='source-with-capture';start_qpc=$captureStart;end_qpc=[Diagnostics.Stopwatch]::GetTimestamp()})
     if(-not $capture.WaitForExit(40000)){throw 'Capture exceeded normal-loop benchmark deadline'}
-    if($capture.ExitCode -ne 0 -or -not (Select-String -LiteralPath "$trial/klip.log" -Pattern 'BACKGROUND BENCHMARK PASSED' -Quiet)){throw 'Capture/save failed'}
+    if($capture.ExitCode -ne 0 -or -not (Select-String -LiteralPath "$trial/revo.log" -Pattern 'BACKGROUND BENCHMARK PASSED' -Quiet)){throw 'Capture/save failed'}
     Start-Sleep -Seconds 5
     if($source.HasExited){throw 'Source ended before post baseline'}
     $postStart=[Diagnostics.Stopwatch]::GetTimestamp()
@@ -87,7 +87,7 @@ foreach($condition in $Conditions){
       ConvertTo-Json -Depth 5|Set-Content "$trial/phases.json"
     Write-Output "Completed bounded GPU trial $trialIndex/$($Conditions.Count): $condition"
   } finally {
-    $env:KLIP_DATA_ROOT=$previousRoot
+    $env:REVO_DATA_ROOT=$previousRoot
     # Terminate only helpers created here if a test fails; preserve partial media.
     foreach($owned in @($capture,$source,$gpuProcess,$presentmonProcess)){
       if($owned -and -not $owned.HasExited){Stop-Process -Id $owned.Id -ErrorAction SilentlyContinue; $owned.WaitForExit(5000)|Out-Null}

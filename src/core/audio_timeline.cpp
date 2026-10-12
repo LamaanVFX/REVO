@@ -1,9 +1,9 @@
-#include "klip/core/audio_timeline.h"
+#include "revo/core/audio_timeline.h"
 
 #include <algorithm>
 #include <limits>
 
-namespace klip {
+namespace revo {
 namespace {
 
 constexpr std::int64_t kTicksPerSecond = 10'000'000LL;
@@ -38,4 +38,4 @@ bool AudioWindowCovered(std::int64_t source_pts_100ns, std::size_t available_fra
   return source_end >= output_end;
 }
 
-}  // namespace klip
+}  // namespace revo

@@ -1,8 +1,8 @@
-#include "klip/core/video_timeline.h"
+#include "revo/core/video_timeline.h"
 
 #include <limits>
 
-namespace klip {
+namespace revo {
 
 std::int64_t FixedVideoTimestamp100ns(std::int64_t origin_100ns, std::uint64_t frame_number,
                                       std::uint32_t frames_per_second) noexcept {
@@ -59,4 +59,4 @@ void VideoCadenceTracker::Observe(std::int64_t timestamp) noexcept {
   intervals_ = 0;
 }
 
-}  // namespace klip
+}  // namespace revo

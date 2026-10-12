@@ -1,14 +1,14 @@
-#include "klip/recording/recording_writer.h"
+#include "revo/recording/recording_writer.h"
 
 #include <Windows.h>
 
 #include <exception>
 #include <utility>
 
-#include "klip/media/mp4_muxer.h"
-#include "klip/core/path_text.h"
+#include "revo/media/mp4_muxer.h"
+#include "revo/core/path_text.h"
 
-namespace klip {
+namespace revo {
 
 RecordingWriter::RecordingWriter(ApplicationState& state, Logger& logger)
     : state_(state), logger_(logger) {}
@@ -288,4 +288,4 @@ std::filesystem::path RecordingWriter::BuildOutputPath(const std::filesystem::pa
   return directory / filename;
 }
 
-}  // namespace klip
+}  // namespace revo

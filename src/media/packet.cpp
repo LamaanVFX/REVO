@@ -1,10 +1,10 @@
-#include "klip/media/packet.h"
+#include "revo/media/packet.h"
 
 extern "C" {
 #include <libavutil/mathematics.h>
 }
 
-namespace klip {
+namespace revo {
 namespace {
 
 constexpr AVRational kHundredNanoseconds{1, 10'000'000};
@@ -29,4 +29,4 @@ PacketDescriptor DescribePacket(const EncodedPacket& encoded) {
       (packet->flags & AV_PKT_FLAG_KEY) != 0};
 }
 
-}  // namespace klip
+}  // namespace revo

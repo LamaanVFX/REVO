@@ -2,7 +2,7 @@
 
 ## Cause and behavior
 
-Klip 2.0 used hardware CQP / software CRF with a fixed packet-memory budget.
+REVO 2.0 used hardware CQP / software CRF with a fixed packet-memory budget.
 These modes have scene-dependent bitrate. OBS's replay output evicts complete
 keyframe groups when either its time limit or its memory limit is reached.
 Consequently, selecting 30 seconds did not imply that 30 seconds were retained.
@@ -86,7 +86,7 @@ property support was checked against pinned upstream source, but those hardware
 paths were not exercised for this change. Test on other GPUs and real Fortnite
 before making broader compatibility or game-performance claims.
 
-Local test executable: `build-obs-Release-replay-duration/bin/64bit/Klip.exe`.
+Local test executable: `build-obs-Release-replay-duration/bin/64bit/REVO.exe`.
 SHA256: `5e8f0eebb1744719d0154551d3a4f69b763d7abe59c2650a5bf7b48ce1fd0a19`.
 Keep the complete build directory together. No installer, website or public
 release was replaced by this fix.

@@ -11,7 +11,7 @@ if(Test-Path $output){throw 'Existing thread evidence is preserved'}
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class KlipThreadMetadata {
+public static class REVOThreadMetadata {
   [DllImport("kernel32.dll", SetLastError=true)] static extern IntPtr OpenThread(uint access, bool inherit, uint id);
   [DllImport("kernel32.dll")] static extern int GetThreadDescription(IntPtr thread, out IntPtr text);
   [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
@@ -30,7 +30,7 @@ $logical=(Get-CimInstance Win32_ComputerSystem).NumberOfLogicalProcessors
 $before=@{}
 foreach($thread in $process.Threads){
   try {$before[$thread.Id]=@{cpu=$thread.TotalProcessorTime.TotalSeconds;
-      start=$thread.StartTime.ToUniversalTime().Ticks;name=[KlipThreadMetadata]::Name($thread.Id)}}catch{}
+      start=$thread.StartTime.ToUniversalTime().Ticks;name=[REVOThreadMetadata]::Name($thread.Id)}}catch{}
 }
 $processCpuBefore=$process.TotalProcessorTime.TotalSeconds
 $clock=[Diagnostics.Stopwatch]::StartNew()

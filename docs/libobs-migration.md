@@ -1,9 +1,9 @@
-# Klip libobs migration
+# REVO libobs migration
 
 ## Audit and migration plan
 
-Klip is a C++20 Win32 application with Dear ImGui/D3D11 UI, native global
-hotkeys, and an INI settings store. `KlipApplication` initializes and shuts down
+REVO is a C++20 Win32 application with Dear ImGui/D3D11 UI, native global
+hotkeys, and an INI settings store. `REVOApplication` initializes and shuts down
 the media components. The existing media engine is WGC → D3D11 NV12 conversion
 → FFmpeg hardware H.264 encoding. WASAPI/resampling/mixing feeds FFmpeg AAC.
 `PacketRouter` shares compressed packets between `RollingMediaBuffer`,
@@ -13,7 +13,7 @@ Dependencies include FFmpeg, Media Foundation, NVENC/AMF, WinRT, DXGI, and D3D11
 The custom fixed output clock, compositor capture path, admission gating, GPU
 handoff, and mixer are quality-sensitive boundaries. Recent checks proved that
 60 FPS metadata can coexist with repeated or irregular source motion. OBS Game
-Capture uses its established hook; Klip's previous "Game / Window" path was WGC.
+Capture uses its established hook; REVO's previous "Game / Window" path was WGC.
 Changing bitrate cannot recover movement absent from captured frames.
 
 Preserve the UI, settings store, native window, global shortcut registration,
@@ -45,14 +45,14 @@ and values actually exposed by the pinned encoder. Explicit encoder selection
 fails visibly if unavailable; a default automatic selection reports its choice.
 
 No OBS frontend, Qt UI, browser source, streaming service, WebSocket, scripting,
-virtual camera, or preview is part of Klip's runtime. OBS replay stores compressed
+virtual camera, or preview is part of REVO's runtime. OBS replay stores compressed
 packets and remuxes saved clips; use MKV for crash-resistant continuous recording
 and a supported replay container without re-encoding.
 
 ## License and redistribution
 
-OBS Studio/libobs is GPL-2.0-or-later. Distribution of a linked Klip build must
-meet the applicable GPL requirements for Klip and the included OBS components:
+OBS Studio/libobs is GPL-2.0-or-later. Distribution of a linked REVO build must
+meet the applicable GPL requirements for REVO and the included OBS components:
 include license notices and provide corresponding source/build instructions.
 The migration is local; do not publish binaries until source/license obligations
 and runtime packaging have been verified. Retain OBS module data, game capture
@@ -68,8 +68,8 @@ Official references:
 ## Phase evidence
 
 Repository audit and the first working capture-to-replay slice are complete.
-Klip's libobs build uses the original dashboard/settings/hotkeys and does not
+REVO's libobs build uses the original dashboard/settings/hotkeys and does not
 initialize the legacy media components. The build is currently explicit via
-`-DKLIP_USE_LIBOBS=ON`; the normal legacy build remains available during migration.
+`-DREVO_USE_LIBOBS=ON`; the normal legacy build remains available during migration.
 See `libobs-results.md` for actual decoded-media evidence and the outstanding
 acceptance gates. The complete migration remains in progress.

@@ -1,5 +1,5 @@
-#include "klip/app/application.h"
-#include "klip/core/path_text.h"
+#include "revo/app/application.h"
+#include "revo/core/path_text.h"
 
 #include <shellapi.h>
 
@@ -9,9 +9,9 @@
 #include <filesystem>
 #include <thread>
 
-#include "klip/core/config_store.h"
+#include "revo/core/config_store.h"
 
-namespace klip {
+namespace revo {
 namespace {
 
 std::string WideToUtf8(const std::wstring& value) {
@@ -77,7 +77,7 @@ std::string FeatureLevelName(D3D_FEATURE_LEVEL level) {
 
 }  // namespace
 
-KlipApplication::KlipApplication(AppConfig config, std::filesystem::path settings_path)
+REVOApplication::REVOApplication(AppConfig config, std::filesystem::path settings_path)
     : config_(std::move(config)),
       settings_path_(std::move(settings_path)),
       media_buffer_(config_.rolling_buffer_seconds, config_.rolling_buffer_bytes),
@@ -89,16 +89,16 @@ KlipApplication::KlipApplication(AppConfig config, std::filesystem::path setting
       audio_(audio_encoder_, state_, logger_),
       clip_writer_(media_buffer_, state_, logger_, config_.clip_request_queue_capacity) {}
 
-KlipApplication::~KlipApplication() noexcept { Shutdown(); }
+REVOApplication::~REVOApplication() noexcept { Shutdown(); }
 
-bool KlipApplication::Initialize(HINSTANCE instance, int show_command, Error& error,
+bool REVOApplication::Initialize(HINSTANCE instance, int show_command, Error& error,
                                  bool register_hotkeys,
                                  std::optional<std::uint32_t> graphics_vendor_id,
                                  std::optional<D3D_FEATURE_LEVEL> graphics_feature_level,
                                  bool force_event_query_sync,
                                  bool inject_runtime_encoder_failure) {
   force_event_query_sync_ = force_event_query_sync;
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
   inject_runtime_encoder_failure_ = inject_runtime_encoder_failure;
 #else
   (void)inject_runtime_encoder_failure;
@@ -140,9 +140,9 @@ bool KlipApplication::Initialize(HINSTANCE instance, int show_command, Error& er
         PathToUtf8(config_.log_path)};
     return false;
   }
-  logger_.Info("Klip startup");
+  logger_.Info("REVO startup");
   logger_.Info(std::string("Build: ") + __DATE__ + " " + __TIME__);
-  state_.SetStatus(CaptureStatus::kStarting, "Starting Klip");
+  state_.SetStatus(CaptureStatus::kStarting, "Starting REVO");
 
   if (!window_.Create(instance, show_command, error) ||
       !graphics_.Initialize(window_.Handle(), error, graphics_vendor_id, graphics_feature_level) ||
@@ -171,7 +171,7 @@ bool KlipApplication::Initialize(HINSTANCE instance, int show_command, Error& er
   return true;
 }
 
-int KlipApplication::Run() {
+int REVOApplication::Run() {
   if (!initialized_.load(std::memory_order_acquire)) return 1;
   const auto commands = BuildUiCommands();
   auto next_hotkey_retry = std::chrono::steady_clock::now();
@@ -220,7 +220,7 @@ int KlipApplication::Run() {
   return 0;
 }
 
-int KlipApplication::RunCaptureAcceptanceTest(std::string required_encoder,
+int REVOApplication::RunCaptureAcceptanceTest(std::string required_encoder,
                                               std::uint32_t recording_duration_seconds,
                                               bool exercise_source_switch,
                                               std::string alternate_window_title,
@@ -454,7 +454,7 @@ int KlipApplication::RunCaptureAcceptanceTest(std::string required_encoder,
   return 2;
 }
 
-int KlipApplication::RunSettingsAcceptanceTest() {
+int REVOApplication::RunSettingsAcceptanceTest() {
   if (!initialized_.load(std::memory_order_acquire)) return 1;
   logger_.Info("SETTINGS APPLY ACCEPTANCE STARTED");
 
@@ -513,20 +513,20 @@ int KlipApplication::RunSettingsAcceptanceTest() {
   return 7;
 }
 
-void KlipApplication::Shutdown() noexcept {
+void REVOApplication::Shutdown() noexcept {
   const bool was_initialized = initialized_.exchange(false, std::memory_order_acq_rel);
-  if (was_initialized) state_.SetStatus(CaptureStatus::kStopping, "Stopping Klip");
+  if (was_initialized) state_.SetStatus(CaptureStatus::kStopping, "Stopping REVO");
   window_.SetHotkeyCallback({});
   hotkeys_.Unregister();
   StopMediaPipeline();
   imgui_.Shutdown();
   graphics_.Shutdown();
   window_.Destroy();
-  if (was_initialized) logger_.Info("Klip shutdown complete");
+  if (was_initialized) logger_.Info("REVO shutdown complete");
   logger_.Close();
 }
 
-bool KlipApplication::StartRecording(Error& error) {
+bool REVOApplication::StartRecording(Error& error) {
   if (!recording_writer_.StartRecording(error)) return false;
   // Register the recording queue first so the next forced IDR is captured immediately rather
   // than waiting for the encoder's normal GOP interval (up to two seconds).
@@ -534,7 +534,7 @@ bool KlipApplication::StartRecording(Error& error) {
   return true;
 }
 
-void KlipApplication::HandleHotkey(int id) {
+void REVOApplication::HandleHotkey(int id) {
   if (id == Hotkeys::kSaveClip) {
     clip_writer_.RequestClip();
   } else if (id == Hotkeys::kToggleRecording) {
@@ -553,7 +553,7 @@ void KlipApplication::HandleHotkey(int id) {
   }
 }
 
-UiCommands KlipApplication::BuildUiCommands() {
+UiCommands REVOApplication::BuildUiCommands() {
   return UiCommands{
       .save_clip = [this] { clip_writer_.RequestClip(); },
       .toggle_recording =
@@ -644,7 +644,7 @@ UiCommands KlipApplication::BuildUiCommands() {
           }};
 }
 
-bool KlipApplication::ApplySettings(const AppConfig& updated) {
+bool REVOApplication::ApplySettings(const AppConfig& updated) {
   AppConfig desired = updated;
   const auto issues = ValidateConfig(desired);
   if (!issues.empty()) {
@@ -698,7 +698,7 @@ bool KlipApplication::ApplySettings(const AppConfig& updated) {
       state_.SetError(apply_error);
       state_.SetSettingsStatus(
           false, restored ? "Could not apply that configuration. Previous settings restored."
-                          : "Could not apply settings or restore capture. See klip.log.");
+                          : "Could not apply settings or restore capture. See revo.log.");
       logger_.ErrorMessage(apply_error);
       return false;
     }
@@ -728,7 +728,7 @@ bool KlipApplication::ApplySettings(const AppConfig& updated) {
   return true;
 }
 
-bool KlipApplication::PersistSettings(const AppConfig& config, bool /*restart_required*/) {
+bool REVOApplication::PersistSettings(const AppConfig& config, bool /*restart_required*/) {
   std::string diagnostic;
   if (!SaveConfig(settings_path_, config, diagnostic)) {
     const Error error{ErrorComponent::kApplication, "save settings", diagnostic, {}, {},
@@ -747,11 +747,11 @@ bool KlipApplication::PersistSettings(const AppConfig& config, bool /*restart_re
   return true;
 }
 
-bool KlipApplication::StartMediaPipeline(const AppConfig& config, Error& error) {
+bool REVOApplication::StartMediaPipeline(const AppConfig& config, Error& error) {
   media_buffer_.Reconfigure(config.rolling_buffer_seconds, config.rolling_buffer_bytes);
   if (!video_encoder_.Initialize(graphics_.Device(), graphics_.Context(),
                                  graphics_.AdapterVendorId(), config, error
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
                                  , inject_runtime_encoder_failure_
 #else
                                  , false
@@ -777,7 +777,7 @@ bool KlipApplication::StartMediaPipeline(const AppConfig& config, Error& error) 
   return true;
 }
 
-void KlipApplication::StopMediaPipeline() noexcept {
+void REVOApplication::StopMediaPipeline() noexcept {
   capture_.Stop();
   audio_.StopCapture();
   video_encoder_.Flush();
@@ -791,15 +791,15 @@ void KlipApplication::StopMediaPipeline() noexcept {
   packet_router_.ResetTimeline();
 }
 
-bool KlipApplication::RestartMediaPipeline(const AppConfig& config, Error& error) {
+bool REVOApplication::RestartMediaPipeline(const AppConfig& config, Error& error) {
   StopMediaPipeline();
   return StartMediaPipeline(config, error);
 }
 
-void KlipApplication::UpdateRollingMetrics() {
+void REVOApplication::UpdateRollingMetrics() {
   const auto buffer = media_buffer_.Stats();
   state_.SetRollingMetrics(buffer.duration_seconds, buffer.bytes, buffer.packets);
   recording_writer_.Tick();
 }
 
-}  // namespace klip
+}  // namespace revo

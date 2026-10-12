@@ -1,4 +1,4 @@
-"""Summarize preserved controlled OBS/Klip measurements without inventing gates."""
+"""Summarize preserved controlled OBS/REVO measurements without inventing gates."""
 import argparse
 import json
 import pathlib
@@ -6,7 +6,7 @@ import statistics
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--obs-root', type=pathlib.Path, required=True)
-parser.add_argument('--klip-root', type=pathlib.Path, required=True)
+parser.add_argument('--revo-root', type=pathlib.Path, required=True)
 args = parser.parse_args()
 
 def read(path):
@@ -14,7 +14,7 @@ def read(path):
 
 def summarize(root, app):
     processes = read(root / 'processes.json')
-    capture_pid = processes['obs_pid' if app == 'OBS' else 'klip_pid']
+    capture_pid = processes['obs_pid' if app == 'OBS' else 'revo_pid']
     phases = {}
     for phase in ('replay', 'replay-recording'):
         data = read(root / f'{phase}-resources.json')
@@ -47,18 +47,18 @@ def summarize(root, app):
     return {'protocol': read(root / 'protocol.json'), 'phases': phases,
             'cadence': cadence, 'replay_quality': quality}
 
-obs, klip = summarize(args.obs_root, 'OBS'), summarize(args.klip_root, 'Klip')
-if obs['protocol']['settings'] != klip['protocol']['settings']:
+obs, revo = summarize(args.obs_root, 'OBS'), summarize(args.revo_root, 'REVO')
+if obs['protocol']['settings'] != revo['protocol']['settings']:
     raise RuntimeError('Controlled settings differ; do not call this a parity comparison')
-print(json.dumps({'OBS': obs, 'Klip': klip, 'limitations': [
+print(json.dumps({'OBS': obs, 'REVO': revo, 'limitations': [
     'One sequential run per application on one host; short 20-second samples, not statistical proof.',
-    'OBS minimized with preview disabled; Klip dashboard hidden. Both sources/encoders continuously active.',
+    'OBS minimized with preview disabled; REVO dashboard hidden. Both sources/encoders continuously active.',
     'Process CPU normalized across 12 logical processors; memory excludes helper processes.',
     'GPU counter values are busiest matching engines, not total system GPU utilization.',
     'OBS replay-only used an earlier sampler without a validity marker. Source lifetime and continuous media independently confirmed in logs/trace.',
     'Different warm-up and recording durations may affect allocator/high-water memory; repeat in randomized order.',
     'No Fortnite/uncapped-game frametime benchmark, allocated replay-memory isolation, or save-phase resource measurement yet.',
     'Saved replay payload is a compressed-packet estimate, not the allocated memory of the rolling buffer.',
-    'OBS save used its UI button after short simulated global chords were not observed. Klip save used its native global shortcut.',
-    'Test Klip process was ended only after recording finalized and source loss stopped replay; this is not a graceful-shutdown acceptance test.'
+    'OBS save used its UI button after short simulated global chords were not observed. REVO save used its native global shortcut.',
+    'Test REVO process was ended only after recording finalized and source loss stopped replay; this is not a graceful-shutdown acceptance test.'
     ]}, indent=2))

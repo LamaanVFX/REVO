@@ -1,4 +1,4 @@
-# Klip release-candidate implementation handoff
+# REVO release-candidate implementation handoff
 
 Updated: 2026-09-27. Baseline HEAD: `a4b377d`. All current fixes are uncommitted.
 
@@ -20,7 +20,7 @@ Read `docs/rc-system-design.md` with this document. Existing `docs/architecture.
 ## First actions
 
 1. Read repository instructions, `git status`, and the complete current diff, including untracked files under `tools/`, `cmake/`, and `tests/`.
-2. Inspect live processes before rerunning tests. At handoff inspection no Klip, cadence scene, ffplay, CMake, Ninja, or Clang test process was running. Recheck; do not rely on this historical observation.
+2. Inspect live processes before rerunning tests. At handoff inspection no REVO, cadence scene, ffplay, CMake, Ninja, or Clang test process was running. Recheck; do not rely on this historical observation.
 3. Read existing test logs and JSON under `work/`. Preserve them as baseline evidence. Do not overwrite a named run.
 4. Rebuild the current source in both configurations. Final Debug and Release builds and both test suites passed after the latest changes.
 5. Repeat the latest 120 FPS experiment with a source that stays alive throughout capture and analysis. **Completed:** the final native-scene 120 FPS outputs are valid; source lifetime and decoded results are in `release-candidate-results.md`.
@@ -126,7 +126,7 @@ Run from repository root in PowerShell. Portable dependencies are under ignored 
 .\tools\run-cadence-test.ps1 -Configuration Release -Fps 60 -Name rc-av60-run1
 ```
 
-Use a fresh `-Name` each time. Tests use `KLIP_DATA_ROOT` to isolate user settings/media and `KLIP_CAPTURE_TRACE=1` for diagnostics. Inspect the logs and decoded `.analysis.json` for both `Clips` and `Recordings`.
+Use a fresh `-Name` each time. Tests use `REVO_DATA_ROOT` to isolate user settings/media and `REVO_CAPTURE_TRACE=1` for diagnostics. Inspect the logs and decoded `.analysis.json` for both `Clips` and `Recordings`.
 
 The fixture's binary ID wraps after 4,096 frames. The analyzer's global distinct-ID count is therefore not a uniqueness metric for long tests; transitions and repeat runs are more useful. Improve analysis for source resets, invalid barcodes, beep debounce, and baseline fixture validation before using it as an automated release gate. Native-scene runs have no flash/beep sync signal.
 

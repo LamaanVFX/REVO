@@ -1,7 +1,7 @@
 """Align sampled decoded frames to the actual cadence source trace and RGB raster.
 
 This deliberately simple source tests configuration parity, not game-image quality.
-No reference is inferred from a lossy OBS or Klip recording.
+No reference is inferred from a lossy OBS or REVO recording.
 """
 import argparse
 import csv

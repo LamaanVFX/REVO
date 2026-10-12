@@ -1,4 +1,4 @@
-# Klip release-candidate verification
+# REVO release-candidate verification
 
 Run date: 2026-09-27 (America/Chicago). These are developer-build test results, not
 a deployment approval or broad Windows compatibility claim.
@@ -8,7 +8,7 @@ a deployment approval or broad Windows compatibility claim.
 - The earlier motion baseline runs in this report were recorded on a Windows 11 system with an Intel Core i7-12700K and 32 GiB RAM.
 - NVIDIA GeForce RTX 3060, driver `32.0.15.9595`; primary display 1920x1080 at
   approximately 239 Hz. The scene self-reported 239.64–239.69 presents/s.
-- Klip used WGC display capture and NVENC (`h264_nvenc`). Portable build uses
+- REVO used WGC display capture and NVENC (`h264_nvenc`). Portable build uses
   LLVM-MinGW, CMake/Ninja, and BtbN FFmpeg 8.1.3 (LGPL shared validation build).
   It is not the release workflow's MSVC/Inno packaged binary.
 - The moving D3D test scene presents a changing binary frame ID and vertical bar.
@@ -34,9 +34,9 @@ hosts as if they were a controlled performance comparison.
 
 | Finding | Evidence and action | Confidence |
 |---|---|---|
-| WGC commonly delivered about 60 updates/s even while Klip encoded 120 FPS | Before asking WGC for a 2x-target update rate, native-scene 120 FPS output had 50.04% consecutive repeats and about 59.95 changed IDs/s. With `MinUpdateInterval` configured, the same scene produced about 118.8 changed IDs/s and about 1% repeats. Older runtimes continue with a warning when the API is absent. | Confirmed on this machine/runtime |
+| WGC commonly delivered about 60 updates/s even while REVO encoded 120 FPS | Before asking WGC for a 2x-target update rate, native-scene 120 FPS output had 50.04% consecutive repeats and about 59.95 changed IDs/s. With `MinUpdateInterval` configured, the same scene produced about 118.8 changed IDs/s and about 1% repeats. Older runtimes continue with a warning when the API is absent. | Confirmed on this machine/runtime |
 | Exact `1/FPS` arrival gate rejected normal early jitter | Deterministic alternating-jitter test accepted 60/120 arrivals with the old strict gate and 120/120 with the half-interval gate. Real native-scene runs did not show output timestamp gaps. | Confirmed in test; source gating is empirically better on this setup |
-| AMF performance profile emitted no periodic IDRs and recording could stop without ever reaching a keyframe | FFmpeg 8.1.3 `h264_amf` on AMD with `usage=ultralowlatency` produced 1 IDR across 1,200 frames despite `g=240`; switching to `usage=transcoding` with AMF low-latency enabled produced IDRs every 240 frames. Klip now also requests an IDR after the recording queue is registered. The next real 120 FPS AMD run saved a full 10 s/1,200-frame recording and passed decode/keyframe/duration gates. | Confirmed and fixed on the tested AMD adapter/driver |
+| AMF performance profile emitted no periodic IDRs and recording could stop without ever reaching a keyframe | FFmpeg 8.1.3 `h264_amf` on AMD with `usage=ultralowlatency` produced 1 IDR across 1,200 frames despite `g=240`; switching to `usage=transcoding` with AMF low-latency enabled produced IDRs every 240 frames. REVO now also requests an IDR after the recording queue is registered. The next real 120 FPS AMD run saved a full 10 s/1,200-frame recording and passed decode/keyframe/duration gates. | Confirmed and fixed on the tested AMD adapter/driver |
 | Output FPS metric represented successful input submission, not emitted packets | Moved the visible output counter to packets returned by `avcodec_receive_packet`; trace separately reports submitted and emitted counts. | Confirmed code/telemetry mismatch, fixed |
 | NVENC had previously failed with ENOMEM and clips could reuse released input surfaces | Dedicated bounded encoder input textures and retained D3D11 resource registrations until codec teardown. A 60-second NVENC recording plus concurrent clip completed without encoder reset. The underlying driver-specific cause was not isolated. | Probable mitigation, one-minute run passed |
 | Packet clone/queue loss could silently create incomplete replay or recording data | Replay push failure clears history and blocks following audio/interframes until the next video keyframe. Replay snapshots now fail atomically on clone/allocation/order failure. Recording stops accepting at first compressed packet loss and drains the accepted prefix. | Code path fixed; prefix finalization decode-tested; clone-allocation failure not injected |
@@ -57,7 +57,7 @@ hosts as if they were a controlled performance comparison.
 
 All listed output clips and recordings were decoded by FFmpeg, not inferred from MP4
 metadata alone. Native scene output had no sync sound stimulus. The final stress sample
-had 60 one-second process samples; the scene was alive at all 60. Klip used 4.27 CPU
+had 60 one-second process samples; the scene was alive at all 60. REVO used 4.27 CPU
 seconds over about 61 seconds of recording (about 7% of one logical CPU), peaked at
 315.7 MiB working set and 363 MiB private bytes. GPU engine/encode utilization was not
 sampled. This is one machine, one source type, one encoder, and a short soak—not a
@@ -127,8 +127,8 @@ From repository root in PowerShell:
 .\tools\run-cadence-test.ps1 -Configuration Release -Fps 120 -SourceFps 120 -RequireAvMarkers -Name rc-av120-source120-gated-20260927
 ```
 
-The build script runs CMake/Ninja and CTest. Both `klip_core_tests` and
-`klip_windows_tests` passed in Debug and Release after the final code changes.
+The build script runs CMake/Ninja and CTest. Both `revo_core_tests` and
+`revo_windows_tests` passed in Debug and Release after the final code changes.
 Capture outputs, logs, decoded `.analysis.json`, and `resource-samples.csv` are retained
 under ignored `work/rc-*` directories; no historical artifacts were overwritten.
 Final run directories are `work/rc-release-native60-20260927`,
@@ -137,13 +137,13 @@ Final run directories are `work/rc-release-native60-20260927`,
 
 Earlier portable executable SHA-256 values (before the final pool-ownership change):
 
-- Debug `Klip.exe`: `EE3A8D87B6B8EF6E5D9A76B69875CF2A330219B1AEBDD3C0F269FC275258BAF7`
-- Release `Klip.exe`: `77B7655D61B5E1D932EFCED253C4D081A20F27BE7D02C266F25CF02CE04B05EE`
+- Debug `REVO.exe`: `EE3A8D87B6B8EF6E5D9A76B69875CF2A330219B1AEBDD3C0F269FC275258BAF7`
+- Release `REVO.exe`: `77B7655D61B5E1D932EFCED253C4D081A20F27BE7D02C266F25CF02CE04B05EE`
 
 Latest final-source portable executable SHA-256, after the pool-ownership change:
 
-- Debug `Klip.exe`: `59D451E83F9B46313B30C584FE5D37F0B31555026D3CE085CEDC7270F0B9E25B`
-- Release `Klip.exe` (test hooks OFF): `4EBBE135B5688B6029358221BBE8C347B2A14936C9E241BC4B719CEB53118BDD`
+- Debug `REVO.exe`: `59D451E83F9B46313B30C584FE5D37F0B31555026D3CE085CEDC7270F0B9E25B`
+- Release `REVO.exe` (test hooks OFF): `4EBBE135B5688B6029358221BBE8C347B2A14936C9E241BC4B719CEB53118BDD`
 
 Earlier controlled baselines remain under `work/cadence-native-120` and
 `work/cadence-native-120-interval`; the latter was interrupted and is contaminated.
@@ -156,7 +156,7 @@ measurement above.
 - [x] Native WGC/NVENC 120 FPS decode analysis for both clip and recording.
 - [x] WGC window capture at 60 and 120 FPS against a named moving test HWND; both clips and
   recordings decoded and the selected target/encoder were confirmed in logs.
-- [x] Resize a WGC window source from 1920x1080 to 960x540 and back during recording. Klip
+- [x] Resize a WGC window source from 1920x1080 to 960x540 and back during recording. REVO
   observed both source changes while preserving a 1920x1080 output stream; the recording ran
   the full requested duration and both the clip and recording decoded. Motion dipped briefly
   across the resize, so this validates continuity/finalization, not zero frame loss.
@@ -176,7 +176,7 @@ measurement above.
 - [ ] Official MSVC/vcpkg build and clean-machine installation/uninstallation run.
 - [x] Standalone FFmpeg AMF encode using a D3D11 device explicitly created on the integrated AMD
   adapter; output decoded as 180 frames at 60 FPS.
-- [x] Klip's full WGC-to-AMF path on the integrated AMD adapter, including a replay clip saved
+- [x] REVO's full WGC-to-AMF path on the integrated AMD adapter, including a replay clip saved
   during recording; both outputs were decoded successfully. A 120 FPS run also retained the full
   requested duration and periodic IDRs after the AMF/record-start fixes.
 - [ ] 120 FPS unique-motion stability on an AMD-owned display; the only AMD adapter on this
@@ -209,7 +209,7 @@ This host reports an NVIDIA GeForce RTX 3060 and AMD Radeon(TM) Graphics. Initia
 software-fallback acceptance runs selected the RTX 3060; AMD coverage was performed later with
 the AMD adapter explicitly selected.
 After the universal-Windows compatibility changes, Debug and Release builds completed and both
-`klip_core_tests` and `klip_windows_tests` passed in each configuration.
+`revo_core_tests` and `revo_windows_tests` passed in each configuration.
 
 The Release binary passed the real display-capture acceptance flow with automatic NVENC and with
 `h264_mf_software` explicitly forced. The software-only policy skipped creation of FFmpeg's
@@ -251,7 +251,7 @@ the media pipeline and scales later source sizes into that stable MP4 size. Fina
 in `work/rc-window-resize-source-native60-final-20260927/`.
 
 Encoder fallback diagnostics were tested with a deliberately nonexistent preferred encoder
-(`h264_klip_test_missing`) followed by the Windows Media Foundation software encoder. Klip logged
+(`h264_revo_test_missing`) followed by the Windows Media Foundation software encoder. REVO logged
 the missing-encoder reason and warned that software encoding may use more CPU, then saved a
 9.817-second recording (589 decoded frames) and a 4.833-second replay clip (290 frames) at
 1920x1080. They produced 59.9 and 60 unique marker changes/s, 0.17% and 0% repeated frames,
@@ -287,8 +287,8 @@ and `work/universal-audio-check-20260927/` directories.
 
 The earlier Release validation build was staged with `packaging/package-win64.ps1` as a portable
 package using version label `3.0.3-rc.window.20260927`. The 52,181,664-byte ZIP was expanded
-into a fresh directory and its `Klip.exe --package-smoke-test` exited with code 0, creating
-first-run settings under an isolated `KLIP_DATA_ROOT`. Its checksum is in
+into a fresh directory and its `REVO.exe --package-smoke-test` exited with code 0, creating
+first-run settings under an isolated `REVO_DATA_ROOT`. Its checksum is in
 `work/package-smoke-window-final-20260927/output/SHA256SUMS.txt`; ZIP SHA-256 is
 `772083AA02740DAEA2832AB4B23D7B75B33AFF74739FB6B48EF2FC8FB450EE86`. This confirms the portable
 layout and DLL loading for the latest LLVM-MinGW validation binary; it is not the official
@@ -296,15 +296,15 @@ MSVC/vcpkg release build and does not exercise Inno Setup installation or uninst
 
 After the source-resize continuity change, Release was rebuilt and both tests passed in Debug
 and Release. A fresh portable package was assembled with installer creation explicitly skipped,
-expanded to a new directory, and passed `Klip.exe --package-smoke-test` with an isolated
-`KLIP_DATA_ROOT`. The ZIP is 53,667,627 bytes, SHA-256
+expanded to a new directory, and passed `REVO.exe --package-smoke-test` with an isolated
+`REVO_DATA_ROOT`. The ZIP is 53,667,627 bytes, SHA-256
 `E0F99EBE48C5DC3DA156F252B1146CD4F669BB0B2F09056007A471C992A037B0`, under
 `work/package-smoke-universal-20260927/`. It is a validation build only, not the official
 MSVC/vcpkg installer.
 
 After the final compatibility-diagnostics and tooltip-wrap changes, Debug and Release both passed
 their two CTest targets. The final portable ZIP was extracted to a fresh directory;
-`Klip.exe --package-smoke-test` exited 0 and created isolated first-run settings. It is
+`REVO.exe --package-smoke-test` exited 0 and created isolated first-run settings. It is
 53,673,014 bytes, SHA-256
 `dbddc79bd8ac22623d98a75bf31e84be067100695a9e251e02ff52376e67aebd`.
 
@@ -323,7 +323,7 @@ Using the bundled FFmpeg directly, a synthetic 1280x720/60 source was uploaded t
 D3D11 device on that adapter and encoded with `h264_amf`. FFmpeg logged the AMD adapter and AMF
 initialization; the MP4 contained 180 decoded H.264 frames at 60/1 and passed a full decode. This
 proves the local AMD driver/FFmpeg AMF backend can encode. The same explicit adapter route was
-then exercised through Klip with `--amd-hardware-smoke-test`: its log reports the AMD Radeon
+then exercised through REVO with `--amd-hardware-smoke-test`: its log reports the AMD Radeon
 adapter and `h264_amf`, and it saved a 5.0167-second replay while a 10.0167-second recording was
 active. The replay contains 301 decoded H.264 High frames at 1920x1080/60 FPS plus stereo AAC at
 48 kHz; the recording contains 601 video frames and stereo AAC at 48 kHz. Both files passed a full
@@ -380,7 +380,7 @@ run—not a claim that all 120 FPS sources deliver 120 unique frames.
 After the packed 24-bit audio conversion, endpoint-recovery, lower Direct3D feature-level, Intel
 acceptance-mode, and event-query synchronization changes, Debug and Release were rebuilt and both
 CTest targets passed. The current portable package was staged, extracted to a fresh directory, and
-its isolated `Klip.exe --package-smoke-test` exited 0 and created first-run settings. The ZIP is
+its isolated `REVO.exe --package-smoke-test` exited 0 and created first-run settings. The ZIP is
 53,680,877 bytes with SHA-256 `40f3a805f3e05ed5cd46dd4c1397e114c741ff6329730fae77e2ae6c07ad77cd`
 under `work/package-universal3-20260927/`. Installer creation was skipped; previously generated
 installer artifacts predate these changes and must be rebuilt before any release. The package is
@@ -468,7 +468,7 @@ GPU test. Artifacts are under `work/universal-fl10-query-av60-20260927/`.
 The capture admission gate previously used callback arrival time. Trace-only paired measurements
 showed the compositor's `SystemRelativeTime` advancing regularly while callback dispatch jitter
 crossed the frame admission threshold. On the saved callback-clock baseline, the native moving
-scene delivered 1,172 frames but Klip admitted 745 at 60 FPS (63.6%); at 120 FPS it delivered 2,274
+scene delivered 1,172 frames but REVO admitted 745 at 60 FPS (63.6%); at 120 FPS it delivered 2,274
 and admitted 1,374 (60.4%). This discarded frames before conversion; encoder throughput was not the
 limiting stage in those runs.
 
@@ -521,7 +521,7 @@ used that operation for an ordinary source change.
 
 The reset now supports clearing replay history without stopping the independent recording writer.
 Selecting a valid new target preserves the encoder/media clock and requests a keyframe rather than
-restarting the encoder. While WGC opens the new target, Klip repeats the last fully synchronized
+restarting the encoder. While WGC opens the new target, REVO repeats the last fully synchronized
 frame to keep the output timeline continuous. A completed frame that becomes stale at the GPU wait
 boundary is safely returned to the bounded encoder-surface pool. Selecting no valid target still
 stops capture and recording as before.
@@ -583,7 +583,7 @@ two-vendor test system, but not a low-end CPU/GPU configuration, and the AMD run
 
 The first cross-device robustness correction addresses source-sized capture on unusually sized
 windows. NV12 requires even frame width and height; WGC window sizes are not guaranteed to be even.
-Klip now rejects capture targets larger than 8192 pixels on either side and rounds source-sized
+REVO now rejects capture targets larger than 8192 pixels on either side and rounds source-sized
 odd dimensions down by one pixel (with a log notice) before allocating NV12 surfaces. Unit coverage
 checks 1-, even-, odd-, and maximum-sized dimensions. The actual Windows 11/RTX 3060 WGC run
 captured a 1281x721 test window in Source mode, logged the NV12 adjustment, and produced a
@@ -631,7 +631,7 @@ startup threw before it could begin because logging called `std::filesystem::pat
 path not representable in the active code page. This left the smoke process blocked behind its
 fatal-error dialog. Replaced narrow path conversions throughout recording, clips, muxing,
 settings diagnostics, overlays, and UI display with a shared UTF-8 conversion helper; added
-multilingual-path settings round-trip coverage. The acceptance runner now detects and closes Klip's
+multilingual-path settings round-trip coverage. The acceptance runner now detects and closes REVO's
 fatal/startup dialog for its own test process instead of waiting for the full timeout.
 
 After the fix, the same type of Unicode-root WGC run passed on Windows 11/NVENC. The 10.02-second
@@ -647,7 +647,7 @@ Reproduce with:
 ```
 
 The runner's fatal-dialog handling was also checked with a forced Intel adapter request on this
-machine, which has no Intel graphics adapter. It detected Klip's startup-failure dialog and ended
+machine, which has no Intel graphics adapter. It detected REVO's startup-failure dialog and ended
 the negative test in about four seconds rather than timing out. This verifies failure reporting and
 test cleanup only; it does not count as Intel encoder coverage.
 
@@ -714,7 +714,7 @@ integrated-only/older CPU test and audio-marker run on a real game remain open r
 
 ### CPU-budget sensitivity smoke
 
-The acceptance runner can optionally constrain the Klip process with
+The acceptance runner can optionally constrain the REVO process with
 `-ProcessorAffinityMask`; this is a CPU-budget stress aid, not a substitute for a low-end PC. On
 this Ryzen 5 7600X, pinning the 720p software-fallback run to one logical processor still produced
 a smooth native-scene 60 FPS recording (602 decoded frames over 10.017 s, zero repeated frames,
@@ -778,7 +778,7 @@ other applications' global-shortcut conflicts, or all supported GPU vendors.
 
 A test-only NVENC fault injector forced two consecutive runtime submission failures during an active
 recording on Windows 11 Home build 26200 (Ryzen 5 7600X, RTX 3060 driver `32.0.15.9595`, Radeon
-Graphics driver `32.0.21030.2001`). Klip retried NVENC once, rejected it after the second failure,
+Graphics driver `32.0.21030.2001`). REVO retried NVENC once, rejected it after the second failure,
 attempted the configured hardware compatibility backend, then selected `h264_mf_software`. This
 exposed a confirmed bug: recovery used the packet router's default timeline reset, which also
 finalized the user's recording. Recovery now clears replay history but preserves the active
@@ -790,10 +790,10 @@ interval of 183.33 ms during fallback. The clip starts after replay history was 
 failure, so it is naturally shorter than a normal replay window. This is a deterministic
 state-machine test, not a real driver failure; the one-time visible hitch also remains a release
 limitation. Artifacts are under `work/universal-runtime-nvenc-failover-final/`. The fault injector
-is guarded by `KLIP_ENABLE_TEST_HOOKS`, which defaults OFF; dedicated validation builds enable it
+is guarded by `REVO_ENABLE_TEST_HOOKS`, which defaults OFF; dedicated validation builds enable it
 explicitly. A Release build with the option OFF passed both test suites, and its executable
 contained neither the fault-injection command-line switch nor the injected-error message.
-The test uses Klip's default encoder order: on this NVIDIA D3D device, AMF failed quickly with
+The test uses REVO's default encoder order: on this NVIDIA D3D device, AMF failed quickly with
 “No such device,” Media Foundation hardware open took about 142 ms before failing, then Media
 Foundation software opened. That backend-probing delay accounts for most of the measured 183 ms
 presentation gap. Skipping a possible hardware fallback would be a compatibility tradeoff, so the
@@ -813,13 +813,13 @@ fixture, the baseline NVENC recording measured 50.42 changed fixture IDs/s, 15.9
 recording measured 49.70 changed IDs/s, 15.48% repeats, and a single 183.33 ms gap; the concurrent
 clip measured 44.19 changed IDs/s and 21.66% repeats over 2.78 seconds. All 10 recording and 3 clip
 flash/beep pairs were within the ±40 ms gate (median audio-minus-flash +2.67 ms for recording,
--0.67 ms for clip). The source/compositor-limited fixture is not a game-motion benchmark. Klip's
+-0.67 ms for clip). The source/compositor-limited fixture is not a game-motion benchmark. REVO's
 sampled peak working set/private memory was 405.6/678.6 MiB and CPU time 5.03 s over the 10-second
 test; the matching NVENC baseline was 179.7/240.1 MiB and 0.95 s CPU. These are short single-host
 process samples, not minimum-requirement guarantees. Artifacts: `work/universal-runtime-failover-av-baseline/`
 and `work/universal-runtime-failover-default-av/`.
 
-With the moving native scene, 720p Performance mode, and Klip pinned to one logical processor,
+With the moving native scene, 720p Performance mode, and REVO pinned to one logical processor,
 default-order injected runtime recovery passed both media outputs: the 10-second recording decoded
 589 frames, 58.70 changed IDs/s, 0.17% repeats; the 2.77-second clip decoded 157 frames, 56.02
 changed IDs/s, 0.64% repeats. Both had monotonic timestamps and one 183.33 ms fallback gap.
@@ -836,7 +836,7 @@ one-core stress did not pass the cadence gate: the recording reached 46.98 chang
 repeats, and a 300 ms max interval; its clip reached 38.78 changed IDs/s, 30.26% repeats, and a
 216.67 ms max interval. Peak private memory was 924 MiB. This single-core simulation on a modern CPU
 does not equal a physical low-end PC, but it is evidence that Balanced software encoding at 1080p
-can lose motion under a constrained CPU budget. Klip now makes the tested Performance mode / lower
+can lose motion under a constrained CPU budget. REVO now makes the tested Performance mode / lower
 resolution recommendation visible in the software-fallback tooltip; it does not silently alter
 the user's chosen quality or output size. Artifacts are under
 `work/universal-runtime-failover-1080p-performance-onecore/` and
@@ -886,7 +886,7 @@ Reproduce the steady-state and audio checks with:
 & tools/run-cadence-test.ps1 -Configuration Release -Fps 60 -SoftwareFallback -BalancedQuality -RequireAvMarkers -Name universal-balanced-software-av-no-bframes
 ```
 
-After these changes, the production-style Release build with `KLIP_ENABLE_TEST_HOOKS=OFF` also
+After these changes, the production-style Release build with `REVO_ENABLE_TEST_HOOKS=OFF` also
 passed an actual WGC/NVENC display-capture run: the 10.02-second recording decoded 602 frames and
 the 5.02-second concurrent clip decoded 302. Both were 1920x1080 H.264/60 plus stereo AAC/48 kHz,
 with 60 changed native-scene IDs/s, zero repeats, monotonic PTS, and a 16.667 ms maximum interval.
@@ -916,7 +916,7 @@ under `work/universal-followup-mf-software-{30,60,120}/`. The comparison 1080p60
 capture is under `work/universal-followup-nvenc-60/`; its recording and clip each decoded
 at 60 unique transitions/s with zero repeats and regular 16.667 ms presentation intervals.
 
-In the same 10-second process-sampling window, Klip accumulated 0.89 CPU seconds with 1080p60
+In the same 10-second process-sampling window, REVO accumulated 0.89 CPU seconds with 1080p60
 NVENC (about 9% of one logical processor), compared with 1.56/2.84/5.91 CPU seconds using 720p
 software encoding at 30/60/120 FPS (about 16/28/59% of one logical processor). Software-mode
 peak working set was about 227–229 MiB and private memory about 343–347 MiB; NVENC peaked at
@@ -933,7 +933,7 @@ older Windows versions, or physical audio endpoint removal/recovery.
 The Windows regression suite previously verified a zero-capacity queue rejects the first
 packet and separately verified that an ordinary one-packet recording decodes. It now also
 uses a four-packet queue and bursts independent MPEG-4 keyframes until the real writer hits
-backpressure. The test requires Klip to stop accepting recording packets, report that it is
+backpressure. The test requires REVO to stop accepting recording packets, report that it is
 saving the accepted portion, finalize a saved file, and decode at least one frame from that
 file. This protects the intended policy of stopping on compressed-packet loss rather than
 continuing with a broken reference chain.
@@ -1008,29 +1008,29 @@ updates.
 
 ## Hotkey action-path acceptance (2026-09-27)
 
-The Windows test suite now checks more than `RegisterHotKey` success: a hidden real Klip window
+The Windows test suite now checks more than `RegisterHotKey` success: a hidden real REVO window
 receives save-clip, record, and show/hide `WM_HOTKEY` messages and invokes the three expected
 callbacks. That registration/message-routing regression passed in Debug and production-style
 Release, including 20 repeated Release Windows-test runs.
 
 A separate real capture acceptance mode then registered isolated Ctrl+Alt+Shift+F22/F23/F24
-shortcuts and sent the matching `WM_HOTKEY` messages through the actual Klip window while WGC was
-capturing the moving D3D11 scene. Save-clip and start/stop-record actions all routed; Klip finalized
+shortcuts and sent the matching `WM_HOTKEY` messages through the actual REVO window while WGC was
+capturing the moving D3D11 scene. Save-clip and start/stop-record actions all routed; REVO finalized
 a 10.02-second recording and saved a concurrent 5.02-second clip. Both decoded at 60 unique scene
 transitions/s, with zero repeated frames, zero invalid PTS intervals, and 16.667 ms maximum frame
 spacing. Artifact: `work/rc-hotkey-actions-20260927/`. The test invokes the window messages internally
 instead of synthesizing global keyboard input, so it does not prove that a user's configured key
-chord reaches Klip while Fortnite or another game has focus.
+chord reaches REVO while Fortnite or another game has focus.
 
 The later `-HotkeyInput` acceptance path sends isolated Ctrl+Alt+Shift+F22/F23/F24 chords using
-`SendInput`, letting Windows deliver the registered global `WM_HOTKEY` events. With Klip hidden,
+`SendInput`, letting Windows deliver the registered global `WM_HOTKEY` events. With REVO hidden,
 the test toggled its window, started/stopped recording, and saved a concurrent clip while capturing
 a separate moving test window. The 601-frame recording and 302-frame clip decoded at ~60 unique
 transitions/s, with 0.17%/0% repeated frames, zero invalid PTS, and 16.667 ms maximum spacing.
-Debug and Release each passed both CTest targets; Release had `KLIP_ENABLE_TEST_HOOKS=OFF`. Artifact:
+Debug and Release each passed both CTest targets; Release had `REVO_ENABLE_TEST_HOOKS=OFF`. Artifact:
 `work/rc-global-hotkeys-all-actions-20260927/`. Binary SHA-256:
 `455061FF78AD31998A4CBB22B6F53D90C4C2026BB2AD3C78DC92FEB3A1648927`. This verifies OS key delivery
-while Klip is hidden, but is not physical keyboard or Fortnite-focused confirmation.
+while REVO is hidden, but is not physical keyboard or Fortnite-focused confirmation.
 
 The resulting production-style Release binary SHA-256 is
 `0D82ABB3738D10B760966AE4CDE91F4D11117C6415912633C99B5A971A8D9D4F`. Debug and Release each passed
@@ -1045,7 +1045,7 @@ The 60 FPS audiovisual fixture test also passed with five matched markers in the
 the recording. Offsets were -14.7 to +2.0 ms for the clip and -14.0 to +2.7 ms for the recording,
 with monotonic timestamps and 16.667 ms max spacing. This FFplay/compositor fixture itself produced
 only 45.1/45.6 unique image transitions/s and about 24% repeated frames; its motion result is not
-evidence of a Klip encoder drop. Artifact: `work/rc-final-av60-20260927-recheck/`.
+evidence of a REVO encoder drop. Artifact: `work/rc-final-av60-20260927-recheck/`.
 
 After running the test-hook-enabled runtime failover acceptance, the production Release build was
 reconfigured with hooks off and both CTest suites passed. That final binary was exercised again:
@@ -1070,7 +1070,7 @@ The local validation bootstrap previously resolved FFmpeg from a mutable `latest
 pins LLVM-MinGW 20260922, CMake 4.4.3, Ninja 1.13.2, FFmpeg n8.1.2-267, Windows SDK C++
 10.0.28000.2705, and Dear ImGui 1.92.8 by direct versioned URL and SHA-256. Cached source archives
 are reverified on each bootstrap run. Debug and Release test suites each passed 2/2 with the pinned
-dependencies; the final Release cache confirms `KLIP_ENABLE_TEST_HOOKS=OFF`.
+dependencies; the final Release cache confirms `REVO_ENABLE_TEST_HOOKS=OFF`.
 
 Fresh production-style WGC tests on the pinned n8.1.2-line build passed NVIDIA NVENC at 720p120,
 AMD AMF cross-adapter at 1080p60, and Media Foundation software at 720p60 Performance. Both replay
@@ -1137,7 +1137,7 @@ transitions/s and no repeats. A separate same-machine 60 FPS native moving-scene
 recording frames at 60.00 transitions/s with no repeats and 16.667 ms maximum spacing; its
 concurrent clip yielded 302 frames at 60 transitions/s, also with no repeats. Thus the test points
 to a playback/compositor fixture cadence problem on this 239 Hz display (or another input-side
-interaction), not an encoder/timestamp failure. It is not yet isolated enough to call a Klip bug or
+interaction), not an encoder/timestamp failure. It is not yet isolated enough to call a REVO bug or
 to dismiss reports from real games. The long-run A/V acceptance records this warning rather than
 using nominal 60 FPS as a smoothness claim. Artifacts: `work/rc-long-av-drift-20260927/` and
 `work/rc-long-av-comparison-native60-20260927/`.

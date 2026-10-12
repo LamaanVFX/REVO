@@ -1,4 +1,4 @@
-#include "klip/audio/audio_pipeline.h"
+#include "revo/audio/audio_pipeline.h"
 
 #include <audiopolicy.h>
 #include <functiondiscoverykeys_devpkey.h>
@@ -13,15 +13,15 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "klip/audio/audio_recovery_policy.h"
-#include "klip/core/audio_timeline.h"
+#include "revo/audio/audio_recovery_policy.h"
+#include "revo/core/audio_timeline.h"
 
 extern "C" {
 #include <libavutil/channel_layout.h>
 #include <libavutil/mathematics.h>
 }
 
-namespace klip {
+namespace revo {
 namespace {
 
 constexpr int kMaximumBufferedFrames = AudioEncoder::kSampleRate;
@@ -448,7 +448,7 @@ bool AudioPipeline::OpenContext(CaptureContext& context, const std::wstring& dev
   if (excluded_process_id != 0) {
     // The process-loopback virtual device does not reliably expose GetMixFormat. Microsoft's
     // ApplicationLoopback sample supplies an explicit shared-mode format and asks WASAPI to
-    // convert. Use Klip's native mixer format so this path avoids an extra libswresample pass.
+    // convert. Use REVO's native mixer format so this path avoids an extra libswresample pass.
     context.format = static_cast<WAVEFORMATEX*>(CoTaskMemAlloc(sizeof(WAVEFORMATEX)));
     if (context.format == nullptr) {
       error = Error{ErrorComponent::kAudio,
@@ -1066,4 +1066,4 @@ int AudioPipeline::PtsToFrames(std::int64_t pts) {
   return static_cast<int>(pts * AudioEncoder::kSampleRate / 10'000'000LL);
 }
 
-}  // namespace klip
+}  // namespace revo

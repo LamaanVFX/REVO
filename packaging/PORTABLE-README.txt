@@ -4,7 +4,7 @@ Extract the complete ZIP, then open REVO.exe. Keep bin, data,
 obs-plugins and licenses together. Do not copy only the executable.
 
 Close older REVO instances before starting. Settings and saved media remain
-in your Windows user folders unless KLIP_DATA_ROOT is explicitly configured.
+in your Windows user folders unless REVO_DATA_ROOT is explicitly configured.
 The window close button hides REVO; use the tray menu's Quit REVO to exit.
 
 This beta is unsigned. Check the published SHA256SUMS before running it.

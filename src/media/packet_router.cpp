@@ -1,8 +1,8 @@
-#include "klip/media/packet_router.h"
+#include "revo/media/packet_router.h"
 
-#include "klip/recording/recording_writer.h"
+#include "revo/recording/recording_writer.h"
 
-namespace klip {
+namespace revo {
 
 void PacketRouter::Publish(const AVPacket* packet, StreamKind kind, AVRational time_base) noexcept {
   if (packet == nullptr) return;
@@ -59,4 +59,4 @@ void PacketRouter::ResetTimeline(bool stop_recording) noexcept {
   replay_failure_reported_.store(false, std::memory_order_release);
 }
 
-}  // namespace klip
+}  // namespace revo

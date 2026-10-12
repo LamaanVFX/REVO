@@ -1,8 +1,8 @@
-#include "klip/core/encoder_tuning.h"
+#include "revo/core/encoder_tuning.h"
 
 #include <algorithm>
 
-namespace klip {
+namespace revo {
 namespace {
 
 void Add(EncoderTuning& tuning, std::string key, std::string value) {
@@ -89,4 +89,4 @@ EncoderTuning BuildEncoderTuning(const std::string& encoder_name, std::uint32_t 
   return tuning;
 }
 
-}  // namespace klip
+}  // namespace revo

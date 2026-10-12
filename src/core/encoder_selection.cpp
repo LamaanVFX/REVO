@@ -1,9 +1,9 @@
-#include "klip/core/encoder_selection.h"
+#include "revo/core/encoder_selection.h"
 
 #include <algorithm>
 #include <string_view>
 
-namespace klip {
+namespace revo {
 
 std::vector<std::string> PrioritizeEncoders(const std::vector<std::string>& configured,
                                             std::uint32_t adapter_vendor_id) {
@@ -42,7 +42,7 @@ std::string FormatEncoderSelectionFailure(const std::vector<std::string>& attemp
     for (const auto& attempt : attempts) {
       const auto separator = details_size == 0 ? std::string_view{} : std::string_view{"; "};
       if (separator.size() + attempt.size() > kAttemptDetailsLimit - details_size) {
-        message += "; additional encoder errors are in klip.log";
+        message += "; additional encoder errors are in revo.log";
         break;
       }
       message.append(separator);
@@ -56,4 +56,4 @@ std::string FormatEncoderSelectionFailure(const std::vector<std::string>& attemp
   return message;
 }
 
-}  // namespace klip
+}  // namespace revo

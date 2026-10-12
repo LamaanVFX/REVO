@@ -1,4 +1,4 @@
-#include "klip/obs/obs_engine.h"
+#include "revo/obs/obs_engine.h"
 
 #include <obs.h>
 #include <obs-module.h>
@@ -16,11 +16,11 @@
 #include <stdexcept>
 #include <thread>
 
-#include "klip/core/path_text.h"
-#include "klip/obs/encoder_policy.h"
-#include "klip/obs/replay_policy.h"
+#include "revo/core/path_text.h"
+#include "revo/obs/encoder_policy.h"
+#include "revo/obs/replay_policy.h"
 
-namespace klip {
+namespace revo {
 namespace {
 using Data = std::unique_ptr<obs_data_t, decltype(&obs_data_release)>;
 using Properties = std::unique_ptr<obs_properties_t, decltype(&obs_properties_destroy)>;
@@ -29,7 +29,7 @@ Data MakeData() { return Data(obs_data_create(), obs_data_release); }
 std::filesystem::path RuntimeRoot() {
   std::wstring path(32768, L'\0');
   auto size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-  if (!size || size >= path.size()) throw std::runtime_error("Could not locate Klip runtime");
+  if (!size || size >= path.size()) throw std::runtime_error("Could not locate REVO runtime");
   path.resize(size);
   return std::filesystem::path(path).parent_path().parent_path().parent_path();
 }
@@ -152,7 +152,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     initialized_ = true;
     if (std::string_view(obs_get_version_string()) != "32.1.2")
       throw std::runtime_error("Packaged libobs version differs from pinned 32.1.2");
-    obs_hotkey_enable_background_press(false);  // Klip uses RegisterHotKey, not OBS polling.
+    obs_hotkey_enable_background_press(false);  // REVO uses RegisterHotKey, not OBS polling.
     core_data_path_ = PathToUtf8(root / "data/libobs") + "/";
     obs_add_data_path(core_data_path_.c_str());
 
@@ -202,7 +202,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
         throw std::runtime_error(std::string("Required OBS module failed: ") + name);
     }
     obs_post_load_modules();
-    scene_ = obs_scene_create_private("Klip capture graph");
+    scene_ = obs_scene_create_private("REVO capture graph");
     if (!scene_) throw std::runtime_error("Could not create internal OBS scene");
     obs_set_output_source(0, obs_scene_get_source(scene_));
     RefreshSources();
@@ -332,7 +332,7 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     obs_data_set_bool(settings.get(), "capture_audio", false); // Desktop audio is captured once.
     obs_data_set_bool(settings.get(), "anti_cheat_hook", true); // Official OBS compatibility mode only.
   }
-  auto* next = obs_source_create(type, "Klip gameplay", settings.get(), nullptr);
+  auto* next = obs_source_create(type, "REVO gameplay", settings.get(), nullptr);
   if (!next) { error = Error{ErrorComponent::kCapture, "create OBS source", std::string(type) + " creation failed"}; return false; }
   if (capture_item_) obs_sceneitem_remove(capture_item_);
   if (capture_) obs_source_release(capture_);
@@ -394,7 +394,7 @@ bool ObsEngine::ConfigureOverlay(Error& error) {
     obs_data_set_bool(settings.get(), "client_area", true);
     obs_data_set_bool(settings.get(), "capture_audio", false);
   }
-  overlay_ = obs_source_create_private(type, "Klip overlay", settings.get());
+  overlay_ = obs_source_create_private(type, "REVO overlay", settings.get());
   if (!overlay_) { error = Error{ErrorComponent::kCapture, "create OBS overlay", "OBS overlay source creation failed"}; return false; }
   if (config_.static_overlay_enabled && !obs_source_get_width(overlay_)) {
     error = Error{ErrorComponent::kCapture, "decode static overlay", "OBS could not decode the selected image"}; return false;
@@ -410,7 +410,7 @@ bool ObsEngine::ConfigureOverlay(Error& error) {
     }
     auto filter_settings = MakeData();
     obs_data_set_double(filter_settings.get(), "opacity", config_.static_overlay_opacity);
-    auto* filter = obs_source_create_private("color_filter_v2", "Klip overlay opacity", filter_settings.get());
+    auto* filter = obs_source_create_private("color_filter_v2", "REVO overlay opacity", filter_settings.get());
     if (!filter) { error = Error{ErrorComponent::kCapture, "create overlay opacity", "OBS opacity filter creation failed"}; return false; }
     obs_source_filter_add(overlay_, filter);
     obs_source_release(filter);  // The source now owns the filter reference.
@@ -483,8 +483,8 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     const Error error{ErrorComponent::kAudio, "select microphone", "The configured microphone is disconnected. Choose an available device.", {}, {}, config.preferred_microphone_name};
     state_.SetError(error); logger_.ErrorMessage(error);
   }
-  configure(desktop_, desktop_meter_, desktop_level_, config.desktop_audio_enabled, "wasapi_output_capture", "Klip desktop audio", 1, "default", static_cast<float>(config.desktop_audio_gain), config.obs_separate_audio_tracks ? 3 : 1);
-  configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available, "wasapi_input_capture", "Klip microphone", 2, device, static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? 5 : 1);
+  configure(desktop_, desktop_meter_, desktop_level_, config.desktop_audio_enabled, "wasapi_output_capture", "REVO desktop audio", 1, "default", static_cast<float>(config.desktop_audio_gain), config.obs_separate_audio_tracks ? 3 : 1);
+  configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available, "wasapi_input_capture", "REVO microphone", 2, device, static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? 5 : 1);
   config_.desktop_audio_enabled = config.desktop_audio_enabled;
   config_.microphone_enabled = config.microphone_enabled;
   config_.preferred_microphone_name = config.preferred_microphone_name;
@@ -583,17 +583,17 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     SetInt(props.get(), settings.get(), "keyint_sec", 2);
     logger_.Info("OBS encoder=" + selected + " settings=" + obs_data_get_json(settings.get()));
     std::ofstream(config_.log_path.parent_path() / "obs-encoder-settings.json") << obs_data_get_json(settings.get());
-    video_encoder_ = obs_video_encoder_create(selected.c_str(), "Klip shared video encoder", settings.get(), nullptr);
+    video_encoder_ = obs_video_encoder_create(selected.c_str(), "REVO shared video encoder", settings.get(), nullptr);
     if (!video_encoder_) throw std::runtime_error("OBS encoder creation failed: " + selected);
     obs_encoder_set_video(video_encoder_, obs_get_video());
     auto audio = MakeData();
     obs_data_set_int(audio.get(), "bitrate", config_.audio_bitrate / 1000);
-    audio_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip shared AAC encoder", audio.get(), 0, nullptr);
+    audio_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO shared AAC encoder", audio.get(), 0, nullptr);
     if (!audio_encoder_) throw std::runtime_error("OBS AAC encoder creation failed");
     obs_encoder_set_audio(audio_encoder_, obs_get_audio());
     if (config_.obs_separate_audio_tracks) {
-      desktop_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip desktop-only AAC", audio.get(), 1, nullptr);
-      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip microphone-only AAC", audio.get(), 2, nullptr);
+      desktop_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO desktop-only AAC", audio.get(), 1, nullptr);
+      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO microphone-only AAC", audio.get(), 2, nullptr);
       if (!desktop_encoder_ || !microphone_encoder_) throw std::runtime_error("OBS separate-track AAC creation failed");
       obs_encoder_set_audio(desktop_encoder_, obs_get_audio());
       obs_encoder_set_audio(microphone_encoder_, obs_get_audio());
@@ -615,7 +615,7 @@ bool ObsEngine::StartReplayBuffer(Error& error) {
   obs_data_set_bool(settings.get(), "allow_spaces", false);
   obs_data_set_int(settings.get(), "max_time_sec", ObsReplayRetentionSeconds(config_));
   obs_data_set_int(settings.get(), "max_size_mb", static_cast<long long>(config_.rolling_buffer_bytes / (1024 * 1024)));
-  replay_ = obs_output_create("replay_buffer", "Klip replay buffer", settings.get(), nullptr);
+  replay_ = obs_output_create("replay_buffer", "REVO replay buffer", settings.get(), nullptr);
   if (!replay_) { error = Error{ErrorComponent::kRollingBuffer, "create OBS replay", "replay_buffer output is unavailable"}; return false; }
   obs_output_set_video_encoder(replay_, video_encoder_);
   obs_output_set_audio_encoder(replay_, audio_encoder_, 0);
@@ -651,7 +651,7 @@ void ObsEngine::ReplayStopped(void* parameter, calldata* data) noexcept {
 
 bool ObsEngine::StartRecording(Error& error) {
   ProcessOutputSignals();
-  if (shutting_down_) { error = Error{ErrorComponent::kRecordingWriter, "start OBS recording", "Klip is shutting down"}; return false; }
+  if (shutting_down_) { error = Error{ErrorComponent::kRecordingWriter, "start OBS recording", "REVO is shutting down"}; return false; }
   if (!replay_ || !obs_output_active(replay_)) { error = Error{ErrorComponent::kRecordingWriter, "start OBS recording", "Replay encoder is not active"}; return false; }
   if (recording_ && obs_output_active(recording_)) return true;
   if (recording_) {
@@ -666,7 +666,7 @@ bool ObsEngine::StartRecording(Error& error) {
   recording_path_ = recording_reservation_.Path();
   auto settings = MakeData();
   obs_data_set_string(settings.get(), "path", PathToUtf8(recording_path_).c_str());
-  recording_ = obs_output_create("ffmpeg_muxer", "Klip recording", settings.get(), nullptr);
+  recording_ = obs_output_create("ffmpeg_muxer", "REVO recording", settings.get(), nullptr);
   if (!recording_) {
     recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
     error = Error{ErrorComponent::kRecordingWriter, "create OBS recording", "ffmpeg_muxer output is unavailable"}; return false;
@@ -914,7 +914,7 @@ void ObsEngine::DrainAcceptedSaves() noexcept {
       ProcessSaveQueue();
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-  } catch (...) { OutputDebugStringA("Klip: exception while draining OBS replay saves\n"); }
+  } catch (...) { OutputDebugStringA("REVO: exception while draining OBS replay saves\n"); }
 }
 
 void ObsEngine::Shutdown() noexcept {
@@ -954,4 +954,4 @@ void ObsEngine::Shutdown() noexcept {
   layout_width_ = layout_height_ = 0;
   { std::scoped_lock lock(save_mutex_); queued_saves_ = 0; saving_ = false; }
 }
-}  // namespace klip
+}  // namespace revo

@@ -28,9 +28,9 @@ dashboard-only work without changing capture quality:
 
 The following hashes describe the earlier build, not the final rebuild below.
 
-Release: `build-obs-Release-gameplay/bin/64bit/Klip.exe`, SHA-256
+Release: `build-obs-Release-gameplay/bin/64bit/REVO.exe`, SHA-256
 `E4C216C442C3805021160B0FF4064E27C4EC68B426B25DCA35CB7D8D876CCBFE`.
-Debug: `build-obs-Debug-gameplay/bin/64bit/Klip.exe`, SHA-256
+Debug: `build-obs-Debug-gameplay/bin/64bit/REVO.exe`, SHA-256
 `C7659FFE8905B533A856CB5E4AAA596FD4F3513A78265FFBA0D940073E3A8274`.
 Both builds passed core, output-reservation and event-driven-tab test suites.
 
@@ -113,7 +113,7 @@ resources; presets trade speed against compression/quality, as documented in
 the [NVIDIA encoder guide](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvenc-video-encoder-api-prog-guide/index.html).
 The combined policy was tested, so no result is attributed to AQ alone.
 
-| Workload / condition | Bracketed source rate | With capture | Throughput loss | Klip encode-engine busy |
+| Workload / condition | Bracketed source rate | With capture | Throughput loss | REVO encode-engine busy |
 | --- | ---: | ---: | ---: | ---: |
 | Smooth GPU-bound / Balanced | 315.52/s | 296.18/s | 6.13% | 27.18% |
 | Smooth GPU-bound / Performance | 313.73/s | 297.40/s | 5.20% | 8.83% |
@@ -159,9 +159,9 @@ These builds enable test hooks; do not distribute them as the user test build.
 
 ## Final rebuild and regression
 
-Release `build-obs-Release-gameplay/bin/64bit/Klip.exe` SHA-256:
+Release `build-obs-Release-gameplay/bin/64bit/REVO.exe` SHA-256:
 `3467731B2417AB42F89CC59D1C78FB3860C482BE05B3CD2655BD31B0DCF71D54`.
-Debug `build-obs-Debug-gameplay/bin/64bit/Klip.exe` SHA-256:
+Debug `build-obs-Debug-gameplay/bin/64bit/REVO.exe` SHA-256:
 `4D10FD27C0E7051CF7338F0E5D84CF23DB3F580020CA9E58CFFF62D474290E9B`.
 Both rebuilt with benchmark hooks disabled and passed all three test suites.
 The ordinary Release binary rejected the test-only benchmark flag with exit 2
@@ -233,7 +233,7 @@ python tools/test_gameplay_metrics.py
 & tools/build-obs.ps1 -Configuration Release -BuildSuffix gpu-bench -EnableTestHooks
 & tools/run-gpu-bound-benchmark.ps1 -Name gpu-new -Conditions balanced,performance -SmoothWorkload -PresentMon
 python tools/analyze-gpu-bound.py work/gpu-new
-& tools/prepare-klip-parity.ps1 -Name gameplay-profile-new -SourceFps 240 -Executable build-obs-Release-gameplay/bin/64bit/Klip.exe -Launch
+& tools/prepare-revo-parity.ps1 -Name gameplay-profile-new -SourceFps 240 -Executable build-obs-Release-gameplay/bin/64bit/REVO.exe -Launch
 & tools/profile-capture-threads.ps1 -CapturePid <PID> -EvidenceRoot <RUN_ROOT> -Seconds 20
 & tools/sample-capture-process.ps1 -CapturePid <PID> -SourcePid <SOURCE_PID> -EvidenceRoot <RUN_ROOT> -Phase replay
 ```

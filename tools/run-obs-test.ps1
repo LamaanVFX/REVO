@@ -40,7 +40,7 @@ if($Overlay -eq 'static'){
   if($LASTEXITCODE){throw 'Could not create the overlay test fixture'}
 }
 $modeSetting=if($Mode -eq 'game'){'game_window'}else{'display'}
-@("capture_mode=$modeSetting",'preferred_game_title="Klip cadence test scene"',
+@("capture_mode=$modeSetting",'preferred_game_title="REVO cadence test scene"',
   $(if($NativeResolution){'output_width=0'}else{'output_width=1920'}),$(if($NativeResolution){'output_height=0'}else{'output_height=1080'}),"target_fps=$Fps",$(if($ReplayDurationTest){"clip_duration_seconds=$ReplaySeconds"}else{'clip_duration_seconds=15'}),
   "rolling_buffer_seconds=$($ReplaySeconds+15)","rolling_buffer_bytes=$([long]$ReplayMemoryMiB*1024*1024)",'desktop_audio_enabled=true',
   'microphone_enabled=false',"obs_encoder_id=`"$Encoder`"",'obs_cq=18',
@@ -52,17 +52,17 @@ $modeSetting=if($Mode -eq 'game'){'game_window'}else{'display'}
   "static_overlay_enabled=$(($Overlay -eq 'static').ToString().ToLowerInvariant())",
   "live_overlay_enabled=$(($Overlay -eq 'live').ToString().ToLowerInvariant())",
   ('static_overlay_path="'+$overlayImage.Replace('\','/')+'"'),
-  'live_overlay_window_title="Klip overlay test scene"',
+  'live_overlay_window_title="REVO overlay test scene"',
   'static_overlay_x=0.72','static_overlay_y=0.14','static_overlay_width=0.20','static_overlay_height=0.06',
   "static_overlay_opacity=$($OverlayOpacity.ToString([Globalization.CultureInfo]::InvariantCulture))",
   'hotkey_modifiers=16391','hotkey_save_virtual_key=133','hotkey_record_virtual_key=134',
   'hotkey_toggle_ui_virtual_key=135') | Set-Content "$root/settings.ini"
-$previousRoot=$env:KLIP_DATA_ROOT
+$previousRoot=$env:REVO_DATA_ROOT
 $previousPath=$env:PATH
 try {
   $llvm=(Get-ChildItem "$repo/work/validation-tools/llvm" -Directory | Select-Object -First 1).FullName
   $env:PATH="$llvm/bin;$env:PATH"
-  $env:KLIP_DATA_ROOT=$root
+  $env:REVO_DATA_ROOT=$root
   $scene=Join-Path $repo 'work/cadence_scene.exe'
   & "$llvm/bin/clang++.exe" -std=c++20 -O2 "-I$repo/include" "$PSScriptRoot/cadence_scene.cpp" -o $scene -ld3d11 -ldxgi -luser32 -lwinmm -ld3dcompiler
   if($LASTEXITCODE){throw 'Native scene build failed'}
@@ -77,7 +77,7 @@ try {
     Start-Sleep -Milliseconds 500
   }
   $buildName="build-obs-$Configuration" + $(if($BuildSuffix){"-$BuildSuffix"}else{''})
-  $exe=if($Executable){(Resolve-Path -LiteralPath $Executable).Path}else{Join-Path $repo "$buildName/bin/64bit/Klip.exe"}
+  $exe=if($Executable){(Resolve-Path -LiteralPath $Executable).Path}else{Join-Path $repo "$buildName/bin/64bit/REVO.exe"}
   $arguments=if($GlobalHotkeys){'--configured-capture-smoke-test --hotkey-input-smoke-test'}else{'--configured-capture-smoke-test'}
   if($SaveOnShutdown){$arguments='--configured-capture-smoke-test --obs-save-shutdown-smoke-test'}
   if($DestinationLoss){$arguments='--configured-capture-smoke-test --obs-save-failure-smoke-test'}
@@ -92,7 +92,7 @@ try {
     $source=Start-Process $scene -ArgumentList $sourceArgs -WindowStyle Hidden -RedirectStandardOutput "$root/source.log" -PassThru
   }
   if(-not $capture.WaitForExit(($testSeconds+30)*1000)){throw "Acceptance exceeded its timeout (PID $($capture.Id))"}
-  Get-Content "$root/klip.log" -Tail 10
+  Get-Content "$root/revo.log" -Tail 10
   if($capture.ExitCode){throw "OBS acceptance failed: exit=$($capture.ExitCode)"}
   $files=@(Get-ChildItem "$root/Clips","$root/Recordings" -Filter '*.mkv')
   if($files.Count -ne 4){throw 'Expected three consecutive replay clips and a concurrent recording'}
@@ -126,6 +126,6 @@ try {
   }
   if($source -and -not $source.HasExited){$source.CloseMainWindow() | Out-Null}
   if($overlaySource -and -not $overlaySource.HasExited){$overlaySource.CloseMainWindow() | Out-Null}
-  $env:KLIP_DATA_ROOT=$previousRoot
+  $env:REVO_DATA_ROOT=$previousRoot
   $env:PATH=$previousPath
 }

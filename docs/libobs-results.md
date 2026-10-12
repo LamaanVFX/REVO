@@ -2,7 +2,7 @@
 
 ## Working slice
 
-`tools/build-obs.ps1` builds the existing Klip application with an alternate
+`tools/build-obs.ps1` builds the existing REVO application with an alternate
 media owner (`ObsEngine`). The runtime is official OBS 32.1.2, pinned by release
 SHA-256 and source commit. The public libobs API controls video, audio, source
 graph, hardware encoder, replay output, and recording output. Neither the legacy
@@ -53,7 +53,7 @@ source, scene editor or frontend is introduced.
 three clips plus a concurrent recording each. The 50% white fixture measured
 luma 187 against background 25; 100% was opaque and 0% matched the background.
 These tests also passed the decoded-motion gate and had no repeated frame IDs.
-`work/obs-overlay-live-late` verified acquisition of a window opened after Klip
+`work/obs-overlay-live-late` verified acquisition of a window opened after REVO
 and alternating captured content in all saved outputs. Its recording measured
 59.6 distinct transitions/s and 0.67% repeats; its replays had 1.20–1.33%
 repeats. It passed the current 97% motion gate, but is not evidence of zero
@@ -81,7 +81,7 @@ selection. A public-API tab selection helper and bounded four-frame redraw
 burst fix it without a continuously active idle render loop. The actual Capture
 and Audio tabs switched on the first click after idle; Audio displayed
 `42 seconds / custom`. Temporary mouse tracing was removed after diagnosis.
-`klip_event_driven_tabs_tests` reproduces the missed click with stock tabs and
+`revo_event_driven_tabs_tests` reproduces the missed click with stock tabs and
 checks that the fixed helper selects the requested tab within the redraw burst.
 
 Current Debug/Release builds pass three suites: core tests, output-reservation
@@ -109,7 +109,7 @@ destination path, not a physical drive disconnect, disk-full or ACL-denial case.
 - Stock OBS desktop audio has no process-tree exclusion setting. Its process
   loopback implementation hardcodes `PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE`
   (`plugins/win-wasapi/win-wasapi.cpp` at the pinned source), which does not
-  implement Klip's previous exclusion mode. Old exclusions therefore produce a
+  implement REVO's previous exclusion mode. Old exclusions therefore produce a
   clear startup error. Audio settings provide an explicit clear-exclusion action
   instead of silently recording an application the user chose to exclude.
 - Dashboard/compatibility descriptions distinguish OBS render FPS from unique
@@ -162,11 +162,11 @@ delayed game source, native resolution, real global hotkeys, close-to-tray,
 three saves during recording and three audio tracks. Recording was 60.00
 distinct transitions/s; replays were 59.60–60.00/s; all had 0% repeated IDs.
 Replay A/V offsets were +1 to +11 ms and recording offsets -20 to -10 ms.
-No Klip, OBS frontend, muxer or cadence-fixture process remained at the final
+No REVO, OBS frontend, muxer or cadence-fixture process remained at the final
 process checkpoint. `git diff --check` passed.
 
 Earlier media test: `work/obs-current-regression` (RTX 3060 / Windows host).
-Native D3D11 source at 60 FPS; game opens after Klip; native resolution; actual
+Native D3D11 source at 60 FPS; game opens after REVO; native resolution; actual
 global key chords; close-to-tray; three consecutive saves while recording;
 three AAC tracks; device-positioned beep/flash markers.
 
@@ -204,7 +204,7 @@ The libobs video/audio engine was not started during that sample.
 
 Release and Debug builds and core tests passed during this migration. Repeat
 the Debug build after subsequent edits; previous hashes/tests do not validate a
-changed binary. Successful capture runs exited cleanly; no Klip, muxer, or
+changed binary. Successful capture runs exited cleanly; no REVO, muxer, or
 capture-helper process remained at the inspected checkpoints.
 
 ## Reproduction
@@ -225,9 +225,9 @@ capture-helper process remained at the inspected checkpoints.
 ```
 
 Use fresh test names: the harness preserves previous media and evidence. Run
-the executable from `build-obs-Release/bin/64bit/Klip.exe` with its sibling
+the executable from `build-obs-Release/bin/64bit/REVO.exe` with its sibling
 runtime/data directories intact. `--obs-idle-smoke-test` requires an isolated
-`KLIP_DATA_ROOT/settings.ini` containing `obs_replay_enabled=false`.
+`REVO_DATA_ROOT/settings.ini` containing `obs_replay_enabled=false`.
 
 ## Runtime and licensing
 
@@ -244,7 +244,7 @@ and the OBS muxer. Qt, browser/CEF, OBS frontend API, scripting, WebSocket,
 streaming services, transitions, and virtual camera are not loaded. Microsoft
 VC runtime provisioning, third-party notices/corresponding source, installer
 integration, and a clean-machine loader test still need release verification.
-The bundled OBS GPL notice does not by itself complete Klip's GPL distribution
+The bundled OBS GPL notice does not by itself complete REVO's GPL distribution
 obligations. No release has been published.
 
 ## Remaining scope — goal still active
@@ -257,8 +257,8 @@ obligations. No release has been published.
   do not prove a CPU/GPU or game-FPS win; do not reuse old hashes/results as proof
   for the modified binary or advertise its benefit before gameplay measurement.
 - Initial matched 60 FPS OBS Studio comparison is now measured in
-  `libobs-parity-benchmark.md`: both replays had zero repeated frames; Klip's
-  memory was lower but CPU higher in short samples. The additional 120 FPS Klip
+  `libobs-parity-benchmark.md`: both replays had zero repeated frames; REVO's
+  memory was lower but CPU higher in short samples. The additional 120 FPS REVO
   test passed the 97% gate, with 0.5–0.66% repeats, not zero. These are synthetic
   source tests, not Fortnite or release sign-off. Complete the remaining benchmark:
   quality, bitrate/file size, cadence, drops, audio sync, CPU, GPU/encode GPU,

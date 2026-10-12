@@ -1,4 +1,4 @@
-# Klip architecture
+# REVO architecture
 
 An incremental libobs build is available through `tools/build-obs.ps1`.
 `ObsEngine` replaces the entire media pipeline in that build while the existing
@@ -10,7 +10,7 @@ has not yet changed.
 
 ## Responsibilities
 
-- `KlipApplication` is the composition root. It validates configuration, performs startup rollback, wires commands, runs the UI loop, and enforces shutdown order.
+- `REVOApplication` is the composition root. It validates configuration, performs startup rollback, wires commands, runs the UI loop, and enforces shutdown order.
 - `D3dDevice` owns the shared D3D11 device/context, UI swap chain, render target, and adapter identity.
 - `GraphicsCapture` owns Windows Graphics Capture items, pools, and sessions; BGRA-to-NV12 video processing; the texture pool; GPU fence/event-query synchronization; and capture/conversion/encode workers.
 - `VideoEncoder` owns FFmpeg D3D11 hardware contexts and the H.264 codec context. It discovers candidates, records rejection reasons, submits NV12 textures, normalizes timestamps, and emits encoded video packets.
@@ -51,7 +51,7 @@ flowchart LR
 
 ## Ownership model
 
-All component lifetimes are nested under `KlipApplication`; dependencies are constructor references, not global services. COM interfaces use `winrt::com_ptr`. WinRT capture objects are value wrappers with explicit event-token revocation. Kernel events use `ScopedHandle`. FFmpeg packets and codec parameters use `unique_ptr` deleters. Codec, format, resampler, and hardware contexts have one named owner and explicit no-throw shutdown fallbacks.
+All component lifetimes are nested under `REVOApplication`; dependencies are constructor references, not global services. COM interfaces use `winrt::com_ptr`. WinRT capture objects are value wrappers with explicit event-token revocation. Kernel events use `ScopedHandle`. FFmpeg packets and codec parameters use `unique_ptr` deleters. Codec, format, resampler, and hardware contexts have one named owner and explicit no-throw shutdown fallbacks.
 
 The D3D device is intentionally shared by COM reference between UI, capture, and video encoding. Converted NV12 textures move through bounded SPSC queues as `com_ptr`. Encoder-input NV12 textures come from a separate 64-surface pool. FFmpeg's per-frame release callback makes an input surface eligible for reuse, while extra COM references keep surfaces registered with a hardware backend alive until codec teardown. A scoped return guard hands surfaces back when frame setup fails before FFmpeg takes ownership; work whose GPU completion cannot be proven is retired and releases its pool slot instead of being reused. The application flushes the video encoder while `GraphicsCapture` is still alive, so the callback target cannot dangle.
 
@@ -84,7 +84,7 @@ shared audio clock. This prevents packet cadence from becoming audible as period
 5. The recording queue closes and publishes its active file; the clip queue then finishes active and accepted requests.
 6. Audio/video codec and hardware contexts are released, followed by the rolling packet buffer.
 7. ImGui backends/context, swap chain/D3D device, and Win32 window are destroyed.
-8. The final lifecycle event is flushed to `klip.log`; process-level WinRT unwinds after `wWinMain` returns.
+8. The final lifecycle event is flushed to `revo.log`; process-level WinRT unwinds after `wWinMain` returns.
 
 Each initialization failure invokes the same idempotent shutdown path, so partial startup rolls back in reverse dependency order.
 
@@ -118,4 +118,4 @@ Metrics distinguish WGC arrivals, frames accepted for conversion, encoder submis
 
 ## Architecture decisions
 
-The platform-independent `klip_core` target contains configuration validation, queue primitives, encoder ordering, range selection/timestamp rebasing, and state snapshots. Windows and FFmpeg integration lives in `klip_media`. Interfaces are limited to UI commands and codec-snapshot callbacks; internal components remain concrete to avoid virtual dispatch and abstraction overhead in hot loops.
+The platform-independent `revo_core` target contains configuration validation, queue primitives, encoder ordering, range selection/timestamp rebasing, and state snapshots. Windows and FFmpeg integration lives in `revo_media`. Interfaces are limited to UI commands and codec-snapshot callbacks; internal components remain concrete to avoid virtual dispatch and abstraction overhead in hot loops.

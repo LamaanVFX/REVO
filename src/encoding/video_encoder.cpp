@@ -1,4 +1,4 @@
-#include "klip/encoding/video_encoder.h"
+#include "revo/encoding/video_encoder.h"
 
 #include <algorithm>
 #include <limits>
@@ -6,14 +6,14 @@
 #include <thread>
 #include <utility>
 
-#include "klip/core/encoder_selection.h"
-#include "klip/core/encoder_tuning.h"
+#include "revo/core/encoder_selection.h"
+#include "revo/core/encoder_tuning.h"
 
 extern "C" {
 #include <libavutil/hwcontext_d3d11va.h>
 }
 
-namespace klip {
+namespace revo {
 namespace {
 
 struct FrameDeleter {
@@ -85,7 +85,7 @@ bool VideoEncoder::Initialize(ID3D11Device* device, ID3D11DeviceContext* context
   hardware_device_failure_.clear();
   runtime_failed_encoder_.clear();
   runtime_failure_details_.clear();
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
   inject_runtime_failure_ = inject_runtime_failure;
   injected_runtime_failures_remaining_ = inject_runtime_failure ? 2U : 0U;
 #else
@@ -151,7 +151,7 @@ bool VideoEncoder::Encode(ID3D11Texture2D* texture, std::uint32_t width, std::ui
     return false;
   }
 
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
   if (inject_runtime_failure_ && active_encoder_ == "h264_nvenc" &&
       injected_runtime_failures_remaining_ > 0 &&
       submitted_frames_.load(std::memory_order_acquire) >= 120) {
@@ -614,7 +614,7 @@ void VideoEncoder::NormalizeTimestamps(AVPacket* packet, std::int64_t fallback_p
   }
   packet->pts = pts;
   packet->dts = dts;
-  // Klip's scheduler is CFR. Some hardware encoders report a widened duration for the first
+  // REVO's scheduler is CFR. Some hardware encoders report a widened duration for the first
   // reordered packets even though each submitted frame represents exactly one schedule tick;
   // preserving that value makes short replay clips advertise a lower average frame rate.
   packet->duration = duration;
@@ -674,4 +674,4 @@ std::vector<std::string> VideoEncoder::BuildPreference() const {
   return preference;
 }
 
-}  // namespace klip
+}  // namespace revo

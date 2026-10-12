@@ -8,23 +8,23 @@
 #include <string_view>
 #include <utility>
 
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
 extern "C" {
 #include <libavutil/log.h>
 }
 #endif
 
-#include "klip/app/application.h"
-#include "klip/core/config_store.h"
-#include "klip/platform/user_paths.h"
-#include "klip/platform/scoped_handle.h"
+#include "revo/app/application.h"
+#include "revo/core/config_store.h"
+#include "revo/platform/user_paths.h"
+#include "revo/platform/scoped_handle.h"
 
 namespace {
 
 class ProcessApartment {
  public:
   ProcessApartment() {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
     winrt::init_apartment(winrt::apartment_type::single_threaded);
 #else
     winrt::init_apartment(winrt::apartment_type::multi_threaded);
@@ -56,16 +56,16 @@ bool HasCommandLineFlag(PWSTR command_line, std::wstring_view flag) {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_command) {
   try {
     const bool package_smoke_test = HasCommandLineFlag(command_line, L"--package-smoke-test");
-#if defined(KLIP_USE_LIBOBS) && defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_USE_LIBOBS) && defined(REVO_ENABLE_TEST_HOOKS)
     const bool obs_background_benchmark = HasCommandLineFlag(command_line, L"--obs-background-benchmark");
-    if (obs_background_benchmark && GetEnvironmentVariableW(L"KLIP_DATA_ROOT", nullptr, 0) == 0) return 2;
+    if (obs_background_benchmark && GetEnvironmentVariableW(L"REVO_DATA_ROOT", nullptr, 0) == 0) return 2;
 #else
     constexpr bool obs_background_benchmark = false;
     // Diagnostic control is compiled out of ordinary shipping binaries.
     // Reject it rather than starting a normal capture against user settings.
     if (HasCommandLineFlag(command_line, L"--obs-background-benchmark")) return 2;
 #endif
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
     const bool obs_idle_test = HasCommandLineFlag(command_line, L"--obs-idle-smoke-test");
     const bool obs_save_shutdown_test = HasCommandLineFlag(command_line, L"--obs-save-shutdown-smoke-test");
     const bool obs_save_failure_test = HasCommandLineFlag(command_line, L"--obs-save-failure-smoke-test");
@@ -106,7 +106,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
         HasCommandLineFlag(command_line, L"--software-fallback-smoke-test");
     const bool encoder_fallback_smoke_test =
         HasCommandLineFlag(command_line, L"--encoder-fallback-smoke-test");
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
     const bool runtime_encoder_fallback_smoke_test =
         HasCommandLineFlag(command_line, L"--runtime-encoder-fallback-smoke-test");
     const bool balanced_quality_smoke_test =
@@ -134,22 +134,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     const bool high_frame_rate_smoke_test =
         HasCommandLineFlag(command_line, L"--120fps-smoke-test");
     ProcessApartment apartment;
-#if !defined(KLIP_USE_LIBOBS)
+#if !defined(REVO_USE_LIBOBS)
     av_log_set_level(AV_LOG_ERROR);
 #endif
     ImGui_ImplWin32_EnableDpiAwareness();
 
-    const auto user_paths = klip::ResolveUserPaths();
-    klip::AppConfig config;
-    klip::ApplyUserPathDefaults(config, user_paths);
+    const auto user_paths = revo::ResolveUserPaths();
+    revo::AppConfig config;
+    revo::ApplyUserPathDefaults(config, user_paths);
     const bool settings_exist = std::filesystem::exists(user_paths.settings_file);
     std::string settings_diagnostic;
-    if (!klip::LoadConfig(user_paths.settings_file, config, settings_diagnostic)) {
-      MessageBoxA(nullptr, settings_diagnostic.c_str(), "Klip settings warning",
+    if (!revo::LoadConfig(user_paths.settings_file, config, settings_diagnostic)) {
+      MessageBoxA(nullptr, settings_diagnostic.c_str(), "REVO settings warning",
                   MB_OK | MB_ICONWARNING);
     } else if (!settings_exist &&
-               !klip::SaveConfig(user_paths.settings_file, config, settings_diagnostic)) {
-      MessageBoxA(nullptr, settings_diagnostic.c_str(), "Klip settings warning",
+               !revo::SaveConfig(user_paths.settings_file, config, settings_diagnostic)) {
+      MessageBoxA(nullptr, settings_diagnostic.c_str(), "REVO settings warning",
                   MB_OK | MB_ICONWARNING);
     }
 
@@ -167,13 +167,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
         nvenc_stress_smoke_test || high_frame_rate_smoke_test)) {
       // Exercise the same conservative path on every tester. Vendor prioritization still chooses
       // NVENC, AMF, or Media Foundation from the actual adapter detected by D3D11.
-      config.target_mode = klip::CaptureTargetMode::kDisplay;
+      config.target_mode = revo::CaptureTargetMode::kDisplay;
       config.preferred_display_name.clear();
       config.preferred_game_title.clear();
       if (window_capture_smoke_test || window_120fps_smoke_test || window_resize_smoke_test ||
           source_switch_smoke_test || source_sized_window_smoke_test) {
-        config.target_mode = klip::CaptureTargetMode::kGameWindow;
-        config.preferred_game_title = "Klip cadence test scene  [cadence_scene.exe]";
+        config.target_mode = revo::CaptureTargetMode::kGameWindow;
+        config.preferred_game_title = "REVO cadence test scene  [cadence_scene.exe]";
       }
       if (window_resize_smoke_test) {
         config.output_width = 0;
@@ -183,13 +183,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
       config.output_width = 1920;
       config.output_height = 1080;
       config.video_bitrate = 8'000'000;
-      config.encoder_quality = klip::EncoderQuality::kPerformance;
-      if (balanced_quality_smoke_test) config.encoder_quality = klip::EncoderQuality::kBalanced;
-      config.scaling_mode = klip::VideoScalingMode::kFit;
+      config.encoder_quality = revo::EncoderQuality::kPerformance;
+      if (balanced_quality_smoke_test) config.encoder_quality = revo::EncoderQuality::kBalanced;
+      config.scaling_mode = revo::VideoScalingMode::kFit;
       config.encoder_preferences = {"h264_nvenc", "h264_amf", "h264_mf"};
       if (hotkey_actions_smoke_test || hotkey_input_smoke_test) {
-        config.hotkeys.save_modifiers = klip::HotkeyConfig::kControl | klip::HotkeyConfig::kAlt |
-                                        klip::HotkeyConfig::kShift | klip::HotkeyConfig::kNoRepeat;
+        config.hotkeys.save_modifiers = revo::HotkeyConfig::kControl | revo::HotkeyConfig::kAlt |
+                                        revo::HotkeyConfig::kShift | revo::HotkeyConfig::kNoRepeat;
         config.hotkeys.save_virtual_key = VK_F22;
         config.hotkeys.record_modifiers = config.hotkeys.save_modifiers;
         config.hotkeys.record_virtual_key = VK_F23;
@@ -218,7 +218,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
       if (software_fallback_smoke_test || software_performance_smoke_test)
         config.encoder_preferences = {"h264_mf_software"};
       if (encoder_fallback_smoke_test)
-        config.encoder_preferences = {"h264_klip_test_missing", "h264_mf_software"};
+        config.encoder_preferences = {"h264_revo_test_missing", "h264_mf_software"};
       if (runtime_encoder_fallback_smoke_test)
         config.encoder_preferences = {"h264_nvenc", "h264_amf", "h264_mf"};
       if (software_performance_smoke_test) {
@@ -270,8 +270,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     // hardware can validate WGC, WASAPI, or a vendor H.264 encoder.
     if (package_smoke_test) return 0;
 
-    klip::KlipApplication application(std::move(config), user_paths.settings_file);
-    klip::Error error;
+    revo::REVOApplication application(std::move(config), user_paths.settings_file);
+    revo::Error error;
     const bool acceptance_test =
         obs_background_benchmark || obs_idle_test || obs_save_shutdown_test || obs_save_failure_test || hotkey_actions_smoke_test || hotkey_input_smoke_test || long_av_sync_smoke_test ||
         capture_smoke_test ||
@@ -289,12 +289,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
         (amd_hardware_smoke_test || amd_120fps_smoke_test) ? std::optional<std::uint32_t>{0x1002}
         : intel_hardware_smoke_test                        ? std::optional<std::uint32_t>{0x8086}
                                                            : std::nullopt;
-#if defined(KLIP_USE_LIBOBS)
-    klip::ScopedHandle single_instance;
+#if defined(REVO_USE_LIBOBS)
+    revo::ScopedHandle single_instance;
     if (!acceptance_test) {
-      single_instance.Reset(CreateMutexW(nullptr, FALSE, L"Local\\Klip.Libobs.Engine"));
+      single_instance.Reset(CreateMutexW(nullptr, FALSE, L"Local\\REVO.Libobs.Engine"));
       if (single_instance.Get() && GetLastError() == ERROR_ALREADY_EXISTS) {
-        if (HWND existing = FindWindowW(L"KlipWindowClass", L"Klip")) PostMessageW(existing, WM_APP + 56, 0, 0);
+        if (HWND existing = FindWindowW(L"REVOWindowClass", L"REVO")) PostMessageW(existing, WM_APP + 56, 0, 0);
         return 0;
       }
     }
@@ -309,12 +309,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
                                 requested_feature_level, event_query_sync_smoke_test,
                                 runtime_encoder_fallback_smoke_test)) {
       if (!acceptance_test)
-        MessageBoxA(nullptr, error.ToString().c_str(), "Klip startup failed", MB_OK | MB_ICONERROR);
+        MessageBoxA(nullptr, error.ToString().c_str(), "REVO startup failed", MB_OK | MB_ICONERROR);
       return 1;
     }
     if (settings_apply_smoke_test) return application.RunSettingsAcceptanceTest();
-#if defined(KLIP_USE_LIBOBS)
-#if defined(KLIP_ENABLE_TEST_HOOKS)
+#if defined(REVO_USE_LIBOBS)
+#if defined(REVO_ENABLE_TEST_HOOKS)
     if (obs_background_benchmark) return application.RunBackgroundBenchmark();
 #endif
     if (obs_idle_test) return application.RunIdleAcceptanceTest();
@@ -335,7 +335,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     if (source_switch_acceptance_test)
       return application.RunCaptureAcceptanceTest(
           amd_hardware_smoke_test ? "h264_amf" : "", source_switch_av_smoke_test ? 15 : 10,
-          true, source_switch_av_smoke_test ? "Klip cadence switch source" : "");
+          true, source_switch_av_smoke_test ? "REVO cadence switch source" : "");
     if (amd_hardware_smoke_test) return application.RunCaptureAcceptanceTest("h264_amf");
     if (amd_120fps_smoke_test) return application.RunCaptureAcceptanceTest("h264_amf");
     if (intel_hardware_smoke_test) return application.RunCaptureAcceptanceTest("h264_mf");
@@ -350,10 +350,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
                                                       runtime_encoder_fallback_smoke_test)
                : application.Run();
   } catch (const std::exception& exception) {
-    MessageBoxA(nullptr, exception.what(), "Klip fatal error", MB_OK | MB_ICONERROR);
+    MessageBoxA(nullptr, exception.what(), "REVO fatal error", MB_OK | MB_ICONERROR);
     return 1;
   } catch (...) {
-    MessageBoxA(nullptr, "Unknown fatal error", "Klip fatal error", MB_OK | MB_ICONERROR);
+    MessageBoxA(nullptr, "Unknown fatal error", "REVO fatal error", MB_OK | MB_ICONERROR);
     return 1;
   }
 }

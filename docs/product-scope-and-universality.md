@@ -1,11 +1,11 @@
-# Klip product scope and universal compatibility roadmap
+# REVO product scope and universal compatibility roadmap
 
 Updated: 2026-09-27. This is a product/architecture assessment, not a support or certification
 claim.
 
-## What Klip is today
+## What REVO is today
 
-Klip is a single-user Windows game/window/display capture utility. The capture and media core is
+REVO is a single-user Windows game/window/display capture utility. The capture and media core is
 native C++20: Windows Graphics Capture feeds D3D11 conversion and FFmpeg encoding; WASAPI supplies
 desktop and microphone audio; a bounded encoded-packet replay buffer supports instant clips while
 the same encoder can feed a continuous MP4 recording. ImGui/Win32 is the desktop interface.
@@ -76,7 +76,7 @@ binary hash. See [the compatibility matrix](universal-windows-compatibility.md).
   audio-listening, or hardware-matrix acceptance.
 - Support diagnostics now have an in-app review screen; device names, output path, and detailed
   error text are excluded by default and can be explicitly included. Nothing is transmitted by
-  Klip. This still needs UI regression coverage and a privacy review of any future report fields.
+  REVO. This still needs UI regression coverage and a privacy review of any future report fields.
 - Physical Intel encoder, AMD-native display, low-end PC, older Windows, Windows N, device hot-plug,
   and actual game-focused global hotkeys remain unverified; see the compatibility matrix.
 - Runtime encoder fallback now avoids attempting NVENC/AMF on known mismatched adapter vendors. In

@@ -42,11 +42,11 @@ if($HotkeyActions -and ($Fps -ne 60 -or -not $NativeScene -or $Amd -or $Intel -o
 if($HotkeyInput -and ($Fps -ne 60 -or -not $NativeScene -or -not $WindowCapture -or $Amd -or $Intel -or $SoftwareFallback -or $SoftwarePerformance -or $FallbackDiagnostics -or $FeatureLevel10 -or $EventQuerySync -or $Stress -or $ResizeSource -or $RequireAvMarkers -or $VideoOnly -or $HotkeyActions)){throw 'Global hotkey input acceptance requires a 60 FPS native-window capture on the default hardware adapter.'}
 if($LongAvSync -and ($Fps -ne 60 -or $SourceFps -ne 60 -or $NativeScene -or $WindowCapture -or $Amd -or $Intel -or $SoftwareFallback -or $SoftwarePerformance -or $FallbackDiagnostics -or $FeatureLevel10 -or $EventQuerySync -or $Stress -or $ResizeSource -or $RequireAvMarkers -eq $false -or $VideoOnly -or $SourceSwitch -or $SourceSwitchAv -or $SourceSizedWindow -or $HotkeyActions -or $HotkeyInput -or $RuntimeEncoderFailure)){throw 'Long A/V sync acceptance requires a 60 FPS audiovisual source and -RequireAvMarkers on the default hardware encoder.'}
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-if(-not $Executable){$Executable=Join-Path $repo "build-validation-$Configuration/Klip.exe"}
+if(-not $Executable){$Executable=Join-Path $repo "build-validation-$Configuration/REVO.exe"}
 $Executable=(Resolve-Path $Executable).Path
 if($RuntimeEncoderFailure -or $BalancedQuality){
   $cachePath=Join-Path $repo "build-validation-$Configuration/CMakeCache.txt"
-  if(-not (Test-Path $cachePath) -or (Get-Content -Raw $cachePath) -notmatch 'KLIP_ENABLE_TEST_HOOKS:BOOL=ON'){
+  if(-not (Test-Path $cachePath) -or (Get-Content -Raw $cachePath) -notmatch 'REVO_ENABLE_TEST_HOOKS:BOOL=ON'){
     throw "This acceptance mode requires a build with test hooks. Run tools/build-validation.ps1 -Configuration $Configuration -EnableTestHooks `$true first."
   }
 }
@@ -62,10 +62,10 @@ if($LASTEXITCODE -ne 0){throw 'Could not build the moving test scene.'}
 $root=Join-Path $repo "work/$Name"
 if(Test-Path $root){throw "Test directory already exists: $root. Choose a fresh Name."}
 New-Item -ItemType Directory $root | Out-Null
-$previousRoot=$env:KLIP_DATA_ROOT
-$previousTrace=$env:KLIP_CAPTURE_TRACE
-$env:KLIP_DATA_ROOT=$root
-$env:KLIP_CAPTURE_TRACE='1'
+$previousRoot=$env:REVO_DATA_ROOT
+$previousTrace=$env:REVO_CAPTURE_TRACE
+$env:REVO_DATA_ROOT=$root
+$env:REVO_CAPTURE_TRACE='1'
 $source=if($LongAvSync){Join-Path $repo "work/cadence-source-$SourceFps-long.mp4"}else{Join-Path $repo "work/cadence-source-$SourceFps.mp4"}
 $player=$null
 $capture=$null
@@ -82,7 +82,7 @@ try {
     $player=Start-Process $scene -ArgumentList $sceneArguments -WindowStyle Hidden -RedirectStandardOutput "$root/source.log" -PassThru
   } else {
     $playerArguments='-autoexit -fs -loglevel error'
-    if($SourceSwitchAv){$playerArguments+=' -window_title "Klip cadence switch source"'}
+    if($SourceSwitchAv){$playerArguments+=' -window_title "REVO cadence switch source"'}
     $playerArguments+=' -i "'+$source+'"'
     $player=Start-Process "$bin/ffplay.exe" -ArgumentList $playerArguments -PassThru
   }
@@ -107,11 +107,11 @@ try {
   while(!$capture.WaitForExit(1000)) {
     $process=Get-Process -Id $capture.Id -ErrorAction SilentlyContinue
     if($process) {
-      if($process.MainWindowTitle -match '^Klip (startup failed|fatal error)$'){
+      if($process.MainWindowTitle -match '^REVO (startup failed|fatal error)$'){
         $dialogTitle=$process.MainWindowTitle
         $capture.CloseMainWindow() | Out-Null
         if(-not $capture.WaitForExit(3000)){Stop-Process -Id $capture.Id -Force -ErrorAction SilentlyContinue}
-        throw "Klip displayed '$dialogTitle' during capture acceptance; inspect $root/klip.log and rerun with Klip visible for the dialog details."
+        throw "REVO displayed '$dialogTitle' during capture acceptance; inspect $root/revo.log and rerun with REVO visible for the dialog details."
       }
       $samples.Add([pscustomobject]@{ElapsedSeconds=[math]::Round(((Get-Date)-$started).TotalSeconds,1);CpuSeconds=[math]::Round($process.CPU,2);WorkingSetMiB=[math]::Round($process.WorkingSet64/1MB,1);PrivateMiB=[math]::Round($process.PrivateMemorySize64/1MB,1);SourceAlive=($player -and !$player.HasExited)})
     }
@@ -119,7 +119,7 @@ try {
   }
   $capture.Refresh()
   $captureExitCode=$capture.ExitCode
-  $acceptanceLog=Get-Content "$root/klip.log" -Raw
+  $acceptanceLog=Get-Content "$root/revo.log" -Raw
   if($acceptanceLog -notmatch 'Capture (display|window''s current monitor) adapter:|Could not map capture target (to a display adapter|monitor to an attached hardware display adapter)'){
     throw 'Capture acceptance did not record whether the WGC target display and D3D adapter are local or cross-adapter.'
   }
@@ -138,11 +138,11 @@ try {
   }
   $samples | Export-Csv -NoTypeInformation -Path "$root/resource-samples.csv"
   Write-Output "Capture exit=$captureExitCode"
-  Get-Content "$root/klip.log" -Tail 8
+  Get-Content "$root/revo.log" -Tail 8
   $expectedEncoder=if($Intel){'h264_mf'}elseif($Amd){'h264_amf'}elseif($SoftwareFallback -or $SoftwarePerformance -or $FallbackDiagnostics){'h264_mf_software'}elseif($Stress -or $Fps -eq 120){'h264_nvenc'}else{$null}
   if($expectedEncoder -and $acceptanceLog -notmatch ("CAPTURE ACCEPTANCE PASSED encoder="+[regex]::Escape($expectedEncoder)+"\b")){throw "Capture did not pass with expected encoder $expectedEncoder."}
   if($EventQuerySync -and $acceptanceLog -notmatch 'GPU synchronization: forced D3D11 event-query fallback'){throw 'Capture did not use the forced D3D11 event-query synchronization path.'}
-  if($FallbackDiagnostics -and ($acceptanceLog -notmatch 'Software compatibility fallback active: h264_mf_software' -or $acceptanceLog -notmatch 'h264_klip_test_missing' -or $acceptanceLog -notmatch 'not present in this FFmpeg build')){throw 'The missing preferred encoder did not produce the expected actionable fallback notice.'}
+  if($FallbackDiagnostics -and ($acceptanceLog -notmatch 'Software compatibility fallback active: h264_mf_software' -or $acceptanceLog -notmatch 'h264_revo_test_missing' -or $acceptanceLog -notmatch 'not present in this FFmpeg build')){throw 'The missing preferred encoder did not produce the expected actionable fallback notice.'}
   if($RuntimeEncoderFailure){
     if($acceptanceLog -notmatch 'Video encoder failed at runtime; restarting once: h264_nvenc' -or $acceptanceLog -notmatch 'Video encoder failed again; trying fallback: h264_nvenc' -or $acceptanceLog -notmatch '(Encoder fallback active|Software compatibility fallback active): .* selected after h264_nvenc') {throw 'The forced NVENC runtime failures did not trigger a second attempt and backend fallback.'}
     if($acceptanceLog -match 'Software compatibility fallback active:' -and $acceptanceLog -notmatch 'Performance mode \(720p/60\)'){throw 'Software fallback did not provide the tested performance-mode recommendation.'}
@@ -209,10 +209,10 @@ try {
     $initial=[regex]::Match($sourceLog,'initial=(\d+)x(\d+)')
     $resizes=[regex]::Matches($sourceLog,'resize=(\d+)x(\d+)')
     if(-not $initial.Success -or $resizes.Count -lt 2){throw 'The test scene did not report both source-size changes.'}
-    $captureLog=Get-Content "$root/klip.log" -Raw
+    $captureLog=Get-Content "$root/revo.log" -Raw
     foreach($resize in $resizes){
       $resolution="Capture source resolution changed to $($resize.Groups[1].Value)x$($resize.Groups[2].Value)"
-      if($captureLog -notmatch [regex]::Escape($resolution)){throw "Klip did not observe the test source resize to $($resize.Groups[1].Value)x$($resize.Groups[2].Value)."}
+      if($captureLog -notmatch [regex]::Escape($resolution)){throw "REVO did not observe the test source resize to $($resize.Groups[1].Value)x$($resize.Groups[2].Value)."}
     }
     foreach($media in @($recording)+@(Get-ChildItem "$root/Clips" -Filter '*.mp4' -File | Select-Object -First 1)){
       $mediaAnalysis=Get-Content -Raw ($media.FullName+'.analysis.json') | ConvertFrom-Json
@@ -234,7 +234,7 @@ try {
   if($partial){throw "Partial media outputs remain: $($partial.FullName -join ', ')"}
 } finally {
   if($player -and !$player.HasExited){$player.CloseMainWindow() | Out-Null}
-  $env:KLIP_DATA_ROOT=$previousRoot
-  $env:KLIP_CAPTURE_TRACE=$previousTrace
+  $env:REVO_DATA_ROOT=$previousRoot
+  $env:REVO_CAPTURE_TRACE=$previousTrace
   $env:PATH=$previousPath
 }

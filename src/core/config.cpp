@@ -1,13 +1,13 @@
-#include "klip/core/config.h"
+#include "revo/core/config.h"
 
 #include <algorithm>
 #include <cmath>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
-#include "klip/obs/replay_policy.h"
+#include "revo/obs/replay_policy.h"
 
-namespace klip {
+namespace revo {
 namespace {
 
 constexpr unsigned int kAllowedHotkeyModifiers =
@@ -113,7 +113,7 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (config.rolling_buffer_bytes < 1024 * 1024) {
     reject("rolling_buffer_bytes", "must be at least one MiB");
   }
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   if (config.obs_duration_priority && std::isfinite(config.clip_duration_seconds) &&
       config.clip_duration_seconds > 0 && config.clip_duration_seconds <= 600 &&
       ObsReplayBitrateKbps(config) < 1000)
@@ -274,4 +274,4 @@ bool RequiresMediaPipelineReconfigure(const AppConfig& current, const AppConfig&
          current.recording_packet_queue_capacity != updated.recording_packet_queue_capacity;
 }
 
-}  // namespace klip
+}  // namespace revo

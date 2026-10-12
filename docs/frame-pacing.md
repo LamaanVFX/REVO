@@ -1,6 +1,6 @@
 # Frame pacing and capture quality
 
-Klip has several distinct rates. **Source arrival FPS** counts WGC frames delivered;
+REVO has several distinct rates. **Source arrival FPS** counts WGC frames delivered;
 **accepted FPS** counts frames admitted to conversion; **submission FPS** counts
 frames passed to the encoder; **output FPS** counts packets returned by
 `avcodec_receive_packet`. The output clock can repeat the latest source frame to
@@ -13,7 +13,7 @@ Decoded frame IDs and timestamp spacing are the final motion checks.
 - The capture callback now tolerates normal arrival jitter. Previously it
   rejected every frame arriving even slightly sooner than exactly `1 / FPS`
   after the previous accepted frame. Alternating early/late 60 Hz arrivals
-  could cause Klip to accept only every other frame.
+  could cause REVO to accept only every other frame.
 - Frame admission now uses WGC `SystemRelativeTime` (the compositor's frame
   time) instead of callback dispatch time whenever that timestamp is available.
   If unavailable, the session uses callback time and logs the fallback. On the
@@ -40,14 +40,14 @@ Decoded frame IDs and timestamp spacing are the final motion checks.
   to about 119/s after it. A source still cannot be forced to produce motion.
 
 OBS is useful as an architecture reference, but its Game Capture path uses a
-game hook, while Klip uses Windows Graphics Capture for both selected windows
+game hook, while REVO uses Windows Graphics Capture for both selected windows
 and displays. OBS's video core advances a fixed output clock and counts missed
 intervals as lagged frames. OBS Game Capture separately shares a frame interval
 with its injected hook; its source code describes this as limiting very fast
 games to avoid excessive capture work, with an option to capture at twice the
-configured output rate. That is not the same input/pacing model as Klip's WGC
+configured output rate. That is not the same input/pacing model as REVO's WGC
 compositor timestamps, so the two capture backends are not directly equivalent.
-These OBS details are reference points, not evidence that Klip matches OBS's
+These OBS details are reference points, not evidence that REVO matches OBS's
 capture behavior or performance.
 
 Source references:
@@ -58,9 +58,9 @@ Source references:
 ## Release acceptance on physical hardware
 
 For each NVIDIA, AMD, and Intel configuration intended for release, capture the
-same moving scene for at least two minutes in Klip and OBS with the same
+same moving scene for at least two minutes in REVO and OBS with the same
 resolution, FPS, codec, bitrate, and source type where possible. Include a
-selected window and a display test; do not compare Klip's WGC window capture
+selected window and a display test; do not compare REVO's WGC window capture
 against OBS's hooked Game Capture as though they were the same source path.
 
 1. Record the dashboard's source FPS, output FPS, skipped count, and encoder.

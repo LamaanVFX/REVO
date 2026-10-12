@@ -3,7 +3,7 @@
 ## Map and decision process
 
 Game Present → OBS hook texture copy → OBS scene/color conversion → hardware
-encoder → compressed replay packets → muxer/disk. Alongside that path, Klip
+encoder → compressed replay packets → muxer/disk. Alongside that path, REVO
 runs its dashboard, audio meters, source/device discovery and housekeeping.
 
 | Contention point | Intervention | Guardrail/evidence |
@@ -23,7 +23,7 @@ that interval before its capture copy. This reduces redundant **capture copies**
 not the game's rendering rate. Asynchronous source/output clocks can still
 produce repeated frames; it must not be sold as a guaranteed smoothness fix.
 
-Confirmed from Klip code: `WM_SIZE/SIZE_MINIMIZED` previously left `Visible()`
+Confirmed from REVO code: `WM_SIZE/SIZE_MINIMIZED` previously left `Visible()`
 true, and the application rendered visible dashboards during every 250 ms
 engine tick. Hidden audio meters remained attached to WASAPI sources; stock
 libobs calculates their per-channel magnitude/peak for every audio block.
@@ -38,14 +38,14 @@ These are UI-only computations, separate from the actual audio pipeline.
    and capture reconfiguration. Run real hotkey, concurrent recording, separate
    audio, cadence and synchronization tests after changing the binary.
 4. Measure limiter on/off at high source FPS; reject silent cadence degradation.
-5. Compare game/source baseline frametimes with capture, not just Klip process
+5. Compare game/source baseline frametimes with capture, not just REVO process
    utilization. A synthetic source is diagnostic, not a Fortnite benchmark.
 6. Record benefit, tradeoffs and remaining hardware/game gaps. Do not claim a
    universal FPS improvement or publish without the requested release authority.
 
 Real-game measurement uses `tools/measure-gameplay.ps1`, with the already
 running game's exact PID and title, not automated gameplay or a synthetic
-replacement. It refuses other running Klip/OBS instances, isolates app settings
+replacement. It refuses other running REVO/OBS instances, isolates app settings
 and media, checks source identity, records source-only/capture/source-only QPC
 phases and uses a unique timed PresentMon observer without input tracking.
 `tools/analyze-gameplay.py` rejects failed/incomplete trials, absent target

@@ -1,4 +1,4 @@
-#include "klip/encoding/audio_encoder.h"
+#include "revo/encoding/audio_encoder.h"
 
 #include <algorithm>
 #include <memory>
@@ -8,7 +8,7 @@ extern "C" {
 #include <libavutil/frame.h>
 }
 
-namespace klip {
+namespace revo {
 namespace {
 
 struct FrameDeleter {
@@ -165,4 +165,4 @@ void AudioEncoder::Normalize(AVPacket* packet, std::int64_t fallback_pts) noexce
   last_dts_ = dts;
 }
 
-}  // namespace klip
+}  // namespace revo

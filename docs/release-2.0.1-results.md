@@ -1,4 +1,4 @@
-# Klip 2.0.1 beta — 2026-10-10
+# REVO 2.0.1 beta — 2026-10-10
 
 Desktop source commit: `262b747e4433ae2cede68a2048aac92d27df92bf`.
 Release application SHA256:

@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.24)
 project(REVO VERSION 2.0.1 LANGUAGES CXX)
 
-option(KLIP_BUILD_TESTS "Build deterministic REVO core tests" ON)
-option(KLIP_BUILD_APP "Build the Windows capture application" ON)
-option(KLIP_ENABLE_TEST_HOOKS "Enable test-only runtime fault injection" OFF)
-option(KLIP_USE_LIBOBS "Use OBS capture, encoding, audio and replay output" ON)
+option(REVO_BUILD_TESTS "Build deterministic REVO core tests" ON)
+option(REVO_BUILD_APP "Build the Windows capture application" ON)
+option(REVO_ENABLE_TEST_HOOKS "Enable test-only runtime fault injection" OFF)
+option(REVO_USE_LIBOBS "Use OBS capture, encoding, audio and replay output" ON)
 set(FFMPEG_ROOT "" CACHE PATH "Optional FFmpeg root containing include, lib, and bin")
 
 set(CMAKE_CXX_STANDARD 20)
@@ -33,12 +33,12 @@ add_library(revo_core STATIC
 target_include_directories(revo_core PUBLIC include)
 target_compile_features(revo_core PUBLIC cxx_std_20)
 target_link_libraries(revo_core PUBLIC Threads::Threads)
-if(KLIP_USE_LIBOBS)
-  target_compile_definitions(revo_core PUBLIC KLIP_USE_LIBOBS)
+if(REVO_USE_LIBOBS)
+  target_compile_definitions(revo_core PUBLIC REVO_USE_LIBOBS)
 endif()
 revo_project_warnings(revo_core)
 
-if(KLIP_BUILD_TESTS)
+if(REVO_BUILD_TESTS)
   include(CTest)
   add_executable(revo_tests tests/core_tests.cpp)
   target_link_libraries(revo_tests PRIVATE revo_core)
@@ -47,7 +47,7 @@ if(KLIP_BUILD_TESTS)
   set_tests_properties(revo_core_tests PROPERTIES TIMEOUT 30)
 endif()
 
-if(NOT WIN32 OR NOT KLIP_BUILD_APP)
+if(NOT WIN32 OR NOT REVO_BUILD_APP)
   message(STATUS "REVO application target disabled or unavailable; core tests remain available.")
   return()
 endif()
@@ -56,7 +56,7 @@ enable_language(RC)
 
 find_package(imgui CONFIG REQUIRED)
 
-if(KLIP_USE_LIBOBS)
+if(REVO_USE_LIBOBS)
   include(cmake/libobs.cmake)
   return()
 endif()
@@ -107,8 +107,8 @@ target_compile_definitions(revo_media PUBLIC
   UNICODE
   _UNICODE
   NOMINMAX)
-if(KLIP_ENABLE_TEST_HOOKS)
-  target_compile_definitions(revo_media PUBLIC KLIP_ENABLE_TEST_HOOKS)
+if(REVO_ENABLE_TEST_HOOKS)
+  target_compile_definitions(revo_media PUBLIC REVO_ENABLE_TEST_HOOKS)
 endif()
 target_link_libraries(revo_media
   PUBLIC revo_core
@@ -140,10 +140,10 @@ add_executable(revo_app WIN32
   src/app/application.cpp
   src/main.cpp)
 set(REVO_ICON_RESOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/revo.ico")
-configure_file(packaging/revo.rc.in "${CMAKE_CURRENT_BINARY_DIR}/klip.rc" @ONLY)
-target_sources(revo_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/klip.rc")
+configure_file(packaging/revo.rc.in "${CMAKE_CURRENT_BINARY_DIR}/revo.rc" @ONLY)
+target_sources(revo_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/revo.rc")
 set_target_properties(revo_app PROPERTIES OUTPUT_NAME REVO)
-if(KLIP_BUILD_TESTS)
+if(REVO_BUILD_TESTS)
   add_executable(revo_windows_tests tests/windows_tests.cpp)
   target_include_directories(revo_windows_tests PRIVATE "${FFMPEG_INCLUDE_DIR}")
   target_link_libraries(revo_windows_tests PRIVATE revo_media "${FFMPEG_AVCODEC_LIBRARY}"
@@ -188,30 +188,30 @@ endif()
 
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/include" PREFIX "Headers"
   FILES
-    include/klip/app/application.h
-    include/klip/audio/audio_pipeline.h
-    include/klip/buffer/rolling_media_buffer.h
-    include/klip/capture/graphics_capture.h
-    include/klip/clips/clip_writer.h
-    include/klip/core/application_state.h
-    include/klip/core/audio_timeline.h
-    include/klip/core/bounded_queue.h
-    include/klip/core/clip_selection.h
-    include/klip/core/config.h
-    include/klip/core/config_store.h
-    include/klip/core/encoder_selection.h
-    include/klip/core/error.h
-    include/klip/core/logger.h
-    include/klip/encoding/audio_encoder.h
-    include/klip/encoding/video_encoder.h
-    include/klip/graphics/d3d_device.h
-    include/klip/media/packet.h
-    include/klip/media/mp4_muxer.h
-    include/klip/media/packet_router.h
-    include/klip/platform/hotkeys.h
-    include/klip/platform/user_paths.h
-    include/klip/recording/recording_writer.h
-    include/klip/platform/scoped_handle.h
-    include/klip/platform/win32_window.h
-    include/klip/ui/imgui_host.h
-    include/klip/ui/main_panel.h)
+    include/revo/app/application.h
+    include/revo/audio/audio_pipeline.h
+    include/revo/buffer/rolling_media_buffer.h
+    include/revo/capture/graphics_capture.h
+    include/revo/clips/clip_writer.h
+    include/revo/core/application_state.h
+    include/revo/core/audio_timeline.h
+    include/revo/core/bounded_queue.h
+    include/revo/core/clip_selection.h
+    include/revo/core/config.h
+    include/revo/core/config_store.h
+    include/revo/core/encoder_selection.h
+    include/revo/core/error.h
+    include/revo/core/logger.h
+    include/revo/encoding/audio_encoder.h
+    include/revo/encoding/video_encoder.h
+    include/revo/graphics/d3d_device.h
+    include/revo/media/packet.h
+    include/revo/media/mp4_muxer.h
+    include/revo/media/packet_router.h
+    include/revo/platform/hotkeys.h
+    include/revo/platform/user_paths.h
+    include/revo/recording/recording_writer.h
+    include/revo/platform/scoped_handle.h
+    include/revo/platform/win32_window.h
+    include/revo/ui/imgui_host.h
+    include/revo/ui/main_panel.h)

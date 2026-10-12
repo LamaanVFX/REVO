@@ -16,19 +16,19 @@ if((Get-FileHash $archive).Hash.ToLowerInvariant() -ne $sha){throw 'OBS archive 
 $studio=Join-Path $root 'studio'
 Expand-Archive -LiteralPath $archive -DestinationPath $studio
 $config=Join-Path $studio 'config/obs-studio'
-$profile=Join-Path $config 'basic/profiles/KlipParity'
+$profile=Join-Path $config 'basic/profiles/REVOParity'
 $scenes=Join-Path $config 'basic/scenes'
 $media=Join-Path $root 'Media'
 New-Item -ItemType Directory -Force $profile,$scenes,$media | Out-Null
 $version=(32 -shl 24) -bor (1 -shl 16) -bor (2 -shl 8)
 @('[General]',"LastVersion=$version",'Pre31Migrated=true') | Set-Content "$config/global.ini" -Encoding utf8
 @('[General]','FirstRun=true','HotkeyFocusType=NeverDisableHotkeys',
-  '[Basic]','Profile=KlipParity','ProfileDir=KlipParity','SceneCollection=KlipParity','SceneCollectionFile=KlipParity',
+  '[Basic]','Profile=REVOParity','ProfileDir=REVOParity','SceneCollection=REVOParity','SceneCollectionFile=REVOParity',
   '[BasicWindow]','PreviewEnabled=false','SysTrayEnabled=true','SysTrayWhenStarted=false',
   '[Video]','AdapterIdx=0') | Set-Content "$config/user.ini" -Encoding utf8
 $hotkey={param($Key) @{bindings=@(@{key="OBS_KEY_$Key";control=$true;alt=$true;shift=$true})} | ConvertTo-Json -Compress -Depth 5}
 $replayHotkey=@{'ReplayBuffer.Save'=@(@{key='OBS_KEY_F12';control=$true;alt=$true;shift=$true})} | ConvertTo-Json -Compress -Depth 5
-@('[General]','Name=KlipParity','[Output]','Mode=Advanced','FilenameFormatting=obs_%CCYY-%MM-%DD_%hh-%mm-%ss',
+@('[General]','Name=REVOParity','[Output]','Mode=Advanced','FilenameFormatting=obs_%CCYY-%MM-%DD_%hh-%mm-%ss',
   'OverwriteIfExists=false','[AdvOut]','RecType=Standard',"RecFilePath=$($media.Replace('\','/'))",'RecFormat2=mkv',
   'RecEncoder=obs_nvenc_h264_tex','RecAudioEncoder=ffmpeg_aac','RecTracks=1','Track1Bitrate=192',
   'RecUseRescale=false','RecRescaleFilter=0','RecRB=true','RecRBTime=15','RecRBSize=256','RecFileNameWithoutSpace=true',
@@ -42,17 +42,17 @@ $encoder=@{rate_control='CQP';cqp=18;preset='p5';tune='hq';multipass='qres';prof
   adaptive_quantization=$true;lookahead=$false;keyint_sec=2}
 $encoder | ConvertTo-Json | Set-Content "$profile/recordEncoder.json" -Encoding utf8
 $capture=@{name='Parity capture';id='game_capture';versioned_id='game_capture';mixers=0;enabled=$true;
-  settings=@{capture_mode='window';window='Klip cadence test scene:KlipCadenceScene:cadence_scene.exe';
+  settings=@{capture_mode='window';window='REVO cadence test scene:REVOCadenceScene:cadence_scene.exe';
     capture_cursor=$false;limit_framerate=$false;capture_audio=$false;anti_cheat_hook=$true}}
-$scene=@{name='KlipParity';id='scene';versioned_id='scene';settings=@{items=@(@{name='Parity capture';id=1;
+$scene=@{name='REVOParity';id='scene';versioned_id='scene';settings=@{items=@(@{name='Parity capture';id=1;
   visible=$true;locked=$true;pos=@{x=0;y=0};scale=@{x=1;y=1};rot=0;align=5;
   bounds_type=1;bounds_align=0;bounds=@{x=1920;y=1080}})}}
 $desktop=@{name='Desktop Audio';id='wasapi_output_capture';versioned_id='wasapi_output_capture';
   volume=1.0;mixers=1;enabled=$true;settings=@{device_id='default'}}
-@{name='KlipParity';current_scene='KlipParity';current_program_scene='KlipParity';
-  scene_order=@(@{name='KlipParity'});sources=@($capture,$scene);DesktopAudioDevice1=$desktop;
+@{name='REVOParity';current_scene='REVOParity';current_program_scene='REVOParity';
+  scene_order=@(@{name='REVOParity'});sources=@($capture,$scene);DesktopAudioDevice1=$desktop;
   current_transition='Cut';transition_duration=0;transitions=@(@{name='Cut';id='cut_transition';settings=@{}})} |
-  ConvertTo-Json -Depth 12 | Set-Content "$scenes/KlipParity.json" -Encoding utf8
+  ConvertTo-Json -Depth 12 | Set-Content "$scenes/REVOParity.json" -Encoding utf8
 # The marker and --portable both keep this run out of the user's normal OBS profile.
 '' | Set-Content "$studio/portable_mode.txt"
 @{obs_version='32.1.2';obs_archive_sha256=$sha;source_commit='fb4d98bf88fae5fc85cb11fc57f7c5e309282194';
@@ -61,7 +61,7 @@ $desktop=@{name='Desktop Audio';id='wasapi_output_capture';versioned_id='wasapi_
   limitations='Controlled D3D11 source, not a Fortnite gameplay benchmark';root=$root} |
   ConvertTo-Json -Depth 8 | Set-Content "$root/protocol.json"
 if($Launch){
-  if(Get-Process Klip,obs64,cadence_scene -ErrorAction SilentlyContinue){throw 'Close other capture/fixture processes before a parity run'}
+  if(Get-Process REVO,obs64,cadence_scene -ErrorAction SilentlyContinue){throw 'Close other capture/fixture processes before a parity run'}
   $llvm=(Get-ChildItem "$repo/work/validation-tools/llvm" -Directory | Select-Object -First 1).FullName
   $sceneExe=Join-Path $root 'cadence_scene.exe'
   & "$llvm/bin/clang++.exe" -std=c++20 -O2 "-I$repo/include" "$PSScriptRoot/cadence_scene.cpp" -o $sceneExe -ld3d11 -ldxgi -luser32 -lwinmm -ld3dcompiler
@@ -70,7 +70,7 @@ if($Launch){
   $sourceArgs="`"$SourceSeconds`" --fps=$Fps --av --present-interval=0 --frame-log=`"$root/source-frames.csv`" --reference-first=`"$root/source-first.ppm`""
   $source=Start-Process $sceneExe -ArgumentList $sourceArgs -WindowStyle Hidden -RedirectStandardOutput "$root/source.log" -PassThru
   $exe=Join-Path $studio 'bin/64bit/obs64.exe'
-  $process=Start-Process $exe -WorkingDirectory (Split-Path $exe) -ArgumentList '--portable --only-bundled-plugins --disable-updater --profile KlipParity --collection KlipParity --startreplaybuffer' -PassThru
+  $process=Start-Process $exe -WorkingDirectory (Split-Path $exe) -ArgumentList '--portable --only-bundled-plugins --disable-updater --profile REVOParity --collection REVOParity --startreplaybuffer' -PassThru
   @{root=$root;obs_pid=$process.Id;source_pid=$source.Id;executable=$exe} | ConvertTo-Json | Set-Content "$root/processes.json"
   Get-Content "$root/processes.json"
 } else {Write-Output "Prepared isolated OBS comparison at $root"}

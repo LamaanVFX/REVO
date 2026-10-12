@@ -1,11 +1,11 @@
 # Windows compatibility plan and evidence
 
-Updated: 2026-09-27. This document defines what “universal” means for Klip and tracks
+Updated: 2026-09-27. This document defines what “universal” means for REVO and tracks
 the coverage needed to improve it. It is not a certification claim.
 
 ## Product scope
 
-Klip is a native Windows capture application. The near-term target is supported x64
+REVO is a native Windows capture application. The near-term target is supported x64
 Windows PCs, not Linux, macOS, or Windows on ARM64. Its capture path depends on
 Windows Graphics Capture, D3D11 video processing, Windows audio APIs, and FFmpeg.
 The published minimum remains 64-bit Windows 10 version 1903 or newer; compatibility
@@ -81,11 +81,11 @@ Therefore AMD results are cross-adapter; this is not low-end coverage.
 | ARM64 Windows | No ARM64 build or hardware validation | Out of current scope |
 
 The software-fallback 30/60/120 runs were WGC/D3D11 capture runs; only video encoding
-used Media Foundation software. They do **not** show Klip working without a D3D11
+used Media Foundation software. They do **not** show REVO working without a D3D11
 graphics adapter. Read each `.analysis.json` for decoded cadence and each
 `resource-samples.csv` for host-specific process sampling. Artifacts are under
 `work/universal-followup-nvenc-60/` and `work/universal-followup-mf-software-{30,60,120}/`.
-Over the 10-second sample, cumulative Klip CPU time was 0.89 s for 1080p60 NVENC versus
+Over the 10-second sample, cumulative REVO CPU time was 0.89 s for 1080p60 NVENC versus
 1.56 s, 2.84 s, and 5.91 s for 720p software at 30/60/120 FPS. That is approximately
 9%, 16%, 28%, and 59% of one logical processor, respectively. Software-fallback peak
 working sets were about 227–229 MiB, with private bytes about 343–347 MiB; NVENC peaked
@@ -95,7 +95,7 @@ on a 7600X describe only this host and are not low-end minimum requirements.
 After aligning the local FFmpeg validator to the release workflow's upstream n8.1.2 line, the
 production-style Release binary was rebuilt against BtbN's Windows LGPL shared build
 `n8.1.2-267-gb2f422d306` (archive SHA-256 is pinned in `tools/bootstrap-validation.ps1`). It is not
-byte-identical to the release workflow's patched vcpkg build. The Klip executable SHA-256 is
+byte-identical to the release workflow's patched vcpkg build. The REVO executable SHA-256 is
 `5d5bf6c6e08854f4ca02280fd52d9056d27c6a381fad30ea27f89ff13f1bc3d5`. The pinned build passed real
 WGC clip-plus-record tests for NVIDIA NVENC at 720p120, AMD AMF cross-adapter at 1080p60, and Media
 Foundation software at 720p60. The audio/video marker run paired 5/5 clip markers and 10/10
@@ -152,7 +152,7 @@ and stopped recording, and saved a concurrent clip while capturing a separate mo
 window. Both outputs decoded: 601-frame recording and 302-frame clip, ~60 unique transitions/s,
 0.17%/0% consecutive repeats, zero invalid PTS, and 16.667 ms maximum spacing. The run also
 verified the app's visibility state begins consistent with `SW_HIDE`. This tests OS hotkey delivery
-while Klip is hidden, but not a physical keyboard or Fortnite specifically. Artifact:
+while REVO is hidden, but not a physical keyboard or Fortnite specifically. Artifact:
 `work/rc-global-hotkeys-all-actions-20260927/`. Test-hook-free Release SHA-256:
 `455061ff78ad31998a4cbb22b6f53d90c4c2026bb2ad3c78dc92feb3a1648927`.
 
@@ -195,7 +195,7 @@ For every FPS, record encoded FPS, unique decoded transitions, repeated images, 
 updates, and PTS gaps independently. A generated fixture's motion cadence must be checked against
 the fixture file itself; fixture playback on the desktop/compositor can introduce repeats unrelated
 to the encoder. Add both a deterministic native animated source and a real game/window source before
-attributing a cadence defect to Klip or declaring it clear.
+attributing a cadence defect to REVO or declaring it clear.
 
 ## Follow-up engineering order
 
@@ -203,7 +203,7 @@ attributing a cadence defect to Klip or declaring it clear.
    older-Windows test machines. Without them, the responsible next step is a lab pass,
    not guessed code changes.
 2. Test a physical fallback on a PC without a usable hardware H.264 encoder and
-   separate encoder absence from graphics-device absence. Klip still needs D3D11 for
+   separate encoder absence from graphics-device absence. REVO still needs D3D11 for
    WGC and conversion; a software video encoder does not remove that graphics
    requirement.
 3. Measure cold-start and steady-state CPU/RAM/GPU load per tier and decide whether

@@ -16,7 +16,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
-#include "klip/platform/frame_waiter.h"
+#include "revo/platform/frame_waiter.h"
 
 using Microsoft::WRL::ComPtr;
 LRESULT CALLBACK SceneProc(HWND window, UINT message, WPARAM key, LPARAM value) {
@@ -102,18 +102,18 @@ int main(int argc, char** argv) {
   if (source_fps < 0 || source_fps > 240) return 9;
   if (present_interval < 0 || present_interval > 1) return 9;
   if (seconds < 1 || seconds > 1800 || gpu_work < 0 || gpu_work > 256 || (gpu_work && overlay_window)) return 9;
-  klip::FrameWaiter source_waiter;
+  revo::FrameWaiter source_waiter;
   SetProcessDPIAware();
   WNDCLASSW klass{};
   klass.hInstance = GetModuleHandleW(nullptr);
   klass.lpfnWndProc = SceneProc;
-  klass.lpszClassName = L"KlipCadenceScene";
+  klass.lpszClassName = L"REVOCadenceScene";
   RegisterClassW(&klass);
   int width = overlay_window ? 320 : odd_size_test ? 1281 : GetSystemMetrics(SM_CXSCREEN);
   int height = overlay_window ? 90 : odd_size_test ? 721 : GetSystemMetrics(SM_CYSCREEN);
   const int initial_width = width, initial_height = height;
   HWND window = CreateWindowExW(overlay_window ? WS_EX_TOPMOST : 0, klass.lpszClassName,
-                                overlay_window ? L"Klip overlay test scene" : L"Klip cadence test scene",
+                                overlay_window ? L"REVO overlay test scene" : L"REVO cadence test scene",
                                 WS_POPUP, overlay_window ? GetSystemMetrics(SM_CXSCREEN) - width : 0, 0,
                                 width, height, nullptr, nullptr, klass.hInstance, nullptr);
   if (!window) return 1;

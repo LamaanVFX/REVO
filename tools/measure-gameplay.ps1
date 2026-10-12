@@ -6,7 +6,7 @@ param(
   [ValidateSet(60,120)][int]$Fps=60,
   [switch]$LimitGameCapture,
   [string]$SceneDescription='not recorded',
-  [string]$Executable='build-obs-Release-gpu-bench/bin/64bit/Klip.exe'
+  [string]$Executable='build-obs-Release-gpu-bench/bin/64bit/REVO.exe'
 )
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -15,7 +15,7 @@ $identity=$game.StartTime.ToUniversalTime().Ticks
 if($game.MainWindowTitle -ne $WindowTitle){throw 'The supplied title must match the live game window exactly'}
 $matchingWindows=@(Get-Process -Name $game.ProcessName | Where-Object MainWindowTitle -eq $WindowTitle)
 if($matchingWindows.Count -ne 1){throw 'The game title/executable is ambiguous; close duplicate instances before testing'}
-if(Get-Process Klip,obs64 -ErrorAction SilentlyContinue){throw 'Close Klip and OBS before measuring the source-only baseline'}
+if(Get-Process REVO,obs64 -ErrorAction SilentlyContinue){throw 'Close REVO and OBS before measuring the source-only baseline'}
 $exe=(Resolve-Path -LiteralPath $Executable).Path
 $pm=& "$PSScriptRoot/prepare-presentmon.ps1"
 $root=Join-Path $repo "work/$Name"
@@ -30,7 +30,7 @@ $gameLabel="$WindowTitle  [$([IO.Path]::GetFileName($game.Path))]"
   "obs_limit_game_capture_fps=$($LimitGameCapture.IsPresent.ToString().ToLowerInvariant())",
   'static_overlay_enabled=false','live_overlay_enabled=false') | Set-Content "$root/settings.ini"
 $phases=[Collections.Generic.List[object]]::new()
-$capture=$null;$observer=$null;$previousRoot=$env:KLIP_DATA_ROOT
+$capture=$null;$observer=$null;$previousRoot=$env:REVO_DATA_ROOT
 $valid=$false;$failure=$null
 function AssertSameGame {
   $current=Get-Process -Id $GamePid -ErrorAction Stop
@@ -41,20 +41,20 @@ function WaitGame([int]$Seconds) {
   while([DateTime]::UtcNow -lt $deadline){AssertSameGame; Start-Sleep -Milliseconds 250}
 }
 try {
-  $session="KlipGame-$([Guid]::NewGuid().ToString('N'))"
+  $session="REVOGame-$([Guid]::NewGuid().ToString('N'))"
   $args="--process_id $GamePid --output_file `"$root/presentmon.csv`" --qpc_time --no_console_stats --no_track_input --terminate_on_proc_exit --timed 130 --terminate_after_timed --session_name $session"
   $observer=Start-Process $pm -ArgumentList $args -WindowStyle Hidden -RedirectStandardOutput "$root/presentmon.log" -RedirectStandardError "$root/presentmon-errors.log" -PassThru
   WaitGame 5
   $start=[Diagnostics.Stopwatch]::GetTimestamp(); WaitGame 15
   $phases.Add(@{name='source-before';start_qpc=$start;end_qpc=[Diagnostics.Stopwatch]::GetTimestamp()})
-  $env:KLIP_DATA_ROOT=$root
+  $env:REVO_DATA_ROOT=$root
   $capture=Start-Process $exe -WorkingDirectory (Split-Path $exe) -ArgumentList '--obs-background-benchmark' -WindowStyle Hidden -PassThru
   $deadline=[DateTime]::UtcNow.AddSeconds(25)
   $ready=$false
   while([DateTime]::UtcNow -lt $deadline){
     AssertSameGame
     if($capture.HasExited){throw "Capture exited before readiness: $($capture.ExitCode)"}
-    if((Test-Path "$root/klip.log") -and (Select-String -LiteralPath "$root/klip.log" -Pattern 'BACKGROUND BENCHMARK READY' -Quiet)){$ready=$true;break}
+    if((Test-Path "$root/revo.log") -and (Select-String -LiteralPath "$root/revo.log" -Pattern 'BACKGROUND BENCHMARK READY' -Quiet)){$ready=$true;break}
     Start-Sleep -Milliseconds 250
   }
   if(-not $ready){throw 'Game capture did not become ready; no display-capture substitution will be made'}
@@ -67,7 +67,7 @@ try {
   $deadline=[DateTime]::UtcNow.AddSeconds(40)
   while(-not $capture.HasExited -and [DateTime]::UtcNow -lt $deadline){WaitGame 1}
   if(-not $capture.HasExited -or $capture.ExitCode -ne 0){throw 'Capture benchmark did not finish successfully'}
-  if(-not (Select-String -LiteralPath "$root/klip.log" -Pattern 'BACKGROUND BENCHMARK PASSED' -Quiet)){throw 'Replay save was not confirmed'}
+  if(-not (Select-String -LiteralPath "$root/revo.log" -Pattern 'BACKGROUND BENCHMARK PASSED' -Quiet)){throw 'Replay save was not confirmed'}
   $media=@(Get-ChildItem "$root/Clips" -Filter '*.mkv' -ErrorAction Stop)
   if($media.Count -ne 1 -or $media[0].Length -le 0){throw 'Expected one nonempty saved replay'}
   WaitGame 5
@@ -84,7 +84,7 @@ try {
   $failure=$_.Exception.Message
   throw
 } finally {
-  $env:KLIP_DATA_ROOT=$previousRoot
+  $env:REVO_DATA_ROOT=$previousRoot
   foreach($owned in @($capture,$observer)){
     if($owned -and -not $owned.HasExited){Stop-Process -Id $owned.Id -ErrorAction SilentlyContinue; $owned.WaitForExit(5000)|Out-Null}
   }

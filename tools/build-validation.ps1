@@ -18,8 +18,8 @@ $testHooks=if($EnableTestHooks){'ON'}else{'OFF'}
   "-DCMAKE_CXX_COMPILER=$llvm/bin/clang++.exe" `
   "-DCMAKE_RC_COMPILER=$llvm/bin/llvm-windres.exe" `
   "-DCMAKE_CXX_FLAGS=-isystem $winrt" `
-  "-DFFMPEG_ROOT=$ffmpeg" '-DKLIP_USE_LIBOBS=OFF' "-Dimgui_DIR=$repo/cmake/validation-imgui" `
-  "-DKLIP_IMGUI_SOURCE=$imgui" "-DKLIP_ENABLE_TEST_HOOKS=$testHooks"
+  "-DFFMPEG_ROOT=$ffmpeg" '-DREVO_USE_LIBOBS=OFF' "-Dimgui_DIR=$repo/cmake/validation-imgui" `
+  "-DREVO_IMGUI_SOURCE=$imgui" "-DREVO_ENABLE_TEST_HOOKS=$testHooks"
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
 & cmake --build $build --parallel 4
 if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}

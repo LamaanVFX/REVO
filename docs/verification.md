@@ -12,7 +12,7 @@ ctest --test-dir build -C Debug --output-on-failure
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-CTest runs `klip_core_tests` and `klip_windows_tests`. Together they cover configuration and settings,
+CTest runs `revo_core_tests` and `revo_windows_tests`. Together they cover configuration and settings,
 bounded-queue overflow/closure, video timeline and clip selection, timestamp rebasing, configured
 encoder priority, coherent concurrent state snapshots, WAV storage-format conversion (including
 packed 24-bit PCM), partial global-hotkey conflicts, and recording-writer failure behavior.
@@ -26,13 +26,13 @@ test-to-test comparisons. The FFmpeg package is pinned to a Windows LGPL shared 
 vcpkg build. `tools/build-validation.ps1` accepts `-EnableTestHooks $false` for a
 production-style Release binary.
 
-The Win64 release workflow also runs `Klip.exe --package-smoke-test` from both a silent
+The Win64 release workflow also runs `REVO.exe --package-smoke-test` from both a silent
 per-user installation and an extracted portable ZIP on a clean GitHub Windows runner. This
 verifies Windows loader/DLL resolution and isolated first-run settings creation before the
 installer is uninstalled. It intentionally does not claim hardware capture validation on the
 hosted VM; vendor GPU, WGC, WASAPI, and media-quality coverage remains in the checklist below.
 
-Set `KLIP_DATA_ROOT` to an isolated directory for smoke tests that must not touch the normal
+Set `REVO_DATA_ROOT` to an isolated directory for smoke tests that must not touch the normal
 LocalAppData/Videos locations. The override affects settings, logs, clips, and recordings only.
 
 ### Hardware capture acceptance mode
@@ -40,15 +40,15 @@ LocalAppData/Videos locations. The override affects settings, logs, clips, and r
 Run this from an installed or portable release directory on each physical GPU:
 
 ```powershell
-$env:KLIP_DATA_ROOT = Join-Path $PWD "capture-acceptance"
-.\Klip.exe --capture-smoke-test
+$env:REVO_DATA_ROOT = Join-Path $PWD "capture-acceptance"
+.\REVO.exe --capture-smoke-test
 $LASTEXITCODE
-Get-Content "$env:KLIP_DATA_ROOT\klip.log"
+Get-Content "$env:REVO_DATA_ROOT\revo.log"
 ```
 
 Use `--video-only-smoke-test` on a clean data root to confirm WGC capture can start with the
 desktop-audio endpoint intentionally unopened. This verifies the video-only configuration path;
-it does not emulate missing or defective WASAPI drivers. Klip now reports and retries unexpected
+it does not emulate missing or defective WASAPI drivers. REVO now reports and retries unexpected
 audio-worker/endpoint failures, but physical device removal, reconnection, and selected-microphone
 recovery remain separate hardware checks.
 
@@ -59,7 +59,7 @@ that the track is silent (at or below -80 dBFS). The current muxer keeps this si
 can toggle audio capture while recording; that behavior is distinct from capture on a machine with
 no physical audio endpoint.
 
-To verify shortcut registration and route the clip/record actions through Klip's actual window
+To verify shortcut registration and route the clip/record actions through REVO's actual window
 message handler during real WGC capture, run:
 
 ```powershell
@@ -75,7 +75,7 @@ registered-hotkey path, run:
 .\tools\run-cadence-test.ps1 -Configuration Release -Fps 60 -NativeScene -WindowCapture -HotkeyInput -Name global-hotkey-input
 ```
 
-This sends Ctrl+Alt+Shift+F22/F23/F24 through `SendInput` while Klip starts hidden and captures a
+This sends Ctrl+Alt+Shift+F22/F23/F24 through `SendInput` while REVO starts hidden and captures a
 separate moving test window. It verifies show/hide, save-clip, and record start/stop via OS hotkey
 delivery and decodes both media outputs. It is stronger than posting `WM_HOTKEY` directly, but
 still does not replace physical keyboard confirmation with Fortnite focused.
@@ -84,7 +84,7 @@ On a hybrid system with an AMD adapter, run `--amd-hardware-smoke-test` to pin t
 run to the first hardware DXGI adapter with AMD vendor ID `0x1002` and require `h264_amf`. The test
 must fail rather than silently select NVIDIA or software. Confirm the log names the AMD adapter,
 the selected encoder is `h264_amf`, and both the replay and recording decode. This is a test-only
-adapter override; regular Klip startup still uses automatic adapter selection.
+adapter override; regular REVO startup still uses automatic adapter selection.
 
 On an Intel graphics system, run the matching Media Foundation hardware path:
 
@@ -115,7 +115,7 @@ WGC, encoder startup, clip saving during recording, and final file decode:
 ```
 
 Passing this forced-level test on a newer GPU is not equivalent to testing a physical older GPU or
-its driver. Record its actual adapter and feature level from `klip.log`.
+its driver. Record its actual adapter and feature level from `revo.log`.
 
 To exercise the lower-version GPU synchronization fallback even when the current adapter supports
 D3D11.4 fences:
@@ -168,7 +168,7 @@ To verify actual WGC HWND capture separately from monitor capture, run the same 
 .\tools\run-cadence-test.ps1 -Configuration Release -Fps 120 -NativeScene -WindowCapture -Name window-native120
 ```
 
-The fixture window must be selected by its exact title/executable label in `klip.log`; the analyzer
+The fixture window must be selected by its exact title/executable label in `revo.log`; the analyzer
 then checks decoded frame IDs and timestamps for both replay and recording. This verifies the WGC
 window path, not game-specific capture restrictions, anti-cheat policy, or exclusive-fullscreen.
 
@@ -216,7 +216,7 @@ matrix, TV range, and B-frames when the selected hardware encoder supports them.
 
 ### OBS-parity quality smoke (2026-07-21)
 
-- Compared the current Klip pipeline against OBS Studio's recording-oriented NVENC defaults and
+- Compared the current REVO pipeline against OBS Studio's recording-oriented NVENC defaults and
   fixed-frame video clock. Balanced NVENC now uses P5/HQ, quarter-resolution multipass, adaptive
   quantization, lookahead, a two-second GOP, and two B-frames.
 - On an NVIDIA RTX 3060, the isolated settings-apply acceptance test saved a 90-frame,
@@ -258,8 +258,8 @@ frames, so `ffprobe` frame-rate metadata alone is not evidence of smooth motion.
 
 Verify on each supported GPU/vendor and intended Windows release:
 
-1. `Klip.exe` starts and the ImGui window renders.
-2. Game/window and display source lists populate; each listed target can be selected and is remembered after reopening Klip.
+1. `REVO.exe` starts and the ImGui window renders.
+2. Game/window and display source lists populate; each listed target can be selected and is remembered after reopening REVO.
 3. Targets can be resized and closed without a hang or stale texture use.
    The automated moving-window resize check is available as
    `tools/run-cadence-test.ps1 -Configuration Release -Fps 60 -NativeScene -ResizeSource`; it
@@ -278,11 +278,11 @@ Verify on each supported GPU/vendor and intended Windows release:
 12. Repeated start/exit cycles do not hang; no worker remains after process exit.
 13. Change FPS, resolution, bitrate, encoder, quality, cursor, replay duration, audio bitrate,
     and storage settings; press **Save & Apply** and confirm capture resumes without an app
-    restart. Reopen Klip afterward and confirm every saved value is restored.
+    restart. Reopen REVO afterward and confirm every saved value is restored.
 14. Confirm clips, recordings, settings, and logs land in the documented user folders when launched from the installer and portable package.
 15. Install and uninstall as a standard user; verify the installer requests no elevation and does not remove user media/settings.
 16. Confirm the interactive installer displays `EULA.txt`, cannot continue until **I accept the agreement** is selected, and installs `EULA.txt`, `PRIVACY.md`, and third-party notices beside the application.
-17. Confirm Explorer, the title bar, taskbar, Start menu shortcut, installer, and uninstaller all show the Klip icon and the executable reports the expected product/file version.
+17. Confirm Explorer, the title bar, taskbar, Start menu shortcut, installer, and uninstaller all show the REVO icon and the executable reports the expected product/file version.
 18. Run Application Verifier or an equivalent native diagnostic to check handles/heaps, and inspect the D3D debug layer where available.
 
 Release-candidate additions:
@@ -312,10 +312,10 @@ Windows 11 display, the recording's 60 visual/audio marker pairs measured +0.66 
 -3 ms median audio offset. Its FFplay fixture playback had 23.6% repeated decoded images despite
 clean 60 FPS source media; a same-machine native motion test had 60 unique transitions/s and no
 repeats. Validate the actual source/compositor cadence independently of encoded FPS, then test with
-game content before treating that fixture's repeated images as a Klip encoding defect. See the
+game content before treating that fixture's repeated images as a REVO encoding defect. See the
 complete measurements and machine details in `docs/release-candidate-results.md`.
 
 Run the repository's portable checks from PowerShell with
 `tools/build-validation.ps1 -Configuration Debug` and `tools/build-validation.ps1
--Configuration Release`. Those scripts build Klip and run both `klip_core_tests` and
-`klip_windows_tests` via CTest.
+-Configuration Release`. Those scripts build REVO and run both `revo_core_tests` and
+`revo_windows_tests` via CTest.

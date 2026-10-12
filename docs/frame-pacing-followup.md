@@ -1,6 +1,6 @@
 # Fortnite frame pacing follow-up (2026-09-27)
 
-The current Release executable is `build-validation-Release/Klip.exe` (SHA-256
+The current Release executable is `build-validation-Release/REVO.exe` (SHA-256
 `71f6834e35f90f3b4f2384ca3f4dc5084572d521e9e8e9b71dd01f55f6035fa3`).
 It has not passed a same-scene, focused Fortnite comparison against OBS. Do not
 describe its motion as equivalent to OBS or publish it as a frame-pacing fix.
@@ -19,7 +19,7 @@ code was copied. OBS Game Capture uses a different hooked input path.
 ## Measured on this host
 
 Windows 11, RTX 3060, Ryzen 5 7600X, 239 Hz monitor, H.264 NVENC. Native WGC
-test window presented at the stated input FPS; Klip saved a 10-second recording
+test window presented at the stated input FPS; REVO saved a 10-second recording
 and a replay clip during that recording. The analyzer decodes a frame ID from
 each image, so these values measure distinct motion, not MP4 header FPS.
 
@@ -42,7 +42,7 @@ Fortnite WGC window capture with a hidden acceptance process saved a recording
 and concurrent clip using NVENC, with no encode failures and approximately
 1.1–1.3 ms average encode time. For roughly the first four seconds the WGC
 callback supplied about 120 updates/s; after that it supplied about 30/s and
-Klip repeated frames to fill a 60 FPS file. The game may have lost focus during
+REVO repeated frames to fill a 60 FPS file. The game may have lost focus during
 this run. This test proves that source starvation can cause the reported symptom
 but does **not** establish that it happened in the user's focused-game clip.
 
@@ -55,7 +55,7 @@ frame-by-frame comparison.
 ## Remaining release gate
 
 Record the same continuous Fortnite camera movement with the game focused in
-Klip and OBS, at the same output resolution/FPS/codec, while logging WGC source
+REVO and OBS, at the same output resolution/FPS/codec, while logging WGC source
 FPS, accepted frames, unique encoder submissions, repeats, and skipped slots.
 Inspect decoded camera-motion cadence and A/V sync. If WGC stops delivering
 smooth source frames while OBS's hooked Game Capture remains smooth, an encoder,

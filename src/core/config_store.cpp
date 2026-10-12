@@ -1,5 +1,5 @@
-#include "klip/core/config_store.h"
-#include "klip/core/path_text.h"
+#include "revo/core/config_store.h"
+#include "revo/core/path_text.h"
 
 #include <algorithm>
 #include <charconv>
@@ -19,7 +19,7 @@
 #include <Windows.h>
 #endif
 
-namespace klip {
+namespace revo {
 namespace {
 
 std::string Trim(std::string value) {
@@ -318,7 +318,7 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
     diagnostic = "Could not write settings file: " + PathToUtf8(temporary);
     return false;
   }
-  output << "# Klip settings - changes made in the app are saved here.\n";
+  output << "# REVO settings - changes made in the app are saved here.\n";
   output << "obs_replay_enabled=" << (config.obs_replay_enabled ? "true" : "false") << '\n';
   output << "obs_encoder_id=" << std::quoted(config.obs_encoder_id) << '\n';
   output << "obs_cq=" << config.obs_cq << '\n';
@@ -400,4 +400,4 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   return true;
 }
 
-}  // namespace klip
+}  // namespace revo

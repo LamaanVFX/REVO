@@ -1,4 +1,4 @@
-#include "klip/ui/event_driven_tabs.h"
+#include "revo/ui/event_driven_tabs.h"
 
 #include <array>
 #include <iostream>
@@ -26,7 +26,7 @@ int ClickAfterIdle(bool fixed_tabs) {
       const int select = std::exchange(requested, -1);
       constexpr const char* labels[] = {"compatibility", "capture", "audio"};
       for (int i = 0; i < 3; ++i) {
-        const bool content = fixed_tabs ? klip::BeginEventDrivenTab(labels[i], i, select, requested)
+        const bool content = fixed_tabs ? revo::BeginEventDrivenTab(labels[i], i, select, requested)
                                        : ImGui::BeginTabItem(labels[i]);
         const auto min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
         centers[i] = {(min.x + max.x) / 2, (min.y + max.y) / 2};
@@ -38,12 +38,12 @@ int ClickAfterIdle(bool fixed_tabs) {
     ImGui::Render();
   };
   io.AddMousePosEvent(750, 550);
-  for (unsigned i = 0; i < klip::kInputRedrawFrames; ++i) frame();
+  for (unsigned i = 0; i < revo::kInputRedrawFrames; ++i) frame();
   // One batched move/down/up, as a rapid click after an event-driven idle wait.
   io.AddMousePosEvent(centers[1].x, centers[1].y);
   io.AddMouseButtonEvent(0, true);
   io.AddMouseButtonEvent(0, false);
-  for (unsigned i = 0; i < klip::kInputRedrawFrames; ++i) frame();
+  for (unsigned i = 0; i < revo::kInputRedrawFrames; ++i) frame();
   const int result = visible;
   ImGui::DestroyContext();
   return result;

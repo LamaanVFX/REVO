@@ -1,6 +1,6 @@
 # Win64 release process
 
-Klip 2.0 uses the new [libobs release process](release-2.0.md). The instructions
+REVO 2.0 uses the new [libobs release process](release-2.0.md). The instructions
 below document the historical legacy-engine 3.0.x workflow, not the 2.0 build.
 The 2.0 beta is unsigned and explicitly marked prerelease; no stable release
 is automatically published by a tag. Stable signing/hardware gates still apply.
@@ -14,8 +14,8 @@ is automatically published by a tag. Stable signing/hardware gates still apply.
 3. Push a tag such as `v0.3.0`.
 4. The `Win64 release` workflow bootstraps a pinned vcpkg commit, builds the dynamic LGPL
    FFmpeg SDK with NVENC/AMF/Media Foundation, restores the static-runtime ImGui dependency,
-   builds Release x64, and runs `klip_tests`.
-5. The packaging script stages `Klip.exe`, all FFmpeg DLLs, documentation, and license
+   builds Release x64, and runs `revo_tests`.
+5. The packaging script stages `REVO.exe`, all FFmpeg DLLs, documentation, and license
    notices. It creates a per-user Inno Setup installer with mandatory EULA acceptance and a
    portable ZIP, then emits SHA-256 checksums.
 6. The workflow verifies the upstream FFmpeg source with the vcpkg port's SHA-512 and bundles
@@ -28,7 +28,7 @@ a GitHub Release. Tag runs create the Release automatically.
 Tagged releases are blocked unless the repository has both
 `WINDOWS_SIGNING_CERTIFICATE_BASE64` (a base64-encoded PFX) and
 `WINDOWS_SIGNING_CERTIFICATE_PASSWORD` secrets. The workflow signs and timestamp-verifies
-both `Klip.exe` and the installer. Manual workflow artifacts may remain unsigned for testing.
+both `REVO.exe` and the installer. Manual workflow artifacts may remain unsigned for testing.
 
 Add those values as GitHub Actions repository secrets under **Settings > Secrets and
 variables > Actions**. Convert the PFX bytes to base64 locally and place only that encoded

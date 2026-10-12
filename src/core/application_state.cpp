@@ -1,8 +1,8 @@
-#include "klip/core/application_state.h"
+#include "revo/core/application_state.h"
 
 #include <utility>
 
-namespace klip {
+namespace revo {
 
 ApplicationSnapshot ApplicationState::Snapshot() const {
   std::scoped_lock lock(mutex_);
@@ -170,4 +170,4 @@ void ApplicationState::SetSettingsStatus(bool restart_required, std::string mess
   snapshot_.settings_message = std::move(message);
 }
 
-}  // namespace klip
+}  // namespace revo

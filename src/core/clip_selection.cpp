@@ -1,9 +1,9 @@
-#include "klip/core/clip_selection.h"
+#include "revo/core/clip_selection.h"
 
 #include <algorithm>
 #include <limits>
 
-namespace klip {
+namespace revo {
 
 PacketRange SelectClipRange(const std::vector<PacketDescriptor>& packets, double duration_seconds) {
   if (packets.empty() || duration_seconds <= 0.0) {
@@ -82,4 +82,4 @@ bool ExceedsRollingLimits(std::int64_t first_pts_100ns, std::int64_t last_pts_10
   return buffered_bytes > maximum_bytes || duration > maximum_seconds;
 }
 
-}  // namespace klip
+}  // namespace revo

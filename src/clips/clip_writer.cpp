@@ -1,4 +1,4 @@
-#include "klip/clips/clip_writer.h"
+#include "revo/clips/clip_writer.h"
 
 #include <Windows.h>
 
@@ -6,14 +6,14 @@
 #include <chrono>
 #include <exception>
 
-#include "klip/media/mp4_muxer.h"
-#include "klip/core/path_text.h"
+#include "revo/media/mp4_muxer.h"
+#include "revo/core/path_text.h"
 
 extern "C" {
 #include <libavutil/mathematics.h>
 }
 
-namespace klip {
+namespace revo {
 namespace {
 
 constexpr AVRational kHundredNanoseconds{1, 10'000'000};
@@ -156,4 +156,4 @@ std::filesystem::path ClipWriter::BuildOutputPath(const std::filesystem::path& d
   return directory / filename;
 }
 
-}  // namespace klip
+}  // namespace revo

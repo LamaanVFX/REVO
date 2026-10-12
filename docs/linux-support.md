@@ -1,6 +1,6 @@
 # Linux port: scope and release gates
 
-Linux is not yet a supported Klip desktop release. The Windows installer cannot
+Linux is not yet a supported REVO desktop release. The Windows installer cannot
 be run natively on Linux. Wine/Proton is not an appropriate replacement for the
 capture/audio backends, and this work does not advertise Wine compatibility.
 

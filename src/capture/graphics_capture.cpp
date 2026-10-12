@@ -1,11 +1,11 @@
-#include "klip/capture/graphics_capture.h"
+#include "revo/capture/graphics_capture.h"
 
 #include <dwmapi.h>
 #include <wincodec.h>
 
-#include "klip/core/path_text.h"
-#include "klip/core/video_timeline.h"
-#include "klip/platform/frame_waiter.h"
+#include "revo/core/path_text.h"
+#include "revo/core/video_timeline.h"
+#include "revo/platform/frame_waiter.h"
 // MinGW's WinRT ABI headers typedef both BYTE and boolean to unsigned char, which makes their
 // IReference specializations collide in C++. C++/WinRT uses bool for the WinRT Boolean ABI.
 // MSVC's Windows SDK declares ABI::Windows::Foundation::boolean as a real type, so replacing it
@@ -26,7 +26,7 @@
 #include <sstream>
 #include <utility>
 
-namespace klip {
+namespace revo {
 namespace {
 
 bool IsCloaked(HWND window) {
@@ -70,13 +70,13 @@ bool GraphicsCapture::Initialize(ID3D11Device* device, ID3D11DeviceContext* cont
   }
   if (!winrt::Windows::Graphics::Capture::GraphicsCaptureSession::IsSupported()) {
     error = Error{ErrorComponent::kCapture, "check support",
-                  "this system does not expose Windows Graphics Capture; Klip requires "
+                  "this system does not expose Windows Graphics Capture; REVO requires "
                   "64-bit Windows 10 version 1903 or newer and a compatible D3D11 graphics "
                   "driver"};
     return false;
   }
   config_ = config;
-  capture_trace_enabled_ = GetEnvironmentVariableW(L"KLIP_CAPTURE_TRACE", nullptr, 0) > 0;
+  capture_trace_enabled_ = GetEnvironmentVariableW(L"REVO_CAPTURE_TRACE", nullptr, 0) > 0;
   wgc_clock_warning_logged_ = false;
   output_width_ = config_.output_width;
   output_height_ = config_.output_height;
@@ -683,7 +683,7 @@ bool GraphicsCapture::StartLiveOverlay(Error& error) {
   if (target == nullptr) {
     error = Error{ErrorComponent::kCapture,
                   "find live overlay window",
-                  "open the selected Camera or handcam preview window before starting Klip",
+                  "open the selected Camera or handcam preview window before starting REVO",
                   {},
                   {},
                   config_.live_overlay_window_title};
@@ -1766,7 +1766,7 @@ void GraphicsCapture::PublishMetrics(double encode_latency_ms) {
       raw_queue_->Dropped() + coalesced_raw_frames_.load(std::memory_order_relaxed),
       encode_queue_->Dropped() + coalesced_encode_frames_.load(std::memory_order_relaxed),
       raw_queue_->Size(), encode_queue_->Size(), average_latency);
-  if (GetEnvironmentVariableW(L"KLIP_CAPTURE_TRACE", nullptr, 0) > 0) {
+  if (GetEnvironmentVariableW(L"REVO_CAPTURE_TRACE", nullptr, 0) > 0) {
     logger_.Info("CADENCE source=" + std::to_string(source) + " accepted=" +
                  std::to_string(captured) + " output_packets=" + std::to_string(frames) +
                  " submitted=" + std::to_string(submitted_frames_.load()) +
@@ -1806,4 +1806,4 @@ winrt::Windows::Graphics::Capture::GraphicsCaptureItem GraphicsCapture::CreateFo
   return item;
 }
 
-}  // namespace klip
+}  // namespace revo

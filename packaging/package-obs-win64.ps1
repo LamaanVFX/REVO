@@ -12,7 +12,7 @@ $sources=(Resolve-Path $SourcesDirectory).Path
 if(-not $OutputDirectory){$OutputDirectory=Join-Path $repo "artifacts/REVO-$version"}
 if(Test-Path $OutputDirectory){throw 'Use a fresh output directory; existing release artifacts are preserved'}
 $cache=Get-Content "$build/CMakeCache.txt" -Raw
-if($cache -notmatch 'KLIP_USE_LIBOBS:BOOL=(ON|TRUE|1)' -or $cache -notmatch 'KLIP_ENABLE_TEST_HOOKS:BOOL=(OFF|FALSE|0)'){throw 'Release requires libobs with diagnostic hooks disabled'}
+if($cache -notmatch 'REVO_USE_LIBOBS:BOOL=(ON|TRUE|1)' -or $cache -notmatch 'REVO_ENABLE_TEST_HOOKS:BOOL=(OFF|FALSE|0)'){throw 'Release requires libobs with diagnostic hooks disabled'}
 if(-not(Test-Path "$sources/dependency-sources.json")){throw 'Corresponding dependency sources are required'}
 New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
 $out=(Resolve-Path $OutputDirectory).Path

@@ -1,4 +1,4 @@
-#include "klip/platform/win32_window.h"
+#include "revo/platform/win32_window.h"
 
 #include <dwmapi.h>
 #include <imgui.h>
@@ -14,10 +14,10 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message,
                                                              WPARAM w_param, LPARAM l_param);
 
-namespace klip {
+namespace revo {
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"KlipWindowClass";
+constexpr wchar_t kWindowClass[] = L"REVOWindowClass";
 
 struct LogoPoint {
   float x;
@@ -51,7 +51,7 @@ bool PointInRoundedLeftBar(float x, float y) {
   return dx * dx + dy * dy <= radius * radius;
 }
 
-HICON CreateKlipIcon(int size) {
+HICON CreateREVOIcon(int size) {
   BITMAPINFO bitmap_info{};
   bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
   bitmap_info.bmiHeader.biWidth = size;
@@ -148,8 +148,8 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   window_class.style = CS_CLASSDC;
   window_class.lpfnWndProc = WindowProc;
   window_class.hInstance = instance;
-  large_icon_ = CreateKlipIcon(64);
-  small_icon_ = CreateKlipIcon(32);
+  large_icon_ = CreateREVOIcon(64);
+  small_icon_ = CreateREVOIcon(32);
   window_class.hIcon = large_icon_;
   window_class.hIconSm = small_icon_;
   window_class.hCursor = LoadCursorW(nullptr, IDC_ARROW);
@@ -177,7 +177,7 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   const int height = rectangle.bottom - rectangle.top;
   const int x = monitor.rcWork.left + (monitor.rcWork.right - monitor.rcWork.left - width) / 2;
   const int y = monitor.rcWork.top + (monitor.rcWork.bottom - monitor.rcWork.top - height) / 2;
-  window_ = CreateWindowW(kWindowClass, L"Klip", style, x, y, width, height, nullptr, nullptr,
+  window_ = CreateWindowW(kWindowClass, L"REVO", style, x, y, width, height, nullptr, nullptr,
                           instance, this);
   if (window_ == nullptr) {
     error = MakeWin32Error(ErrorComponent::kWindow, "create main window", GetLastError());
@@ -190,7 +190,7 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
   visible_ = show_command != SW_HIDE;
   ShowWindow(window_, show_command);
   UpdateWindow(window_);
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   taskbar_created_message_ = RegisterWindowMessageW(L"TaskbarCreated");
   UpdateTray(true);
 #endif
@@ -198,12 +198,12 @@ bool Win32Window::Create(HINSTANCE instance, int show_command, Error& error) {
 }
 
 void Win32Window::UpdateTray(bool add) noexcept {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   NOTIFYICONDATAW icon{};
   icon.cbSize = sizeof(icon); icon.hWnd = window_; icon.uID = 1;
   icon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
   icon.uCallbackMessage = WM_APP + 54; icon.hIcon = small_icon_;
-  wcscpy_s(icon.szTip, L"Klip / open or quit from the tray");
+  wcscpy_s(icon.szTip, L"REVO / open or quit from the tray");
   if (add) tray_added_ = Shell_NotifyIconW(NIM_ADD, &icon) != FALSE;
   else { Shell_NotifyIconW(NIM_DELETE, &icon); tray_added_ = false; }
 #else
@@ -279,11 +279,11 @@ LRESULT CALLBACK Win32Window::WindowProc(HWND window, UINT message, WPARAM w_par
 }
 
 LRESULT Win32Window::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param) {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
   if (taskbar_created_message_ && message == taskbar_created_message_) { UpdateTray(true); return 0; }
 #endif
   switch (message) {
-#if defined(KLIP_USE_LIBOBS)
+#if defined(REVO_USE_LIBOBS)
     case WM_CLOSE:
       if (tray_added_) { if (visible_) ToggleVisibility(); return 0; }
       break;
@@ -298,8 +298,8 @@ LRESULT Win32Window::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param)
       } else if (l_param == WM_RBUTTONUP) {
         POINT position{}; GetCursorPos(&position);
         HMENU menu = CreatePopupMenu();
-        AppendMenuW(menu, MF_STRING, 1, L"Open Klip");
-        AppendMenuW(menu, MF_STRING, 2, L"Quit Klip");
+        AppendMenuW(menu, MF_STRING, 1, L"Open REVO");
+        AppendMenuW(menu, MF_STRING, 2, L"Quit REVO");
         SetForegroundWindow(window_);
         const auto command = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY, position.x, position.y, 0, window_, nullptr);
         DestroyMenu(menu);
@@ -339,4 +339,4 @@ LRESULT Win32Window::HandleMessage(UINT message, WPARAM w_param, LPARAM l_param)
   return DefWindowProcW(window_, message, w_param, l_param);
 }
 
-}  // namespace klip
+}  // namespace revo

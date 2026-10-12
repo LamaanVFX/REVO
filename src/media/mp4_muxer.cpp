@@ -1,8 +1,8 @@
-#include "klip/media/mp4_muxer.h"
+#include "revo/media/mp4_muxer.h"
 
 #include <algorithm>
 
-#include "klip/core/path_text.h"
+#include "revo/core/path_text.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
@@ -10,7 +10,7 @@ extern "C" {
 #include <libavutil/mathematics.h>
 }
 
-namespace klip {
+namespace revo {
 namespace {
 
 constexpr AVRational kHundredNanoseconds{1, 10'000'000};
@@ -189,4 +189,4 @@ bool Mp4Muxer::CloseFile(Error& error) {
   return true;
 }
 
-}  // namespace klip
+}  // namespace revo
