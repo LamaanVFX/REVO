@@ -628,7 +628,7 @@ std::string SystemHardwareSummary() {
 std::string BuildDiagnostics(const ApplicationSnapshot& snapshot, const AppConfig& config,
                              bool include_private_details) {
   std::ostringstream report;
-  report << "Klip v3.0.3 diagnostics\n"
+  report << "REVO v3.0.3 diagnostics\n"
          << "Application build: Windows x64\n"
          << "Windows version: " << WindowsBuildSummary() << '\n'
          << "System: " << SystemHardwareSummary() << '\n'
@@ -2034,9 +2034,9 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
     ImGui::CloseCurrentPopup();
   }
   ImGui::SameLine();
-  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.46F, 0.18F, 0.82F, 1.0F});
-  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.57F, 0.25F, 0.95F, 1.0F});
-  ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.39F, 0.13F, 0.72F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_Button, ImVec4{0.0F, 0.42F, 0.48F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4{0.0F, 0.61F, 0.66F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4{0.0F, 0.33F, 0.38F, 1.0F});
   ImGui::BeginDisabled(busy);
   if (ImGui::Button("save & apply", {214.0F, 46.0F}) && commands.save_settings) {
     draft_.output_directory = ParsePath(clips_path_.data());
