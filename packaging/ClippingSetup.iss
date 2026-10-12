@@ -43,7 +43,7 @@ CloseApplications=yes
 RestartApplications=no
 AppMutex=Andrewkernel.Klip,Local\Klip.Libobs.Engine
 LicenseFile={#BuildRoot}\EULA.txt
-SetupIconFile=..\assets\klip.ico
+SetupIconFile={#BuildRoot}\revo.ico
 WizardImageStretch=no
 
 [Languages]
