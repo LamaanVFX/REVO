@@ -241,7 +241,10 @@ void RegisterGdiMonitorCapture() {
   obs_source_info info{};
   info.id = kSourceId;
   info.type = OBS_SOURCE_TYPE_INPUT;
-  info.output_flags = OBS_SOURCE_VIDEO | OBS_SOURCE_CUSTOM_DRAW;
+  // This source renders one texture via obs_source_draw(), which requires
+  // libobs's normal active effect. CUSTOM_DRAW disables that setup and can
+  // leave gs_get_effect() null, producing a black source.
+  info.output_flags = OBS_SOURCE_VIDEO;
   info.get_name = GdiMonitorGetName;
   info.create = GdiMonitorCreate;
   info.destroy = GdiMonitorDestroy;
