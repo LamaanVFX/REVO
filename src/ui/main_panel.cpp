@@ -73,23 +73,67 @@ void DrawAudioWindowSelector(const char* label, std::string& selected) {
 #endif
 
 
-constexpr ImVec4 kMuted{0.48F, 0.49F, 0.46F, 1.0F};
-constexpr ImVec4 kMint{0.30F, 0.80F, 0.49F, 1.0F};
+constexpr ImVec4 kMuted{0.48F, 0.65F, 0.69F, 1.0F};
+constexpr ImVec4 kMint{0.12F, 0.95F, 0.88F, 1.0F};
 constexpr ImVec4 kCoral{1.0F, 0.38F, 0.43F, 1.0F};
-constexpr ImVec4 kWarningText{0.92F, 0.68F, 0.27F, 1.0F};
-constexpr ImU32 kBackgroundTop = IM_COL32(9, 11, 10, 255);
-constexpr ImU32 kBackgroundBottom = IM_COL32(10, 9, 14, 255);
-constexpr ImU32 kPanel = IM_COL32(15, 17, 20, 246);
-constexpr ImU32 kPanelHover = IM_COL32(20, 22, 26, 255);
-constexpr ImU32 kPanelBorder = IM_COL32(52, 52, 58, 210);
-constexpr ImU32 kDivider = IM_COL32(239, 238, 232, 34);
-constexpr ImU32 kTextU32 = IM_COL32(239, 238, 232, 255);
-constexpr ImU32 kMutedU32 = IM_COL32(132, 134, 128, 255);
-constexpr ImU32 kPurple = IM_COL32(126, 57, 230, 255);
-constexpr ImU32 kPurpleBright = IM_COL32(183, 119, 255, 255);
-constexpr ImU32 kGreen = IM_COL32(76, 205, 125, 255);
-constexpr ImU32 kWarning = IM_COL32(236, 173, 70, 255);
+constexpr ImVec4 kWarningText{0.97F, 0.72F, 0.27F, 1.0F};
+constexpr ImU32 kBackgroundTop = IM_COL32(3, 10, 14, 255);
+constexpr ImU32 kBackgroundBottom = IM_COL32(4, 9, 13, 255);
+constexpr ImU32 kPanel = IM_COL32(7, 18, 23, 246);
+constexpr ImU32 kPanelHover = IM_COL32(10, 30, 37, 255);
+constexpr ImU32 kPanelBorder = IM_COL32(25, 69, 77, 210);
+constexpr ImU32 kDivider = IM_COL32(30, 221, 226, 32);
+constexpr ImU32 kTextU32 = IM_COL32(235, 249, 250, 255);
+constexpr ImU32 kMutedU32 = IM_COL32(132, 164, 171, 255);
+constexpr ImU32 kPurple = IM_COL32(0, 166, 182, 255);
+constexpr ImU32 kPurpleBright = IM_COL32(24, 229, 234, 255);
+constexpr ImU32 kGreen = IM_COL32(22, 223, 199, 255);
+constexpr ImU32 kWarning = IM_COL32(250, 176, 65, 255);
 constexpr ImU32 kRed = IM_COL32(255, 97, 110, 255);
+constexpr float kMinGainDb = -60.0F;
+constexpr float kMaxGainDb = 6.0F;
+
+float GainToDb(float gain) {
+  if (!std::isfinite(gain) || gain <= 0.001F) return kMinGainDb;
+  return std::clamp(20.0F * std::log10(gain), kMinGainDb, kMaxGainDb);
+}
+
+float DbToGain(float db) {
+  if (!std::isfinite(db) || db <= kMinGainDb) return 0.0F;
+  return std::clamp(std::pow(10.0F, db / 20.0F), 0.0F, 2.0F);
+}
+
+float PeakToDb(float peak) {
+  if (!std::isfinite(peak) || peak <= 0.001F) return kMinGainDb;
+  return std::clamp(20.0F * std::log10(peak), kMinGainDb, 0.0F);
+}
+
+void DrawAudioMeter(ImDrawList* draw, ImFont* font, float x, float y, float peak) {
+  constexpr int segments = 18;
+  constexpr float step = 7.0F;
+  constexpr float bar_width = 4.5F;
+  constexpr float bar_height = 7.0F;
+  const float db = PeakToDb(peak);
+  char text[24]{};
+  if (db <= kMinGainDb)
+    std::snprintf(text, sizeof(text), "-60 dBFS");
+  else
+    std::snprintf(text, sizeof(text), "%.1f dBFS", db);
+  DrawText(draw, font, 9.0F, {x - 59.0F, y}, kMutedU32, text);
+  const float normalized = std::clamp((db - kMinGainDb) / (0.0F - kMinGainDb), 0.0F, 1.0F);
+  const int lit = static_cast<int>(std::lround(normalized * segments));
+  for (int segment = 0; segment < segments; ++segment) {
+    ImU32 color = IM_COL32(24, 47, 54, 255);
+    if (segment < lit) {
+      if (segment >= 15) color = kRed;
+      else if (segment >= 12) color = kWarning;
+      else color = kMint;
+    }
+    draw->AddRectFilled({x + segment * step, y + 20.0F},
+                        {x + segment * step + bar_width, y + 20.0F + bar_height},
+                        color, 1.0F);
+  }
+}
 
 const char* StatusText(CaptureStatus status) {
   switch (status) {
@@ -263,27 +307,30 @@ bool GainSlider(const char* id, ImVec2 position, float width, float& gain) {
   const bool hovered = ImGui::IsItemHovered();
   const bool active = ImGui::IsItemActive();
   bool changed = false;
+  float db = GainToDb(gain);
   if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
     const float normalized =
         std::clamp((ImGui::GetIO().MousePos.x - position.x) / width, 0.0F, 1.0F);
-    const float updated = normalized * 2.0F;
-    if (std::abs(updated - gain) > 0.001F) {
-      gain = updated;
+    const float updated_db = kMinGainDb + normalized * (kMaxGainDb - kMinGainDb);
+    const float updated_gain = DbToGain(updated_db);
+    if (std::abs(updated_gain - gain) > 0.001F) {
+      gain = updated_gain;
+      db = updated_db;
       changed = true;
     }
   }
   auto* draw = ImGui::GetWindowDrawList();
   const float track_y = position.y + height * 0.5F - 3.0F;
   draw->AddRectFilled({position.x, track_y}, {position.x + width, track_y + 6.0F},
-                      IM_COL32(35, 42, 52, 255), 3.0F);
-  const float progress = std::clamp(gain * 0.5F, 0.0F, 1.0F);
+                      IM_COL32(22, 42, 49, 255), 3.0F);
+  const float progress = std::clamp((db - kMinGainDb) / (kMaxGainDb - kMinGainDb), 0.0F, 1.0F);
   const float knob_x = position.x + width * progress;
   if (progress > 0.001F)
     draw->AddRectFilled({position.x, track_y}, {knob_x, track_y + 6.0F}, kPurpleBright, 3.0F);
   if (hovered || active)
-    draw->AddCircleFilled({knob_x, position.y + height * 0.5F}, 9.0F, IM_COL32(173, 88, 255, 45));
+    draw->AddCircleFilled({knob_x, position.y + height * 0.5F}, 9.0F, IM_COL32(0, 226, 234, 44));
   draw->AddCircleFilled({knob_x, position.y + height * 0.5F}, active ? 6.0F : 5.0F,
-                        IM_COL32(220, 185, 255, 255));
+                        IM_COL32(202, 252, 253, 255));
   return changed;
 }
 
@@ -296,7 +343,7 @@ bool PopupOption(const char* id, std::string_view label, bool selected) {
   auto* draw = ImGui::GetWindowDrawList();
   if (selected || hovered) {
     draw->AddRectFilled(position, {position.x + size.x, position.y + size.y},
-                        selected ? IM_COL32(102, 48, 178, 150) : IM_COL32(255, 255, 255, 10), 8.0F);
+                        selected ? IM_COL32(0, 155, 178, 150) : IM_COL32(255, 255, 255, 10), 8.0F);
   }
   draw->AddCircle({position.x + 20.0F, position.y + 21.0F}, 7.0F,
                   selected ? kPurpleBright : kMutedU32, 16, 1.5F);
@@ -769,9 +816,9 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   draw->AddRectFilledMultiColor(window_min, window_max, kBackgroundTop, kBackgroundTop,
                                 kBackgroundBottom, kBackgroundBottom);
   draw->AddCircleFilled({window_min.x + 185.0F, window_min.y + 85.0F}, 255.0F,
-                        IM_COL32(104, 48, 184, 14), 64);
+                        IM_COL32(0, 221, 230, 14), 64);
   draw->AddCircleFilled({window_max.x - 95.0F, window_min.y + 345.0F}, 300.0F,
-                        IM_COL32(100, 45, 175, 8), 64);
+                        IM_COL32(0, 192, 210, 8), 64);
   draw->AddRect(window_min, window_max, IM_COL32(54, 53, 60, 210), 10.0F, 0, 1.0F);
 
   auto* regular = UiFont(0);
@@ -963,8 +1010,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8.0F, 8.0F});
   ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, 10.0F);
   ImGui::PushStyleVar(ImGuiStyleVar_PopupBorderSize, 1.0F);
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.052F, 0.055F, 0.063F, 1.0F});
-  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4{0.29F, 0.23F, 0.36F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.018F, 0.052F, 0.064F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_Border, ImVec4{0.06F, 0.35F, 0.39F, 1.0F});
   if (ImGui::BeginPopup("capture-mode-popup", ImGuiWindowFlags_NoTitleBar)) {
     for (int option = 0; option < IM_ARRAYSIZE(modes); ++option) {
       ImGui::PushID(option);
@@ -1455,7 +1502,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 12.0F);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0F);
   ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4{0.01F, 0.01F, 0.02F, 0.76F});
-  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.047F, 0.047F, 0.059F, 1.0F});
+  ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4{0.018F, 0.052F, 0.064F, 1.0F});
   bool popup_open = true;
   if (!ImGui::BeginPopupModal(
           "settings###klip-settings-modal", &popup_open,
