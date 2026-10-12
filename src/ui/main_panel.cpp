@@ -107,38 +107,6 @@ float DbToGain(float db) {
   return std::clamp(std::pow(10.0F, db / 20.0F), 0.0F, 2.0F);
 }
 
-float PeakToDb(float peak) {
-  if (!std::isfinite(peak) || peak <= 0.001F) return kMinGainDb;
-  return std::clamp(20.0F * std::log10(peak), kMinGainDb, 0.0F);
-}
-
-void DrawAudioMeter(ImDrawList* draw, ImFont* font, float x, float y, float peak) {
-  constexpr int segments = 18;
-  constexpr float step = 7.0F;
-  constexpr float bar_width = 4.5F;
-  constexpr float bar_height = 7.0F;
-  const float db = PeakToDb(peak);
-  char text[24]{};
-  if (db <= kMinGainDb)
-    std::snprintf(text, sizeof(text), "-60 dBFS");
-  else
-    std::snprintf(text, sizeof(text), "%.1f dBFS", db);
-  DrawText(draw, font, 9.0F, {x - 59.0F, y}, kMutedU32, text);
-  const float normalized = std::clamp((db - kMinGainDb) / (0.0F - kMinGainDb), 0.0F, 1.0F);
-  const int lit = static_cast<int>(std::lround(normalized * segments));
-  for (int segment = 0; segment < segments; ++segment) {
-    ImU32 color = IM_COL32(24, 47, 54, 255);
-    if (segment < lit) {
-      if (segment >= 15) color = kRed;
-      else if (segment >= 12) color = kWarning;
-      else color = IM_COL32(31, 224, 198, 255);
-    }
-    draw->AddRectFilled({x + segment * step, y + 20.0F},
-                        {x + segment * step + bar_width, y + 20.0F + bar_height},
-                        color, 1.0F);
-  }
-}
-
 const char* StatusText(CaptureStatus status) {
   switch (status) {
     case CaptureStatus::kIdle:
@@ -855,11 +823,11 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   auto* number_font = UiFont(3);
   auto* label_font = UiFont(4);
 
-  // Permanent REVO navigation rail.
-  DrawLogo(draw, {window_min.x + 48.0F, window_min.y + 56.0F}, 1.25F);
-  DrawText(draw, title_font, 25.0F, {window_min.x + 83.0F, window_min.y + 39.0F},
+  // Compact navigation mark with explicit clearance from the REVO wordmark.
+  DrawLogo(draw, {window_min.x + 20.0F, window_min.y + 58.0F}, 0.72F);
+  DrawText(draw, title_font, 25.0F, {window_min.x + 71.0F, window_min.y + 39.0F},
            kTextU32, "REVO");
-  DrawText(draw, label_font, 9.0F, {window_min.x + 84.0F, window_min.y + 72.0F},
+  DrawText(draw, label_font, 9.0F, {window_min.x + 71.0F, window_min.y + 72.0F},
            kMutedU32, "CAPTURE / REPLAY");
   draw->AddLine({window_min.x + 20.0F, window_min.y + 111.0F},
                 {window_min.x + sidebar_width - 20.0F, window_min.y + 111.0F},
@@ -945,10 +913,10 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   // REVO hero banner, with restrained cyan linework echoing the brand mark.
   DrawText(draw, label_font, 10.0F, {content.x + 18.0F, window_min.y + 18.0F},
            kMutedU32, "C A P T U R E   T H E   M O M E N T");
-  DrawLogo(draw, {content.x + 28.0F, window_min.y + 67.0F}, 1.25F);
-  DrawText(draw, title_font, 54.0F, {content.x + 75.0F, window_min.y + 37.0F},
+  DrawLogo(draw, {content.x + 26.0F, window_min.y + 67.0F}, 0.95F);
+  DrawText(draw, title_font, 54.0F, {content.x + 82.0F, window_min.y + 37.0F},
            kTextU32, "REVO");
-  DrawText(draw, label_font, 10.0F, {content.x + 80.0F, window_min.y + 98.0F},
+  DrawText(draw, label_font, 10.0F, {content.x + 84.0F, window_min.y + 98.0F},
            kPurpleBright, "C L I P S   •   R E C O R D I N G S   •   R E P L A Y S");
 
   // Abstract contour lines in the hero keep the top panel polished without
@@ -1218,8 +1186,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "%.1f dB", GainToDb(desktop_gain));
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, audio_row_y + 18.0F}, kTextU32,
            desktop_gain_text);
-  const float meter_x = content.x + content_width - 208.0F;
-  DrawAudioMeter(draw, label_font, meter_x, audio_row_y + 2.0F, snapshot.desktop_audio_level);
   bool desktop_enabled = config.desktop_audio_enabled;
   if (Switch("##desktop-audio-toggle", {content.x + content_width - 70.0F, audio_row_y + 13.0F},
              desktop_enabled) &&
@@ -1255,8 +1221,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   const auto mic_label = Ellipsize(semibold, 12.0F, microphone_name, 166.0F);
   DrawText(draw, semibold, 12.0F, {content.x + 76.0F, microphone_y + 21.0F},
            microphone_enabled ? kTextU32 : kMutedU32, mic_label);
-  DrawProgress(draw, {content.x + 76.0F, microphone_y + 42.0F}, {164.0F, 3.0F},
-               snapshot.microphone_level, snapshot.microphone_active ? kGreen : kPanelBorder);
   float microphone_gain = static_cast<float>(config.microphone_audio_gain);
   if (GainSlider("##microphone-gain", {level_x, microphone_y + 15.0F}, gain_width,
                  microphone_gain) &&
@@ -1269,7 +1233,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
                 GainToDb(microphone_gain));
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, microphone_y + 18.0F},
            microphone_enabled ? kTextU32 : kMutedU32, microphone_gain_text);
-  DrawAudioMeter(draw, label_font, meter_x, microphone_y + 2.0F, snapshot.microphone_level);
   if (Switch("##microphone-toggle", {content.x + content_width - 70.0F, microphone_y + 13.0F},
              microphone_enabled) &&
       commands.set_microphone_enabled) {
@@ -1292,7 +1255,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%.1f dB", GainToDb(discord_gain));
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, discord_y + 18.0F},
            config.discord_audio_window.empty() ? kMutedU32 : kTextU32, discord_gain_text);
-  DrawAudioMeter(draw, label_font, meter_x, discord_y + 2.0F, snapshot.discord_audio_level);
   if (ImGui::IsItemHovered() && config.discord_audio_window.empty())
     ImGui::SetTooltip("Select Discord's executable in Settings > Audio to enable this source.");
 
@@ -1312,7 +1274,6 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   std::snprintf(music_gain_text, sizeof(music_gain_text), "%.1f dB", GainToDb(music_gain));
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, music_y + 18.0F},
            config.music_audio_window.empty() ? kMutedU32 : kTextU32, music_gain_text);
-  DrawAudioMeter(draw, label_font, meter_x, music_y + 2.0F, snapshot.music_audio_level);
   if (ImGui::IsItemHovered() && config.music_audio_window.empty())
     ImGui::SetTooltip("Select Spotify's executable in Settings > Audio to enable this source.");
 
@@ -1876,12 +1837,6 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         draft_.music_audio_gain = static_cast<double>(DbToGain(
             static_cast<float>(music_volume_db)));
 
-      ImGui::TextColored(kMuted, "game audio / live peak");
-      const ImVec2 game_meter_position = ImGui::GetCursorScreenPos();
-      DrawAudioMeter(ImGui::GetWindowDrawList(), UiFont(4),
-                     game_meter_position.x + 70.0F, game_meter_position.y + 1.0F,
-                     snapshot.game_audio_level);
-      ImGui::Dummy({220.0F, 32.0F});
 #if defined(KLIP_USE_LIBOBS)
       ImGui::TextWrapped("Track 1 mixes all Windows output, microphone, and Spotify; track 2 is microphone-only. Tracks 3–5 isolate game, Discord, and Spotify. Desktop audio follows the default Windows playback device, while Spotify is also routed into Track 1.");
       if (!draft_.excluded_audio_process.empty()) {
