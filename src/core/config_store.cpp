@@ -175,14 +175,30 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   }
   if (key == "hotkey_save_modifiers")
     return ParseInteger(value, config.hotkeys.save_modifiers);
+  if (key == "hotkey_save2_modifiers")
+    return ParseInteger(value, config.hotkeys.save2_modifiers);
+  if (key == "hotkey_save3_modifiers")
+    return ParseInteger(value, config.hotkeys.save3_modifiers);
   if (key == "hotkey_record_modifiers")
     return ParseInteger(value, config.hotkeys.record_modifiers);
+  if (key == "hotkey_record2_modifiers")
+    return ParseInteger(value, config.hotkeys.record2_modifiers);
+  if (key == "hotkey_record3_modifiers")
+    return ParseInteger(value, config.hotkeys.record3_modifiers);
   if (key == "hotkey_toggle_ui_modifiers")
     return ParseInteger(value, config.hotkeys.toggle_ui_modifiers);
   if (key == "hotkey_save_virtual_key")
     return ParseInteger(value, config.hotkeys.save_virtual_key);
+  if (key == "hotkey_save2_virtual_key")
+    return ParseInteger(value, config.hotkeys.save2_virtual_key);
+  if (key == "hotkey_save3_virtual_key")
+    return ParseInteger(value, config.hotkeys.save3_virtual_key);
   if (key == "hotkey_record_virtual_key")
     return ParseInteger(value, config.hotkeys.record_virtual_key);
+  if (key == "hotkey_record2_virtual_key")
+    return ParseInteger(value, config.hotkeys.record2_virtual_key);
+  if (key == "hotkey_record3_virtual_key")
+    return ParseInteger(value, config.hotkeys.record3_virtual_key);
   if (key == "hotkey_toggle_ui_virtual_key")
     return ParseInteger(value, config.hotkeys.toggle_ui_virtual_key);
   if (key == "output_directory") {
@@ -382,10 +398,18 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "static_overlay_height=" << config.static_overlay_height << '\n';
   output << "static_overlay_opacity=" << config.static_overlay_opacity << '\n';
   output << "hotkey_save_modifiers=" << config.hotkeys.save_modifiers << '\n';
+  output << "hotkey_save2_modifiers=" << config.hotkeys.save2_modifiers << '\n';
+  output << "hotkey_save3_modifiers=" << config.hotkeys.save3_modifiers << '\n';
   output << "hotkey_record_modifiers=" << config.hotkeys.record_modifiers << '\n';
+  output << "hotkey_record2_modifiers=" << config.hotkeys.record2_modifiers << '\n';
+  output << "hotkey_record3_modifiers=" << config.hotkeys.record3_modifiers << '\n';
   output << "hotkey_toggle_ui_modifiers=" << config.hotkeys.toggle_ui_modifiers << '\n';
   output << "hotkey_save_virtual_key=" << config.hotkeys.save_virtual_key << '\n';
+  output << "hotkey_save2_virtual_key=" << config.hotkeys.save2_virtual_key << '\n';
+  output << "hotkey_save3_virtual_key=" << config.hotkeys.save3_virtual_key << '\n';
   output << "hotkey_record_virtual_key=" << config.hotkeys.record_virtual_key << '\n';
+  output << "hotkey_record2_virtual_key=" << config.hotkeys.record2_virtual_key << '\n';
+  output << "hotkey_record3_virtual_key=" << config.hotkeys.record3_virtual_key << '\n';
   output << "hotkey_toggle_ui_virtual_key=" << config.hotkeys.toggle_ui_virtual_key << '\n';
   output << "capture_mode=" << ModeName(config.target_mode) << '\n';
   output << "scaling_mode=" << ScalingName(config.scaling_mode) << '\n';
