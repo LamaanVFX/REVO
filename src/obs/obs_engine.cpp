@@ -137,12 +137,12 @@ bool IsFullscreenWindow(HWND window) {
 
 bool IsIgnoredFullscreenExecutable(std::wstring_view exe) {
   // Avoid treating Windows chrome, desktop/shell windows, and REVO itself as games.
-  constexpr std::array<std::wstring_view, 15> ignored{
+  constexpr std::array<std::wstring_view, 16> ignored{
       L"explorer.exe", L"dwm.exe", L"sihost.exe", L"searchhost.exe",
       L"searchapp.exe", L"shellexperiencehost.exe", L"startmenuexperiencehost.exe",
       L"textinputhost.exe", L"applicationframehost.exe", L"lockapp.exe",
       L"taskmgr.exe", L"gamebar.exe", L"gamebarftserver.exe", L"widgets.exe",
-      L"revo.exe"};
+      L"revo.exe", L"cadence_scene.exe"};
   return std::find(ignored.begin(), ignored.end(), exe) != ignored.end();
 }
 
