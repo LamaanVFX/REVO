@@ -77,6 +77,8 @@ class ObsEngine {
   std::string pending_overlay_label_;
   std::chrono::steady_clock::time_point next_source_refresh_{};
   std::chrono::steady_clock::time_point next_game_detection_{};
+  std::chrono::steady_clock::time_point next_game_audio_retry_{};
+  bool game_audio_selector_resolved_ = false;
   std::filesystem::path clips_root_;
   std::filesystem::path recordings_root_;
   std::string active_game_;
