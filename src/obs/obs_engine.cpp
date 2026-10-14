@@ -1036,9 +1036,30 @@ void ObsEngine::Tick() {
     std::vector<std::string> executables;
     std::string detected_executable;
 
-    // Prefer the process owning the foreground window. Process enumeration
-    // order is arbitrary, so a background javaw.exe must not win over the
-    // Valorant/Fortnite window the user just opened.
+    HWND foreground_window = GetForegroundWindow();
+    DWORD foreground_pid = 0;
+    if (foreground_window) GetWindowThreadProcessId(foreground_window, &foreground_pid);
+
+    struct WindowProcessLists {
+      std::vector<DWORD> visible;
+      std::vector<DWORD> fullscreen;
+    } window_processes;
+    EnumWindows([](HWND hwnd, LPARAM parameter) -> BOOL {
+      if (!IsWindowVisible(hwnd)) return TRUE;
+      DWORD pid = 0;
+      GetWindowThreadProcessId(hwnd, &pid);
+      if (!pid) return TRUE;
+      auto& lists = *reinterpret_cast<WindowProcessLists*>(parameter);
+      if (std::find(lists.visible.begin(), lists.visible.end(), pid) == lists.visible.end())
+        lists.visible.push_back(pid);
+      if (IsFullscreenWindow(hwnd) &&
+          std::find(lists.fullscreen.begin(), lists.fullscreen.end(), pid) == lists.fullscreen.end())
+        lists.fullscreen.push_back(pid);
+      return TRUE;
+    }, reinterpret_cast<LPARAM>(&window_processes));
+
+    // Existing titles keep their familiar names. Unknown fullscreen apps use
+    // their executable's safe slug for the folder and filename prefix.
     const auto consider_process = [&](const PROCESSENTRY32W& process) {
       std::wstring exe = process.szExeFile;
       std::transform(exe.begin(), exe.end(), exe.begin(),
@@ -1111,18 +1132,24 @@ void ObsEngine::Tick() {
       } else if (exe == L"bf2042.exe") {
         set_profile("Battlefield 2042", "battlefield-2042", "battlefield-2042", {"bf2042.exe"});
       }
+
+      const bool fullscreen_process =
+          std::find(window_processes.fullscreen.begin(), window_processes.fullscreen.end(),
+                    process.th32ProcessID) != window_processes.fullscreen.end();
+      if (detected_game.empty() && fullscreen_process && !IsIgnoredFullscreenExecutable(exe)) {
+        const auto executable_path = std::filesystem::path(process.szExeFile);
+        const auto display_name = PathToUtf8(executable_path.stem());
+        const auto slug = MakeApplicationProfileSlug(PathToUtf8(executable_path.filename()));
+        set_profile(display_name.c_str(), slug.c_str(), slug.c_str(), {});
+      }
       return !detected_game.empty();
     };
 
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot != INVALID_HANDLE_VALUE) {
-      DWORD foreground_pid = 0;
-      if (const HWND foreground = GetForegroundWindow())
-        GetWindowThreadProcessId(foreground, &foreground_pid);
-
       PROCESSENTRY32W process{};
       process.dwSize = sizeof(process);
-      // Pass 1: resolve the foreground game's process first.
+      // Pass 1: resolve the foreground application's process before all others.
       if (foreground_pid && Process32FirstW(snapshot, &process)) {
         do {
           if (process.th32ProcessID == foreground_pid) {
@@ -1131,19 +1158,6 @@ void ObsEngine::Tick() {
           }
         } while (Process32NextW(snapshot, &process));
       }
-      // Always score all supported processes, even when the foreground PID
-      // belongs to a launcher process such as VALORANT.exe. The launcher can be
-      // foreground briefly while the actual game audio/window belongs to
-      // VALORANT-Win64-Shipping.exe; accepting the first match pins audio to a
-      // process with no capturable window.
-      std::vector<DWORD> visible_window_pids;
-      EnumWindows([](HWND hwnd, LPARAM parameter) -> BOOL {
-        if (!IsWindowVisible(hwnd)) return TRUE;
-        DWORD pid = 0;
-        GetWindowThreadProcessId(hwnd, &pid);
-        if (pid) reinterpret_cast<std::vector<DWORD>*>(parameter)->push_back(pid);
-        return TRUE;
-      }, reinterpret_cast<LPARAM>(&visible_window_pids));
 
       struct Candidate {
         PROCESSENTRY32W process{};
@@ -1157,11 +1171,15 @@ void ObsEngine::Tick() {
           std::transform(exe.begin(), exe.end(), exe.begin(),
                          [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
           int score = -1;
-          // Any detected javaw.exe/Minecraft process takes priority over
-          // other supported games so the HEVC-only Minecraft policy cannot be
-          // masked by another game left running in the background.
-          if (exe == L"javaw.exe") score = 240;
-          else if (exe == L"minecraft.windows.exe") score = 245;
+          const bool fullscreen_process =
+              std::find(window_processes.fullscreen.begin(), window_processes.fullscreen.end(),
+                        process.th32ProcessID) != window_processes.fullscreen.end();
+          // Minecraft remains a special profile, but a background Java process
+          // must not steal the active profile from another fullscreen application.
+          if (exe == L"javaw.exe")
+            score = (fullscreen_process || process.th32ProcessID == foreground_pid) ? 240 : 60;
+          else if (exe == L"minecraft.windows.exe")
+            score = (fullscreen_process || process.th32ProcessID == foreground_pid) ? 245 : 65;
           else if (exe == L"valorant.exe" || exe == L"fortnite.exe" ||
                    exe == L"playgtav.exe") score = 35; // Launcher processes.
           else if (exe == L"valorant-win64-shipping.exe" ||
@@ -1180,10 +1198,12 @@ void ObsEngine::Tick() {
                    (exe.starts_with(L"fivem_") &&
                     exe.find(L"gtaprocess.exe") != std::wstring::npos))
             score = 70;
+          else if (fullscreen_process && !IsIgnoredFullscreenExecutable(exe))
+            score = 90;  // Any previously unknown fullscreen app gets its own profile.
 
           const bool has_visible_window =
-              std::find(visible_window_pids.begin(), visible_window_pids.end(),
-                        process.th32ProcessID) != visible_window_pids.end();
+              std::find(window_processes.visible.begin(), window_processes.visible.end(),
+                        process.th32ProcessID) != window_processes.visible.end();
           if (score >= 0 && has_visible_window) score += 100;
           // Prefer the focused game itself, but do not let a launcher
           // outrank a visible game executable such as VALORANT-Win64-Shipping.exe.
