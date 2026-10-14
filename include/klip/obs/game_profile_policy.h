@@ -12,7 +12,8 @@ inline std::string MakeApplicationProfileSlug(std::string_view executable_name) 
   const auto separator = executable_name.find_last_of("/\\\\");
   if (separator != std::string_view::npos) executable_name.remove_prefix(separator + 1);
   const auto extension = executable_name.find_last_of('.');
-  if (extension != std::string_view::npos && extension > 0)
+  if (extension != std::string_view::npos &&
+      (extension > 0 || executable_name.find('.', extension + 1) == std::string_view::npos))
     executable_name = executable_name.substr(0, extension);
 
   std::string slug;
