@@ -22,6 +22,7 @@
 #include "klip/platform/dashboard_activity.h"
 #include "klip/obs/encoder_policy.h"
 #include "klip/obs/replay_policy.h"
+#include "klip/obs/game_profile_policy.h"
 
 namespace {
 
@@ -671,6 +672,10 @@ int main() {
   CHECK(klip::ObsNvencEncoderForGame("Minecraft") == "obs_nvenc_hevc_tex");
   CHECK(klip::ObsNvencEncoderForGame("Valorant") == "obs_nvenc_h264_tex");
   CHECK(klip::ObsNvencEncoderForGame("") == "obs_nvenc_h264_tex");
+  CHECK(klip::MakeApplicationProfileSlug("Brawlhalla.exe") == "brawlhalla");
+  CHECK(klip::MakeApplicationProfileSlug("My Cool Game-Win64.exe") == "my-cool-game-win64");
+  CHECK(klip::MakeApplicationProfileSlug("C:\\Games\\CON.exe") == "app-con");
+  CHECK(klip::MakeApplicationProfileSlug(".exe") == "application");
   CHECK(klip::DashboardWorkEnabled(true, false));
   CHECK(!klip::DashboardWorkEnabled(true, true));
   CHECK(!klip::DashboardWorkEnabled(false, false));
