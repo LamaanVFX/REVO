@@ -22,6 +22,7 @@
 
 #include "klip/core/path_text.h"
 #include "klip/obs/encoder_policy.h"
+#include "klip/obs/game_profile_policy.h"
 #include "klip/obs/gdi_monitor_capture.h"
 #include "klip/obs/replay_policy.h"
 
@@ -98,6 +99,48 @@ std::uint64_t ChoiceId(const std::string& value) {
   std::uint64_t hash = 14695981039346656037ULL;
   for (unsigned char c : value) hash = (hash ^ c) * 1099511628211ULL;
   return hash;
+}
+
+bool IsFullscreenWindow(HWND window) {
+  if (!window || !IsWindow(window) || !IsWindowVisible(window) || IsIconic(window) ||
+      window == GetDesktopWindow())
+    return false;
+  const auto extended_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+  if ((extended_style & WS_EX_TOOLWINDOW) != 0 || (extended_style & WS_EX_NOACTIVATE) != 0)
+    return false;
+
+  DWORD process_id = 0;
+  GetWindowThreadProcessId(window, &process_id);
+  if (process_id == 0 || process_id == GetCurrentProcessId()) return false;
+
+  RECT bounds{};
+  if (!GetWindowRect(window, &bounds)) return false;
+  const HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+  MONITORINFO info{};
+  info.cbSize = sizeof(info);
+  if (!GetMonitorInfoW(monitor, &info)) return false;
+
+  constexpr LONG kEdgeTolerance = 3;
+  const RECT& screen = info.rcMonitor;
+  return bounds.left >= screen.left - kEdgeTolerance &&
+         bounds.top >= screen.top - kEdgeTolerance &&
+         bounds.right <= screen.right + kEdgeTolerance &&
+         bounds.bottom <= screen.bottom + kEdgeTolerance &&
+         bounds.left <= screen.left + kEdgeTolerance &&
+         bounds.top <= screen.top + kEdgeTolerance &&
+         bounds.right >= screen.right - kEdgeTolerance &&
+         bounds.bottom >= screen.bottom - kEdgeTolerance;
+}
+
+bool IsIgnoredFullscreenExecutable(std::wstring_view exe) {
+  // Avoid treating Windows chrome, desktop/shell windows, and REVO itself as games.
+  constexpr std::array<std::wstring_view, 15> ignored{
+      L"explorer.exe", L"dwm.exe", L"sihost.exe", L"searchhost.exe",
+      L"searchapp.exe", L"shellexperiencehost.exe", L"startmenuexperiencehost.exe",
+      L"textinputhost.exe", L"applicationframehost.exe", L"lockapp.exe",
+      L"taskmgr.exe", L"gamebar.exe", L"gamebarftserver.exe", L"widgets.exe",
+      L"revo.exe"};
+  return std::find(ignored.begin(), ignored.end(), exe) != ignored.end();
 }
 
 bool ReserveOutputFilename(const std::filesystem::path& directory, const std::string& extension,
@@ -533,6 +576,7 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
                                      const std::string& window, std::uint32_t channel,
                                      std::uint32_t dedicated_mix) {
     if (window.empty()) {
+      if (std::string_view(name) == "REVO game audio") game_audio_selector_resolved_ = false;
       obs_set_output_source(channel, nullptr);
       if (source) obs_source_release(source);
       source = nullptr;
@@ -541,6 +585,7 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
     auto settings = MakeData();
     // Resolve stable executable selectors to the exact value exposed by WASAPI.
     std::string source_window = window;
+    bool selector_resolved = !window.starts_with("::");
     Properties process_properties(
         obs_get_source_properties("wasapi_process_output_capture"), obs_properties_destroy);
     auto* process_window = process_properties
@@ -555,10 +600,13 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
         if (last_colon != std::string_view::npos &&
             _stricmp(std::string(candidate + last_colon + 1).c_str(), desired_exe.c_str()) == 0) {
           source_window = candidate;
+          selector_resolved = true;
           break;
         }
       }
     }
+    if (std::string_view(name) == "REVO game audio")
+      game_audio_selector_resolved_ = selector_resolved;
     obs_data_set_string(settings.get(), "window", source_window.c_str());
     obs_data_set_int(settings.get(), "priority", 2);
     if (!source)
