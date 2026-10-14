@@ -120,7 +120,10 @@ bool IsFullscreenWindow(HWND window) {
   info.cbSize = sizeof(info);
   if (!GetMonitorInfoW(monitor, &info)) return false;
 
-  constexpr LONG kEdgeTolerance = 3;
+  // A slightly wider tolerance accommodates invisible resize borders on
+  // borderless/maximized windows without mistaking a normal taskbar-sized window
+  // for fullscreen (its bottom edge remains well above the monitor boundary).
+  constexpr LONG kEdgeTolerance = 16;
   const RECT& screen = info.rcMonitor;
   return bounds.left >= screen.left - kEdgeTolerance &&
          bounds.top >= screen.top - kEdgeTolerance &&
