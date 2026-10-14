@@ -1228,6 +1228,8 @@ void ObsEngine::Tick() {
       const std::string desired_audio_selector = "::" + detected_executable;
       if (config_.game_audio_window != desired_audio_selector) {
         config_.game_audio_window = desired_audio_selector;
+        game_audio_selector_resolved_ = false;
+        next_game_audio_retry_ = now_for_game;
         if (game_audio_) {
           obs_set_output_source(1, nullptr);
           if (game_audio_meter_) {
@@ -1238,9 +1240,21 @@ void ObsEngine::Tick() {
           obs_source_release(game_audio_);
           game_audio_ = nullptr;
         }
+      }
+
+      // WASAPI may not list a newly opened process until it starts producing
+      // audio. Retry the stable executable selector until the exact Track 3
+      // source appears instead of leaving the game audio bound to an old app.
+      if (!game_audio_selector_resolved_ && now_for_game >= next_game_audio_retry_) {
+        next_game_audio_retry_ = now_for_game + std::chrono::seconds(2);
         try {
           ConfigureAudio(config_);
-          logger_.Info("Automatic game audio selector switched to " + desired_audio_selector);
+          if (game_audio_selector_resolved_) {
+            logger_.Info("Automatic Track 3 game-audio selector resolved to " +
+                         desired_audio_selector);
+          } else {
+            logger_.Info("Waiting for WASAPI process audio session: " + desired_audio_selector);
+          }
         } catch (const std::exception& audio_exception) {
           logger_.Warning(std::string("Automatic game audio reconfiguration failed: ") +
                           audio_exception.what());
