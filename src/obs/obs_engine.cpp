@@ -1061,6 +1061,14 @@ void ObsEngine::Tick() {
     // Existing titles keep their familiar names. Unknown fullscreen apps use
     // their executable's safe slug for the folder and filename prefix.
     const auto consider_process = [&](const PROCESSENTRY32W& process) {
+      // Each candidate must completely replace the prior candidate's profile;
+      // otherwise a foreground known game could block a better-scoring fullscreen app.
+      detected_game.clear();
+      folder_name.clear();
+      filename_prefix.clear();
+      detected_executable.clear();
+      executables.clear();
+
       std::wstring exe = process.szExeFile;
       std::transform(exe.begin(), exe.end(), exe.begin(),
                      [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
