@@ -58,7 +58,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     const bool package_smoke_test = HasCommandLineFlag(command_line, L"--package-smoke-test");
 #if defined(KLIP_USE_LIBOBS) && defined(KLIP_ENABLE_TEST_HOOKS)
     const bool obs_background_benchmark = HasCommandLineFlag(command_line, L"--obs-background-benchmark");
-    if (obs_background_benchmark && GetEnvironmentVariableW(L"KLIP_DATA_ROOT", nullptr, 0) == 0) return 2;
+    const bool has_data_root = GetEnvironmentVariableW(L"REVO_DATA_ROOT", nullptr, 0) != 0 ||
+                               GetEnvironmentVariableW(L"KLIP_DATA_ROOT", nullptr, 0) != 0;
+    if (obs_background_benchmark && !has_data_root) return 2;
 #else
     constexpr bool obs_background_benchmark = false;
     // Diagnostic control is compiled out of ordinary shipping binaries.
@@ -145,11 +147,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     const bool settings_exist = std::filesystem::exists(user_paths.settings_file);
     std::string settings_diagnostic;
     if (!klip::LoadConfig(user_paths.settings_file, config, settings_diagnostic)) {
-      MessageBoxA(nullptr, settings_diagnostic.c_str(), "Klip settings warning",
+      MessageBoxA(nullptr, settings_diagnostic.c_str(), "REVO settings warning",
                   MB_OK | MB_ICONWARNING);
     } else if (!settings_exist &&
                !klip::SaveConfig(user_paths.settings_file, config, settings_diagnostic)) {
-      MessageBoxA(nullptr, settings_diagnostic.c_str(), "Klip settings warning",
+      MessageBoxA(nullptr, settings_diagnostic.c_str(), "REVO settings warning",
                   MB_OK | MB_ICONWARNING);
     }
 
@@ -294,7 +296,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
     if (!acceptance_test) {
       single_instance.Reset(CreateMutexW(nullptr, FALSE, L"Local\\Klip.Libobs.Engine"));
       if (single_instance.Get() && GetLastError() == ERROR_ALREADY_EXISTS) {
-        if (HWND existing = FindWindowW(L"KlipWindowClass", L"Klip")) PostMessageW(existing, WM_APP + 56, 0, 0);
+        if (HWND existing = FindWindowW(L"KlipWindowClass", L"REVO")) PostMessageW(existing, WM_APP + 56, 0, 0);
         return 0;
       }
     }
@@ -309,7 +311,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
                                 requested_feature_level, event_query_sync_smoke_test,
                                 runtime_encoder_fallback_smoke_test)) {
       if (!acceptance_test)
-        MessageBoxA(nullptr, error.ToString().c_str(), "Klip startup failed", MB_OK | MB_ICONERROR);
+        MessageBoxA(nullptr, error.ToString().c_str(), "REVO startup failed", MB_OK | MB_ICONERROR);
       return 1;
     }
     if (settings_apply_smoke_test) return application.RunSettingsAcceptanceTest();
@@ -350,10 +352,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR command_line, int show_
                                                       runtime_encoder_fallback_smoke_test)
                : application.Run();
   } catch (const std::exception& exception) {
-    MessageBoxA(nullptr, exception.what(), "Klip fatal error", MB_OK | MB_ICONERROR);
+    MessageBoxA(nullptr, exception.what(), "REVO fatal error", MB_OK | MB_ICONERROR);
     return 1;
   } catch (...) {
-    MessageBoxA(nullptr, "Unknown fatal error", "Klip fatal error", MB_OK | MB_ICONERROR);
+    MessageBoxA(nullptr, "Unknown REVO fatal error", "REVO fatal error", MB_OK | MB_ICONERROR);
     return 1;
   }
 }

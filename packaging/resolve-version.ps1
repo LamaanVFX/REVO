@@ -10,9 +10,9 @@ $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $cmakeText = Get-Content -LiteralPath (Join-Path $repositoryRoot "CMakeLists.txt") -Raw
 $cmakeMatch = [regex]::Match(
   $cmakeText,
-  'project\(Klip\s+VERSION\s+(?<version>\d+\.\d+\.\d+)\s+LANGUAGES')
+  'project\(REVO\s+VERSION\s+(?<version>\d+\.\d+\.\d+)\s+LANGUAGES')
 if (-not $cmakeMatch.Success) {
-  throw "Could not resolve Klip's semantic version from CMakeLists.txt."
+  throw "Could not resolve REVO's semantic version from CMakeLists.txt."
 }
 $version = $cmakeMatch.Groups["version"].Value
 

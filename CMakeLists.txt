@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
-project(Klip VERSION 2.0.1 LANGUAGES CXX)
+project(REVO VERSION 3.0.4 LANGUAGES CXX)
 
-option(KLIP_BUILD_TESTS "Build deterministic Klip core tests" ON)
+option(KLIP_BUILD_TESTS "Build deterministic REVO core tests" ON)
 option(KLIP_BUILD_APP "Build the Windows capture application" ON)
 option(KLIP_ENABLE_TEST_HOOKS "Enable test-only runtime fault injection" OFF)
 option(KLIP_USE_LIBOBS "Use OBS capture, encoding, audio and replay output" ON)
@@ -48,7 +48,7 @@ if(KLIP_BUILD_TESTS)
 endif()
 
 if(NOT WIN32 OR NOT KLIP_BUILD_APP)
-  message(STATUS "Klip application target disabled or unavailable; core tests remain available.")
+  message(STATUS "REVO application target disabled or unavailable; core tests remain available.")
   return()
 endif()
 
@@ -139,12 +139,25 @@ klip_project_warnings(klip_media)
 add_executable(klip_app WIN32
   src/app/application.cpp
   src/main.cpp)
-set(KLIP_ICON_RESOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/klip.ico")
-configure_file(packaging/klip.rc.in "${CMAKE_CURRENT_BINARY_DIR}/klip.rc" @ONLY)
-target_sources(klip_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/klip.rc")
-set_target_properties(klip_app PROPERTIES OUTPUT_NAME Klip)
+
+# The REVO ICO source is stored as base64 so the icon is reviewable in source
+# control. Decode it before compiling the Windows resource script.
+set(REVO_ICON_BASE64_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/revo.ico.base64")
+set(REVO_ICON_RESOURCE_PATH "${CMAKE_CURRENT_BINARY_DIR}/revo.ico")
+execute_process(
+  COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -Command
+    "$base64 = [System.IO.File]::ReadAllText('${REVO_ICON_BASE64_PATH}').Trim(); [System.IO.File]::WriteAllBytes('${REVO_ICON_RESOURCE_PATH}', [System.Convert]::FromBase64String($base64))"
+  RESULT_VARIABLE REVO_ICON_GENERATION_RESULT
+  ERROR_VARIABLE REVO_ICON_GENERATION_ERROR)
+if(NOT REVO_ICON_GENERATION_RESULT EQUAL 0 OR NOT EXISTS "${REVO_ICON_RESOURCE_PATH}")
+  message(FATAL_ERROR "Could not generate the REVO application icon: ${REVO_ICON_GENERATION_ERROR}")
+endif()
+configure_file(packaging/revo.rc.in "${CMAKE_CURRENT_BINARY_DIR}/revo.rc" @ONLY)
+target_sources(klip_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/revo.rc")
+set_target_properties(klip_app PROPERTIES OUTPUT_NAME REVO)
 if(KLIP_BUILD_TESTS)
   add_executable(klip_windows_tests tests/windows_tests.cpp)
+  target_sources(klip_windows_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/revo.rc")
   target_include_directories(klip_windows_tests PRIVATE "${FFMPEG_INCLUDE_DIR}")
   target_link_libraries(klip_windows_tests PRIVATE klip_media "${FFMPEG_AVCODEC_LIBRARY}"
     "${FFMPEG_AVFORMAT_LIBRARY}")

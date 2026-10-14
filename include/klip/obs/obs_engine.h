@@ -47,7 +47,8 @@ class ObsEngine {
   static void ReplaySaved(void* self, calldata* data) noexcept;
   static void ReplayStopped(void* self, calldata* data) noexcept;
   static void RecordingStopped(void* self, calldata* data) noexcept;
-  static void MeterUpdated(void* level, const float* magnitude, const float* peak, const float* input_peak) noexcept;
+  static void MeterUpdated(void* level, const float* magnitude, const float* peak,
+                           const float* input_peak) noexcept;
   bool ConfigureEncoder(Error& error);
   bool ConfigureOverlay(Error& error);
   void UpdateSceneLayout();
@@ -76,8 +77,12 @@ class ObsEngine {
   std::string pending_overlay_label_;
   std::chrono::steady_clock::time_point next_source_refresh_{};
   std::chrono::steady_clock::time_point next_game_detection_{};
+  std::chrono::steady_clock::time_point next_game_audio_retry_{};
+  bool game_audio_selector_resolved_ = false;
   std::filesystem::path clips_root_;
+  std::filesystem::path recordings_root_;
   std::string active_game_;
+  std::string active_game_filename_prefix_;
   std::chrono::steady_clock::time_point capture_started_{};
   obs_scene* scene_ = nullptr;
   obs_scene_item* capture_item_ = nullptr;
@@ -90,16 +95,18 @@ class ObsEngine {
   obs_source* discord_audio_ = nullptr;
   obs_source* music_audio_ = nullptr;
   obs_source* microphone_ = nullptr;
+  obs_volmeter* desktop_audio_meter_ = nullptr;
+  obs_volmeter* game_audio_meter_ = nullptr;
+  obs_volmeter* microphone_meter_ = nullptr;
+  std::atomic<float> desktop_audio_level_{0.0F};
+  std::atomic<float> game_audio_level_{0.0F};
+  std::atomic<float> microphone_level_{0.0F};
   obs_encoder* video_encoder_ = nullptr;
   obs_encoder* audio_encoder_ = nullptr;
   obs_encoder* game_encoder_ = nullptr;
   obs_encoder* microphone_encoder_ = nullptr;
   obs_encoder* discord_encoder_ = nullptr;
   obs_encoder* music_encoder_ = nullptr;
-  obs_volmeter* desktop_audio_meter_ = nullptr;
-  obs_volmeter* game_audio_meter_ = nullptr;
-  obs_volmeter* microphone_meter_ = nullptr;
-  std::atomic<float> desktop_audio_level_{0.0F}, game_audio_level_{0.0F}, microphone_level_{0.0F};
   obs_output* replay_ = nullptr;
   obs_output* recording_ = nullptr;
   std::vector<SourceChoice> games_, displays_, microphones_, overlay_windows_;

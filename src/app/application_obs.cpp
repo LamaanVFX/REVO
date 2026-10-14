@@ -53,7 +53,7 @@ bool KlipApplication::Initialize(HINSTANCE instance, int show, Error& error, boo
     error = Error{ErrorComponent::kApplication, "open log", "Could not open " + PathToUtf8(config_.log_path)};
     return false;
   }
-  logger_.Info("Klip libobs startup");
+  logger_.Info("REVO libobs startup");
   if (!window_.Create(instance, show, error) ||
       !graphics_.Initialize(window_.Handle(), error, vendor, feature_level) ||
       !imgui_.Initialize(window_.Handle(), graphics_.Device(), graphics_.Context(), error)) {
@@ -161,7 +161,7 @@ void KlipApplication::Shutdown() noexcept {
   imgui_.Shutdown();
   graphics_.Shutdown();
   window_.Destroy();
-  if (initialized) logger_.Info("Klip libobs shutdown complete");
+  if (initialized) logger_.Info("REVO shutdown complete");
   logger_.Close();
 }
 bool KlipApplication::StartMediaPipeline(const AppConfig& config, Error& error) {
@@ -174,13 +174,29 @@ void KlipApplication::UpdateRollingMetrics() { engine_.Tick(); }
 bool KlipApplication::StartRecording(Error& error) { return engine_.StartRecording(error); }
 
 void KlipApplication::HandleHotkey(int id) {
-  if (id == Hotkeys::kSaveClip) {
-    if (!engine_.SaveReplayClip()) state_.SetError(Error{ErrorComponent::kClipWriter, "save replay", "OBS replay is not ready, or the save queue is full"});
+  if (Hotkeys::IsSaveClip(id)) {
+    if (!engine_.SaveReplayClip()) {
+      state_.SetError(Error{ErrorComponent::kClipWriter, "save replay",
+                            "OBS replay is not ready, or the save queue is full"});
+    } else {
+      window_.ShowToast(L"CLIP SAVED");
+    }
     engine_.Tick();
-  } else if (id == Hotkeys::kToggleRecording) {
-    if (engine_.IsRecording()) engine_.StopRecording();
-    else { Error error; if (!StartRecording(error)) state_.SetError(error); }
-  } else if (id == Hotkeys::kToggleUi) window_.ToggleVisibility();
+  } else if (Hotkeys::IsToggleRecording(id)) {
+    if (engine_.IsRecording()) {
+      engine_.StopRecording();
+      window_.ShowToast(L"RECORDING STOPPED");
+    } else {
+      Error error;
+      if (!StartRecording(error)) {
+        state_.SetError(error);
+      } else {
+        window_.ShowToast(L"RECORDING STARTED");
+      }
+    }
+  } else if (id == Hotkeys::kToggleUi) {
+    window_.ToggleVisibility();
+  }
 }
 
 UiCommands KlipApplication::BuildUiCommands() {

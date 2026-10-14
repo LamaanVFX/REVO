@@ -116,7 +116,7 @@ try {
     Start-Sleep -Milliseconds 500
   }
   $buildName="build-obs-$Configuration" + $(if($BuildSuffix){"-$BuildSuffix"}else{''})
-  $exe=if($Executable){(Resolve-Path -LiteralPath $Executable).Path}else{Join-Path $repo "$buildName/bin/64bit/Klip.exe"}
+  $exe=if($Executable){(Resolve-Path -LiteralPath $Executable).Path}else{Join-Path $repo "$buildName/bin/64bit/REVO.exe"}
   $arguments=if($GlobalHotkeys){'--configured-capture-smoke-test --hotkey-input-smoke-test'}else{'--configured-capture-smoke-test'}
   if($SaveOnShutdown){$arguments='--configured-capture-smoke-test --obs-save-shutdown-smoke-test'}
   if($DestinationLoss){$arguments='--configured-capture-smoke-test --obs-save-failure-smoke-test'}

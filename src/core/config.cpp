@@ -1,6 +1,7 @@
 #include "klip/core/config.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <sstream>
 #include <unordered_set>
@@ -129,29 +130,30 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
     reject("encoder_preferences", "must contain at least one encoder");
   }
 
-  if ((config.hotkeys.save_modifiers & ~kAllowedHotkeyModifiers) != 0 ||
-      (config.hotkeys.record_modifiers & ~kAllowedHotkeyModifiers) != 0 ||
-      (config.hotkeys.toggle_ui_modifiers & ~kAllowedHotkeyModifiers) != 0) {
-    reject("hotkeys", "contains unsupported modifier flags");
+  const std::array<std::pair<unsigned int, unsigned int>, 7> shortcuts{{
+      {config.hotkeys.save_modifiers, config.hotkeys.save_virtual_key},
+      {config.hotkeys.save2_modifiers, config.hotkeys.save2_virtual_key},
+      {config.hotkeys.save3_modifiers, config.hotkeys.save3_virtual_key},
+      {config.hotkeys.record_modifiers, config.hotkeys.record_virtual_key},
+      {config.hotkeys.record2_modifiers, config.hotkeys.record2_virtual_key},
+      {config.hotkeys.record3_modifiers, config.hotkeys.record3_virtual_key},
+      {config.hotkeys.toggle_ui_modifiers, config.hotkeys.toggle_ui_virtual_key},
+  }};
+  for (const auto& [modifiers, key] : shortcuts) {
+    if ((modifiers & ~kAllowedHotkeyModifiers) != 0)
+      reject("hotkeys", "contains unsupported modifier flags");
+    if (key == 0 || key > 0xFE)
+      reject("hotkeys", "shortcut keys must be valid Windows virtual keys");
   }
-  if ((config.hotkeys.save_modifiers & kChordModifiers) == 0 ||
-      (config.hotkeys.record_modifiers & kChordModifiers) == 0 ||
-      (config.hotkeys.toggle_ui_modifiers & kChordModifiers) == 0) {
-    reject("hotkeys", "each shortcut must include Ctrl, Alt, Shift, or Windows");
-  }
-  if (config.hotkeys.save_virtual_key == 0 || config.hotkeys.save_virtual_key > 0xFE ||
-      config.hotkeys.record_virtual_key == 0 || config.hotkeys.record_virtual_key > 0xFE ||
-      config.hotkeys.toggle_ui_virtual_key == 0 ||
-      config.hotkeys.toggle_ui_virtual_key > 0xFE) {
-    reject("hotkeys", "shortcut keys must be valid Windows virtual keys");
-  }
-  if (SameHotkey(config.hotkeys.save_modifiers, config.hotkeys.save_virtual_key,
-                 config.hotkeys.record_modifiers, config.hotkeys.record_virtual_key) ||
-      SameHotkey(config.hotkeys.save_modifiers, config.hotkeys.save_virtual_key,
-                 config.hotkeys.toggle_ui_modifiers, config.hotkeys.toggle_ui_virtual_key) ||
-      SameHotkey(config.hotkeys.record_modifiers, config.hotkeys.record_virtual_key,
-                 config.hotkeys.toggle_ui_modifiers, config.hotkeys.toggle_ui_virtual_key)) {
-    reject("hotkeys", "clip, recording, and hide shortcuts must be different");
+  for (std::size_t left = 0; left < shortcuts.size(); ++left) {
+    for (std::size_t right = left + 1; right < shortcuts.size(); ++right) {
+      if (SameHotkey(shortcuts[left].first, shortcuts[left].second,
+                     shortcuts[right].first, shortcuts[right].second)) {
+        reject("hotkeys", "clip, recording, and hide shortcuts must be different");
+        left = shortcuts.size();
+        break;
+      }
+    }
   }
 
   std::unordered_set<std::string> encoders;

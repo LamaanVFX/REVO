@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify five audio streams and distinct active game/Discord/music tones."""
+"""Verify five audio streams for desktop+mic, mic, game, Discord, and Spotify."""
 import array
 import json
 import math
@@ -22,8 +22,8 @@ audio_streams = [s for s in probe["streams"] if s.get("codec_type") == "audio"]
 if len(audio_streams) != 5:
     raise SystemExit(f"expected 5 audio streams, found {len(audio_streams)}")
 expected_titles = [
-    "Klip desktop AAC", "Klip game AAC", "Klip microphone AAC",
-    "Klip Discord AAC", "Klip music AAC",
+    "REVO desktop AAC", "REVO microphone AAC", "REVO game AAC",
+    "REVO Discord AAC", "REVO Spotify AAC",
 ]
 for index, (stream, expected_title) in enumerate(zip(audio_streams, expected_titles)):
     actual_title = stream.get("tags", {}).get("title", "")
@@ -61,11 +61,11 @@ def tone_amplitude(stream_index, frequency):
     amplitudes.sort()
     return amplitudes[len(amplitudes) // 2]
 
-# Stream order follows OBS output track order: desktop, game, microphone, Discord, music.
-# CI has no physical microphone input, so the disabled microphone track is not signal-tested.
+# Stream order: desktop+mic, mic-only, game, Discord, Spotify.
+# CI has no physical microphone input, so the mic-only track is not signal-tested.
 required = {
     0: {440: 0.015, 660: 0.015, 880: 0.015},
-    1: {440: 0.025},
+    2: {440: 0.025},
     3: {660: 0.025},
     4: {880: 0.025},
 }
@@ -81,7 +81,7 @@ for stream, tones in required.items():
             )
 
 # Dedicated stems must not contain one another's tone at a comparable level.
-for stream, own_frequency in ((1, 440), (3, 660), (4, 880)):
+for stream, own_frequency in ((2, 440), (3, 660), (4, 880)):
     for other_frequency in ({440, 660, 880} - {own_frequency}):
         amplitude = tone_amplitude(stream, other_frequency)
         measurements[f"stream_{stream}_{other_frequency}Hz"] = round(amplitude, 4)

@@ -1,10 +1,10 @@
-# Klip 2.0 public beta (current patch 2.0.1)
+# REVO 3.0.4 public beta
 
-2.0.1 fixes memory-limited short replays with a duration-first default. See
+REVO 3.0.4 includes the product rebrand, single-page Settings view, per-monitor toast notifications, and Minecraft-only NVENC HEVC switching. See
 replay-duration-fix.md for decoded capture evidence and quality tradeoffs.
 
 This is a named new-engine edition, not an upgrade-order claim relative to the
-previous legacy 3.0.x builds. There is no automatic updater. Install the complete
+previous internal builds. There is no automatic updater. Install the complete
 new package; older shortcuts are handled by the root launcher. The legacy
 engine remains in source behind `KLIP_USE_LIBOBS=OFF`, but is not shipped.
 
@@ -17,11 +17,11 @@ LLVM/MinGW, CMake, Ninja, Windows SDK and ImGui, validating archive hashes.
 
 ```powershell
 & tools/bootstrap-validation.ps1
-& tools/build-obs.ps1 -Configuration Release -BuildSuffix release-201
-& tools/build-obs.ps1 -Configuration Debug -BuildSuffix release-201
-& tools/run-obs-test.ps1 -Mode game -BuildSuffix release-201 -ReplayDurationTest -NoiseScene -GlobalHotkeys -Name release-check-new
-& packaging/prepare-obs-sources.ps1 -Destination work/release-sources-2.0.1
-& packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-201 -SourcesDirectory work/release-sources-2.0.1
+& tools/build-obs.ps1 -Configuration Release -BuildSuffix release-304
+& tools/build-obs.ps1 -Configuration Debug -BuildSuffix release-304
+& tools/run-obs-test.ps1 -Mode game -BuildSuffix release-304 -ReplayDurationTest -NoiseScene -GlobalHotkeys -Name release-revo-check
+& packaging/prepare-obs-sources.ps1 -Destination work/release-sources-3.0.4
+& packaging/package-obs-win64.ps1 -BuildDirectory build-obs-Release-release-304 -SourcesDirectory work/release-sources-3.0.4
 ```
 
 Run from the unpacked source root. Use fresh evidence/output names; do not
@@ -30,7 +30,7 @@ in distributed builds. A benchmark build is separate and never distributed.
 
 ## Corresponding upstream sources
 
-The release's corresponding-sources ZIP contains Klip source/build scripts,
+The release's corresponding-sources ZIP contains REVO source/build scripts,
 official OBS 32.1.2 source, ImGui 1.92.8, upstream dependency source archives,
 and obs-deps build recipes/patches. `dependency-sources.json` records upstream
 URLs, revisions and SHA-256 hashes. OBS uses its official CMake/build scripts;
@@ -38,10 +38,10 @@ see its INSTALL, docs and CMakePresets.json. Its Windows dependency build
 recipes are obs-deps 2025-08-23 at
 `21e25b2b508598ce8239de9ecd68400e45559399`. Unpack the source archives when
 building those components and apply the recorded upstream recipe patches.
-Klip stages unmodified official OBS binary modules; its adapter builds an
+REVO stages unmodified official OBS binary modules; its adapter builds an
 import library from official exports for the pinned LLVM toolchain.
 
-Klip is GPL-3.0-or-later. OBS is GPL-2.0-or-later; its FFmpeg dependency build
+REVO is GPL-3.0-or-later. OBS is GPL-2.0-or-later; its FFmpeg dependency build
 enables GPL/version3. Component licenses retain their own terms. Shared LLVM
 runtime sources/build provenance are llvm-mingw 20260922 (Apache-2.0 with LLVM
 exceptions), not a modified LLVM fork. Windows/GPU drivers and the Microsoft
@@ -52,7 +52,7 @@ VC++ runtime are separately installed system prerequisites.
 Before publication, verify the exact packaged executable and portable ZIP,
 manifest/checksums, consecutive saves while recording, real hotkeys and decoded
 cadence/audio markers. Installer entry points must target the new engine, and
-the old EULA must not ship. Do not claim clean-machine/hardware-matrix tests
+the superseded proprietary EULA must not ship. Do not claim clean-machine/hardware-matrix tests
 that have not actually been performed. This is an unsigned public beta, not
 stable release certification; see gameplay-performance-results.md and
 libobs-results.md for measured results and remaining limitations. Never

@@ -22,6 +22,8 @@
 
 #include "klip/core/path_text.h"
 #include "klip/obs/encoder_policy.h"
+#include "klip/obs/game_profile_policy.h"
+#include "klip/obs/gdi_monitor_capture.h"
 #include "klip/obs/replay_policy.h"
 
 namespace klip {
@@ -33,7 +35,7 @@ Data MakeData() { return Data(obs_data_create(), obs_data_release); }
 std::filesystem::path RuntimeRoot() {
   std::wstring path(32768, L'\0');
   auto size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-  if (!size || size >= path.size()) throw std::runtime_error("Could not locate Klip runtime");
+  if (!size || size >= path.size()) throw std::runtime_error("Could not locate REVO runtime");
   path.resize(size);
   return std::filesystem::path(path).parent_path().parent_path().parent_path();
 }
@@ -99,6 +101,51 @@ std::uint64_t ChoiceId(const std::string& value) {
   return hash;
 }
 
+bool IsFullscreenWindow(HWND window) {
+  if (!window || !IsWindow(window) || !IsWindowVisible(window) || IsIconic(window) ||
+      window == GetDesktopWindow())
+    return false;
+  const auto extended_style = GetWindowLongPtrW(window, GWL_EXSTYLE);
+  if ((extended_style & WS_EX_TOOLWINDOW) != 0 || (extended_style & WS_EX_NOACTIVATE) != 0)
+    return false;
+
+  DWORD process_id = 0;
+  GetWindowThreadProcessId(window, &process_id);
+  if (process_id == 0 || process_id == GetCurrentProcessId()) return false;
+
+  RECT bounds{};
+  if (!GetWindowRect(window, &bounds)) return false;
+  const HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+  MONITORINFO info{};
+  info.cbSize = sizeof(info);
+  if (!GetMonitorInfoW(monitor, &info)) return false;
+
+  // A slightly wider tolerance accommodates invisible resize borders on
+  // borderless/maximized windows without mistaking a normal taskbar-sized window
+  // for fullscreen (its bottom edge remains well above the monitor boundary).
+  constexpr LONG kEdgeTolerance = 16;
+  const RECT& screen = info.rcMonitor;
+  return bounds.left >= screen.left - kEdgeTolerance &&
+         bounds.top >= screen.top - kEdgeTolerance &&
+         bounds.right <= screen.right + kEdgeTolerance &&
+         bounds.bottom <= screen.bottom + kEdgeTolerance &&
+         bounds.left <= screen.left + kEdgeTolerance &&
+         bounds.top <= screen.top + kEdgeTolerance &&
+         bounds.right >= screen.right - kEdgeTolerance &&
+         bounds.bottom >= screen.bottom - kEdgeTolerance;
+}
+
+bool IsIgnoredFullscreenExecutable(std::wstring_view exe) {
+  // Avoid treating Windows chrome, desktop/shell windows, and REVO itself as games.
+  constexpr std::array<std::wstring_view, 16> ignored{
+      L"explorer.exe", L"dwm.exe", L"sihost.exe", L"searchhost.exe",
+      L"searchapp.exe", L"shellexperiencehost.exe", L"startmenuexperiencehost.exe",
+      L"textinputhost.exe", L"applicationframehost.exe", L"lockapp.exe",
+      L"taskmgr.exe", L"gamebar.exe", L"gamebarftserver.exe", L"widgets.exe",
+      L"revo.exe", L"cadence_scene.exe"};
+  return std::find(ignored.begin(), ignored.end(), exe) != ignored.end();
+}
+
 bool ReserveOutputFilename(const std::filesystem::path& directory, const std::string& extension,
                            const std::string& pattern, OutputReservation& reservation,
                            std::string& format, Error& error,
@@ -130,11 +177,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   Shutdown();
   config_ = config;
   config_.obs_separate_audio_tracks = true;
-  // Display capture must not silently select DXGI: this build defaults to
-  // Windows Graphics Capture, and a failed WGC session is reported rather than
-  // switching to a different backend behind the user's back.
-  if (config_.target_mode == CaptureTargetMode::kDisplay)
-    config_.obs_display_method = 2;
+  // Display capture is provided by REVO's GDI/BitBlt source to avoid the WGC border.
   // Start with the non-Minecraft profile; detection upgrades to Minecraft's
   // 240 FPS / 35 Mbps profile if javaw.exe is running.
   config_.target_fps = 60;
@@ -150,7 +193,9 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
         std::max(32.0 * 1024.0 * 1024.0, required_bytes));
   }
   clips_root_ = config.output_directory;
+  recordings_root_ = config.recording_directory;
   active_game_.clear();
+  active_game_filename_prefix_.clear();
   next_game_detection_ = std::chrono::steady_clock::now();
   window_ = window;
   shutting_down_ = false;
@@ -170,8 +215,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
   }
   try {
     if (!config.excluded_audio_process.empty()) {
-      throw std::runtime_error("Stock OBS desktop audio cannot exclude one application's process tree. "
-          "Clear the previous excluded-app setting under Audio to record all desktop audio; this change is not applied silently.");
+      logger_.Warning("Ignoring legacy per-application audio exclusion; desktop capture now records all Windows output.");
     }
     std::filesystem::create_directories(config.output_directory);
     std::filesystem::create_directories(config.recording_directory);
@@ -182,7 +226,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     initialized_ = true;
     if (std::string_view(obs_get_version_string()) != "32.1.2")
       throw std::runtime_error("Packaged libobs version differs from pinned 32.1.2");
-    obs_hotkey_enable_background_press(false);  // Klip uses RegisterHotKey, not OBS polling.
+    obs_hotkey_enable_background_press(false);  // REVO uses RegisterHotKey, not OBS polling.
     core_data_path_ = PathToUtf8(root / "data/libobs") + "/";
     obs_add_data_path(core_data_path_.c_str());
 
@@ -232,7 +276,8 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
         throw std::runtime_error(std::string("Required OBS module failed: ") + name);
     }
     obs_post_load_modules();
-    scene_ = obs_scene_create_private("Klip capture graph");
+    RegisterGdiMonitorCapture();
+    scene_ = obs_scene_create_private("REVO capture graph");
     if (!scene_) throw std::runtime_error("Could not create internal OBS scene");
     obs_set_output_source(0, obs_scene_get_source(scene_));
     RefreshSources();
@@ -242,7 +287,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     if (!ConfigureOverlay(error)) { Shutdown(); return false; }
 
     native_resolution_pending_ = !config.output_width || !config.output_height;
-    ConfigureAudio(config);
+    ConfigureAudio(config_);
     if (!ConfigureEncoder(error) || !StartReplayBuffer(error)) { Shutdown(); return false; }
     logger_.Info("LIBOBS ENGINE READY version=" + std::string(obs_get_version_string()) +
                  " resolution=" + std::to_string(video.output_width) + "x" + std::to_string(video.output_height) +
@@ -336,17 +381,11 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     return false;
   }
   auto settings = MakeData();
-  const char* type = mode == CaptureTargetMode::kDisplay ? "monitor_capture" : "game_capture";
-  if (mode == CaptureTargetMode::kDisplay) {
+  const bool display_capture = mode == CaptureTargetMode::kDisplay;
+  const char* type = display_capture ? "klip_gdi_monitor_capture" : "game_capture";
+  if (display_capture) {
     if (!selected) { error = Error{ErrorComponent::kCapture, "select display", "OBS found no displays"}; return false; }
     obs_data_set_string(settings.get(), "monitor_id", selected->value.c_str());
-    Properties properties(obs_get_source_properties(type), obs_properties_destroy);
-    auto* method = properties ? obs_properties_get(properties.get(), "method") : nullptr;
-    bool supported = false;
-    if (method) for (std::size_t i = 0; i < obs_property_list_item_count(method); ++i)
-      if (!obs_property_list_item_disabled(method, i) && obs_property_list_item_int(method, i) == config_.obs_display_method) supported = true;
-    if (!supported) { error = Error{ErrorComponent::kCapture, "select display method", "The selected OBS display method is unsupported"}; return false; }
-    obs_data_set_int(settings.get(), "method", config_.obs_display_method);
     obs_data_set_bool(settings.get(), "capture_cursor", config_.capture_cursor);
   } else {
     pending_game_label_ = !selected && !label.empty() ? label : "";
@@ -359,7 +398,7 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
     obs_data_set_bool(settings.get(), "capture_audio", false); // Desktop audio is captured once.
     obs_data_set_bool(settings.get(), "anti_cheat_hook", true); // Official OBS compatibility mode only.
   }
-  auto* next = obs_source_create(type, "Klip gameplay", settings.get(), nullptr);
+  auto* next = obs_source_create(type, display_capture ? "REVO display (GDI)" : "REVO gameplay", settings.get(), nullptr);
   if (!next) { error = Error{ErrorComponent::kCapture, "create OBS source", std::string(type) + " creation failed"}; return false; }
   if (capture_item_) obs_sceneitem_remove(capture_item_);
   if (capture_) obs_source_release(capture_);
@@ -421,7 +460,7 @@ bool ObsEngine::ConfigureOverlay(Error& error) {
     obs_data_set_bool(settings.get(), "client_area", true);
     obs_data_set_bool(settings.get(), "capture_audio", false);
   }
-  overlay_ = obs_source_create_private(type, "Klip overlay", settings.get());
+  overlay_ = obs_source_create_private(type, "REVO overlay", settings.get());
   if (!overlay_) { error = Error{ErrorComponent::kCapture, "create OBS overlay", "OBS overlay source creation failed"}; return false; }
   if (config_.static_overlay_enabled && !obs_source_get_width(overlay_)) {
     error = Error{ErrorComponent::kCapture, "decode static overlay", "OBS could not decode the selected image"}; return false;
@@ -437,7 +476,7 @@ bool ObsEngine::ConfigureOverlay(Error& error) {
     }
     auto filter_settings = MakeData();
     obs_data_set_double(filter_settings.get(), "opacity", config_.static_overlay_opacity);
-    auto* filter = obs_source_create_private("color_filter_v2", "Klip overlay opacity", filter_settings.get());
+    auto* filter = obs_source_create_private("color_filter_v2", "REVO overlay opacity", filter_settings.get());
     if (!filter) { error = Error{ErrorComponent::kCapture, "create overlay opacity", "OBS opacity filter creation failed"}; return false; }
     obs_source_filter_add(overlay_, filter);
     obs_source_release(filter);  // The source now owns the filter reference.
@@ -477,20 +516,22 @@ void ObsEngine::UpdateSceneLayout() {
 
 void ObsEngine::ConfigureAudio(const AppConfig& config) {
   if (!initialized_) return;
-  auto configure = [&](obs_source_t*& source, obs_volmeter_t*& meter, std::atomic<float>& level,
-                       bool enabled, const char* type, const char* name,
-                       std::uint32_t channel, const std::string& device, float gain, std::uint32_t mixers) {
+  auto configure = [&](obs_source_t*& source, obs_volmeter_t*& meter,
+                       std::atomic<float>& level, bool enabled, const char* type,
+                       const char* name, std::uint32_t channel, const std::string& device,
+                       float gain, std::uint32_t mixers) {
     if (!enabled) {
       obs_set_output_source(channel, nullptr);
       if (meter) { obs_volmeter_destroy(meter); meter = nullptr; }
       if (source) obs_source_release(source);
       source = nullptr;
-      level = 0.0F;
+      level.store(0.0F, std::memory_order_relaxed);
       return;
     }
     auto settings = MakeData();
     obs_data_set_string(settings.get(), "device_id", device.c_str());
-    obs_data_set_bool(settings.get(), "use_device_timing", std::string_view(type) == "wasapi_output_capture");
+    obs_data_set_bool(settings.get(), "use_device_timing",
+                      std::string_view(type) == "wasapi_output_capture");
     if (!source) source = obs_source_create(type, name, settings.get(), nullptr);
     else obs_source_update(source, settings.get());
     if (source) {
@@ -499,39 +540,57 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
       obs_set_output_source(channel, source);
       if (!meter && dashboard_active_) {
         meter = obs_volmeter_create(OBS_FADER_LOG);
-        if (meter) { obs_volmeter_add_callback(meter, MeterUpdated, &level); obs_volmeter_attach_source(meter, source); }
+        if (meter) {
+          obs_volmeter_add_callback(meter, MeterUpdated, &level);
+          obs_volmeter_attach_source(meter, source);
+        }
       }
+    } else {
+      level.store(0.0F, std::memory_order_relaxed);
     }
   };
   std::string device = "default";
   bool microphone_available = config.preferred_microphone_name.empty();
-  for (const auto& choice : microphones_) if (choice.label == config.preferred_microphone_name) {device = choice.value; microphone_available = true;}
-  if (config.microphone_enabled && !microphone_available) {
-    const Error error{ErrorComponent::kAudio, "select microphone", "The configured microphone is disconnected. Choose an available device.", {}, {}, config.preferred_microphone_name};
-    state_.SetError(error); logger_.ErrorMessage(error);
+  for (const auto& choice : microphones_) {
+    if (choice.label == config.preferred_microphone_name) {
+      device = choice.value;
+      microphone_available = true;
+    }
   }
+  if (config.microphone_enabled && !microphone_available) {
+    const Error error{ErrorComponent::kAudio, "select microphone",
+                      "The configured microphone is disconnected. Choose an available device.", {}, {},
+                      config.preferred_microphone_name};
+    state_.SetError(error);
+    logger_.ErrorMessage(error);
+  }
+
+  // WASAPI endpoint loopback captures the complete default Windows output mix:
+  // browsers, games, media players, and all other system sounds.
   configure(desktop_audio_, desktop_audio_meter_, desktop_audio_level_,
             config.obs_separate_audio_tracks && config.desktop_audio_enabled,
-            "wasapi_output_capture", "Klip desktop audio", 5, "default",
+            "wasapi_output_capture", "REVO desktop audio", 5, "default",
             static_cast<float>(config.desktop_audio_gain), 1U);
-  const auto configure_process = [&](obs_source_t*& source, const char* name, const std::string& window,
-                                     std::uint32_t channel, std::uint32_t dedicated_mix) {
+  if (config.obs_separate_audio_tracks && config.desktop_audio_enabled && desktop_audio_) {
+    logger_.Info("Desktop audio captures the default Windows render endpoint (all system output)");
+  }
+
+  const auto configure_process = [&](obs_source_t*& source, const char* name,
+                                     const std::string& window, std::uint32_t channel,
+                                     std::uint32_t dedicated_mix) {
     if (window.empty()) {
+      if (std::string_view(name) == "REVO game audio") game_audio_selector_resolved_ = false;
       obs_set_output_source(channel, nullptr);
       if (source) obs_source_release(source);
       source = nullptr;
       return;
     }
     auto settings = MakeData();
-    // Resolve the stable executable selector to the exact value exposed by
-    // the installed WASAPI process-capture source when that process is listed.
-    // This avoids passing our UI shorthand directly to a source expecting its
-    // serialized window selector, while retaining the executable fallback for
-    // processes that appear a moment later.
+    // Resolve stable executable selectors to the exact value exposed by WASAPI.
     std::string source_window = window;
+    bool selector_resolved = !window.starts_with("::");
     Properties process_properties(
-        obs_get_source_properties("wasapi_process_output_capture"),
-        obs_properties_destroy);
+        obs_get_source_properties("wasapi_process_output_capture"), obs_properties_destroy);
     auto* process_window = process_properties
         ? obs_properties_get(process_properties.get(), "window") : nullptr;
     if (process_window && window.starts_with("::")) {
@@ -544,37 +603,56 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
         if (last_colon != std::string_view::npos &&
             _stricmp(std::string(candidate + last_colon + 1).c_str(), desired_exe.c_str()) == 0) {
           source_window = candidate;
+          selector_resolved = true;
           break;
         }
       }
     }
+    if (std::string_view(name) == "REVO game audio")
+      game_audio_selector_resolved_ = selector_resolved;
     obs_data_set_string(settings.get(), "window", source_window.c_str());
     obs_data_set_int(settings.get(), "priority", 2);
-    if (!source) source = obs_source_create("wasapi_process_output_capture", name, settings.get(), nullptr);
-    else obs_source_update(source, settings.get());
-    if (!source) throw std::runtime_error(std::string("OBS application-audio capture is unavailable for ") + name);
-    obs_source_set_audio_mixers(source, config.obs_separate_audio_tracks ? dedicated_mix : 1U);
-    const float gain = std::string_view(name) == "Klip Discord audio"
+    if (!source)
+      source = obs_source_create("wasapi_process_output_capture", name, settings.get(), nullptr);
+    else
+      obs_source_update(source, settings.get());
+    if (!source)
+      throw std::runtime_error(std::string("OBS application-audio capture is unavailable for ") + name);
+
+    // Spotify is part of the composite desktop+mic mix (Track 1) while also
+    // retaining its isolated stem (Track 5).
+    const bool spotify_source = std::string_view(name) == "REVO Spotify audio";
+    const auto source_mixers = config.obs_separate_audio_tracks
+        ? (dedicated_mix | (spotify_source ? 1U : 0U))
+        : 1U;
+    obs_source_set_audio_mixers(source, source_mixers);
+    const float gain = std::string_view(name) == "REVO Discord audio"
                            ? static_cast<float>(config.discord_audio_gain)
-                           : std::string_view(name) == "Klip music audio"
-                                 ? static_cast<float>(config.music_audio_gain)
-                                 : static_cast<float>(config.game_audio_gain);
+                           : spotify_source ? static_cast<float>(config.music_audio_gain)
+                                            : static_cast<float>(config.game_audio_gain);
     obs_source_set_volume(source, gain);
     obs_set_output_source(channel, source);
   };
-  configure_process(game_audio_, "Klip game audio", config.game_audio_window, 1, 1U << 1);
-  configure(microphone_, microphone_meter_, microphone_level_, config.microphone_enabled && microphone_available,
-            "wasapi_input_capture", "Klip microphone", 2, device,
-            static_cast<float>(config.microphone_audio_gain), config.obs_separate_audio_tracks ? (1U << 2) : 1U);
-  configure_process(discord_audio_, "Klip Discord audio", config.discord_audio_window, 3, 1U << 3);
-  configure_process(music_audio_, "Klip music audio", config.music_audio_window, 4, 1U << 4);
+
+  configure_process(game_audio_, "REVO game audio", config.game_audio_window, 1, 1U << 2);
+  configure(microphone_, microphone_meter_, microphone_level_,
+            config.microphone_enabled && microphone_available,
+            "wasapi_input_capture", "REVO microphone", 2, device,
+            static_cast<float>(config.microphone_audio_gain),
+            config.obs_separate_audio_tracks ? (1U | (1U << 1)) : 1U);
+  configure_process(discord_audio_, "REVO Discord audio", config.discord_audio_window, 3, 1U << 3);
+  configure_process(music_audio_, "REVO Spotify audio", config.music_audio_window, 4, 1U << 4);
+
   config_.desktop_audio_enabled = config.desktop_audio_enabled;
   config_.microphone_enabled = config.microphone_enabled;
   config_.preferred_microphone_name = config.preferred_microphone_name;
   state_.SetMicrophoneEnabled(config.microphone_enabled);
-  state_.SetAudio(desktop_audio_ != nullptr, microphone_ != nullptr,
+  UpdateAudioMeters();
+  state_.SetAudio(desktop_audio_ && obs_source_audio_active(desktop_audio_),
+                  microphone_ && obs_source_audio_active(microphone_),
                   desktop_audio_level_.load(std::memory_order_relaxed),
                   microphone_level_.load(std::memory_order_relaxed));
+  state_.SetProcessAudioLevels(game_audio_level_.load(std::memory_order_relaxed), 0.0F, 0.0F);
 }
 
 void ObsEngine::SetDashboardActive(bool active) {
@@ -582,23 +660,24 @@ void ObsEngine::SetDashboardActive(bool active) {
   dashboard_active_ = active;
   if (initialized_) {
     UpdateAudioMeters();
-    logger_.Info(active ? "OBS dashboard active; audio metering resumed" :
-                         "OBS dashboard inactive; audio metering paused (capture/audio continue)");
+    logger_.Info(active ? "REVO dashboard active; audio metering resumed"
+                        : "REVO dashboard inactive; audio metering paused (capture/audio continue)");
   }
 }
 
 void ObsEngine::UpdateAudioMeters() {
-  auto update = [&](obs_source_t* source, obs_volmeter_t*& meter, std::atomic<float>& level) {
-    if (!dashboard_active_) {
-      // Destroy only the visualization object. WASAPI and encoder references
-      // remain untouched; capture volumes and tracks continue unchanged.
+  const auto update = [&](obs_source_t* source, obs_volmeter_t*& meter,
+                          std::atomic<float>& level) {
+    if (!dashboard_active_ || !source) {
       if (meter) { obs_volmeter_destroy(meter); meter = nullptr; }
       level.store(0.0F, std::memory_order_relaxed);
-    } else if (source && !meter) {
+    } else if (!meter) {
       meter = obs_volmeter_create(OBS_FADER_LOG);
       if (meter) {
         obs_volmeter_add_callback(meter, MeterUpdated, &level);
         obs_volmeter_attach_source(meter, source);
+      } else {
+        level.store(0.0F, std::memory_order_relaxed);
       }
     }
   };
@@ -612,32 +691,61 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     std::vector<std::string> available;
     const char* id = nullptr;
     for (std::size_t i = 0; obs_enum_encoder_types(i, &id); ++i) {
-      if (std::string_view(id) == "obs_nvenc_h264_tex" || std::string_view(id) == "h264_texture_amf" ||
-          std::string_view(id) == "obs_qsv11_v2" || std::string_view(id) == "obs_x264")
+      if (std::string_view(id) == kObsNvencH264EncoderId ||
+          std::string_view(id) == kObsNvencHevcEncoderId ||
+          std::string_view(id) == "h264_texture_amf" || std::string_view(id) == "obs_qsv11_v2" ||
+          std::string_view(id) == "obs_x264")
         available.emplace_back(id);
     }
     state_.SetAvailableEncoders(available);
+
+    // The game profile is the authoritative codec switch. Override a manually
+    // selected HEVC encoder outside Minecraft so normal clips and recordings
+    // remain H.264; when Minecraft is detected, use the native NVENC HEVC encoder.
+    const bool minecraft_profile = active_game_ == "Minecraft";
+    bool minecraft_hevc_unavailable = false;
     std::string selected = config_.obs_encoder_id;
-    if (selected == "auto") {
+    if (minecraft_profile) {
+      selected = std::string(kObsNvencHevcEncoderId);
+      if (std::find(available.begin(), available.end(), selected) == available.end()) {
+        minecraft_hevc_unavailable = true;
+        selected.clear();
+      }
+    } else if (selected == "auto" || selected == kObsNvencHevcEncoderId) {
+      selected.clear();
+    }
+
+    if (selected.empty() || selected == "auto") {
       for (const char* candidate : {"obs_nvenc_h264_tex", "h264_texture_amf", "obs_qsv11_v2", "obs_x264"}) {
-        if (std::find(available.begin(), available.end(), candidate) != available.end()) { selected = candidate; break; }
+        if (std::find(available.begin(), available.end(), candidate) != available.end()) {
+          selected = candidate;
+          break;
+        }
       }
     }
-    if (std::find(available.begin(), available.end(), selected) == available.end())
-      throw std::runtime_error("The selected OBS encoder is unavailable: " + selected);
+    if (selected.empty() || std::find(available.begin(), available.end(), selected) == available.end())
+      throw std::runtime_error(minecraft_hevc_unavailable
+          ? "Minecraft was detected, but OBS NVIDIA NVENC HEVC is unavailable; no H.264 fallback encoder is available"
+          : "The selected OBS encoder is unavailable: " + selected);
+
+    if (minecraft_hevc_unavailable) {
+      logger_.Warning("Minecraft detected but OBS NVENC HEVC is unavailable; explicitly falling back to H.264");
+    }
     Data settings(obs_encoder_defaults(selected.c_str()), obs_data_release);
     Properties props(obs_get_encoder_properties(selected.c_str()), obs_properties_destroy);
     if (!settings || !props) throw std::runtime_error("Could not inspect OBS encoder properties");
     const bool performance = config_.encoder_quality == EncoderQuality::kPerformance;
     const bool maximum = config_.encoder_quality == EncoderQuality::kQuality;
-    if (selected == "obs_nvenc_h264_tex") {
+    if (selected == kObsNvencH264EncoderId || selected == kObsNvencHevcEncoderId) {
       const auto policy = ObsNvencPolicyFor(config_.encoder_quality);
       SetList(props.get(), settings.get(), "rate_control", config_.obs_duration_priority ? "CBR" : "CQP");
       SetInt(props.get(), settings.get(), "cqp", config_.obs_cq);
       SetList(props.get(), settings.get(), "preset", policy.preset);
       SetList(props.get(), settings.get(), "tune", "hq");
       SetList(props.get(), settings.get(), "multipass", policy.multipass);
-      SetList(props.get(), settings.get(), "profile", "high");
+      // OBS NVENC HEVC uses the Main profile, not H.264's High profile.
+      SetList(props.get(), settings.get(), "profile",
+              selected == kObsNvencHevcEncoderId ? "main" : "high");
       SetInt(props.get(), settings.get(), "bf", 2);
       if (obs_properties_get(props.get(), "adaptive_quantization"))
         obs_data_set_bool(settings.get(), "adaptive_quantization", policy.adaptive_quantization);
@@ -669,28 +777,36 @@ bool ObsEngine::ConfigureEncoder(Error& error) {
     SetInt(props.get(), settings.get(), "keyint_sec", 2);
     logger_.Info("OBS encoder=" + selected + " settings=" + obs_data_get_json(settings.get()));
     std::ofstream(config_.log_path.parent_path() / "obs-encoder-settings.json") << obs_data_get_json(settings.get());
-    video_encoder_ = obs_video_encoder_create(selected.c_str(), "Klip shared video encoder", settings.get(), nullptr);
+    video_encoder_ = obs_video_encoder_create(selected.c_str(), "REVO shared video encoder", settings.get(), nullptr);
     if (!video_encoder_) throw std::runtime_error("OBS encoder creation failed: " + selected);
     obs_encoder_set_video(video_encoder_, obs_get_video());
     auto audio = MakeData();
     obs_data_set_int(audio.get(), "bitrate", config_.audio_bitrate / 1000);
-    audio_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip desktop AAC", audio.get(), 0, nullptr);
+    audio_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO desktop AAC", audio.get(), 0, nullptr);
     if (!audio_encoder_) throw std::runtime_error("OBS AAC encoder creation failed");
     obs_encoder_set_audio(audio_encoder_, obs_get_audio());
     if (config_.obs_separate_audio_tracks) {
-      game_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip game AAC", audio.get(), 1, nullptr);
-      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip microphone AAC", audio.get(), 2, nullptr);
-      discord_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip Discord AAC", audio.get(), 3, nullptr);
-      music_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "Klip music AAC", audio.get(), 4, nullptr);
-      if (!game_encoder_ || !microphone_encoder_ || !discord_encoder_ || !music_encoder_)
+      microphone_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO microphone AAC", audio.get(), 1, nullptr);
+      game_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO game AAC", audio.get(), 2, nullptr);
+      discord_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO Discord AAC", audio.get(), 3, nullptr);
+      music_encoder_ = obs_audio_encoder_create("ffmpeg_aac", "REVO Spotify AAC", audio.get(), 4, nullptr);
+      if (!microphone_encoder_ || !game_encoder_ || !discord_encoder_ || !music_encoder_)
         throw std::runtime_error("OBS five-track AAC encoder creation failed");
-      obs_encoder_set_audio(game_encoder_, obs_get_audio());
       obs_encoder_set_audio(microphone_encoder_, obs_get_audio());
+      obs_encoder_set_audio(game_encoder_, obs_get_audio());
       obs_encoder_set_audio(discord_encoder_, obs_get_audio());
       obs_encoder_set_audio(music_encoder_, obs_get_audio());
     }
     state_.SetEncoder(selected);
-    state_.SetEncoderStatus(selected == "obs_x264" ? "Software x264 selected; CPU encoding is active" : "OBS hardware encoder selected: " + selected);
+    if (minecraft_hevc_unavailable) {
+      state_.SetEncoderStatus("Minecraft detected; NVENC HEVC is unavailable, so H.264 is active");
+    } else if (selected == kObsNvencHevcEncoderId) {
+      state_.SetEncoderStatus("NVIDIA NVENC HEVC active for Minecraft; H.264 is used outside Minecraft");
+    } else if (selected == "obs_x264") {
+      state_.SetEncoderStatus("Software x264 selected; CPU encoding is active");
+    } else {
+      state_.SetEncoderStatus("OBS H.264 encoder selected: " + selected);
+    }
     return true;
   } catch (const std::exception& exception) {
     error = Error{ErrorComponent::kVideoEncoder, "configure OBS encoder", exception.what()};
@@ -706,12 +822,12 @@ bool ObsEngine::StartReplayBuffer(Error& error) {
   obs_data_set_bool(settings.get(), "allow_spaces", false);
   obs_data_set_int(settings.get(), "max_time_sec", ObsReplayRetentionSeconds(config_));
   obs_data_set_int(settings.get(), "max_size_mb", static_cast<long long>(config_.rolling_buffer_bytes / (1024 * 1024)));
-  replay_ = obs_output_create("replay_buffer", "Klip replay buffer", settings.get(), nullptr);
+  replay_ = obs_output_create("replay_buffer", "REVO replay buffer", settings.get(), nullptr);
   if (!replay_) { error = Error{ErrorComponent::kRollingBuffer, "create OBS replay", "replay_buffer output is unavailable"}; return false; }
   obs_output_set_video_encoder(replay_, video_encoder_);
   obs_output_set_audio_encoder(replay_, audio_encoder_, 0);
-  if (game_encoder_) obs_output_set_audio_encoder(replay_, game_encoder_, 1);
-  if (microphone_encoder_) obs_output_set_audio_encoder(replay_, microphone_encoder_, 2);
+  if (microphone_encoder_) obs_output_set_audio_encoder(replay_, microphone_encoder_, 1);
+  if (game_encoder_) obs_output_set_audio_encoder(replay_, game_encoder_, 2);
   if (discord_encoder_) obs_output_set_audio_encoder(replay_, discord_encoder_, 3);
   if (music_encoder_) obs_output_set_audio_encoder(replay_, music_encoder_, 4);
   signal_handler_connect(obs_output_get_signal_handler(replay_), "saved", ReplaySaved, this);
@@ -744,7 +860,7 @@ void ObsEngine::ReplayStopped(void* parameter, calldata* data) noexcept {
 
 bool ObsEngine::StartRecording(Error& error) {
   ProcessOutputSignals();
-  if (shutting_down_) { error = Error{ErrorComponent::kRecordingWriter, "start OBS recording", "Klip is shutting down"}; return false; }
+  if (shutting_down_) { error = Error{ErrorComponent::kRecordingWriter, "start OBS recording", "REVO is shutting down"}; return false; }
   if (!replay_ || !obs_output_active(replay_)) { error = Error{ErrorComponent::kRecordingWriter, "start OBS recording", "Replay encoder is not active"}; return false; }
   if (recording_ && obs_output_active(recording_)) return true;
   if (recording_) {
@@ -752,23 +868,26 @@ bool ObsEngine::StartRecording(Error& error) {
     ProcessOutputSignals();
     recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
   }
+  const std::string recording_pattern = active_game_filename_prefix_.empty()
+      ? "recording_%CCYY-%MM-%DD_%hh-%mm-%ss"
+      : active_game_filename_prefix_ + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
   std::string filename_format;
   if (!ReserveOutputFilename(config_.recording_directory, config_.output_container,
-                             "recording_%CCYY-%MM-%DD_%hh-%mm-%ss", recording_reservation_,
+                             recording_pattern, recording_reservation_,
                              filename_format, error,
                              ErrorComponent::kRecordingWriter)) return false;
   recording_path_ = recording_reservation_.Path();
   auto settings = MakeData();
   obs_data_set_string(settings.get(), "path", PathToUtf8(recording_path_).c_str());
-  recording_ = obs_output_create("ffmpeg_muxer", "Klip recording", settings.get(), nullptr);
+  recording_ = obs_output_create("ffmpeg_muxer", "REVO recording", settings.get(), nullptr);
   if (!recording_) {
     recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
     error = Error{ErrorComponent::kRecordingWriter, "create OBS recording", "ffmpeg_muxer output is unavailable"}; return false;
   }
   obs_output_set_video_encoder(recording_, video_encoder_);
   obs_output_set_audio_encoder(recording_, audio_encoder_, 0);
-  if (game_encoder_) obs_output_set_audio_encoder(recording_, game_encoder_, 1);
-  if (microphone_encoder_) obs_output_set_audio_encoder(recording_, microphone_encoder_, 2);
+  if (microphone_encoder_) obs_output_set_audio_encoder(recording_, microphone_encoder_, 1);
+  if (game_encoder_) obs_output_set_audio_encoder(recording_, game_encoder_, 2);
   if (discord_encoder_) obs_output_set_audio_encoder(recording_, discord_encoder_, 3);
   if (music_encoder_) obs_output_set_audio_encoder(recording_, music_encoder_, 4);
   signal_handler_connect(obs_output_get_signal_handler(recording_), "stop", RecordingStopped, this);
@@ -798,11 +917,16 @@ void ObsEngine::StopRecording() {
   }
 }
 bool ObsEngine::IsRecording() const { return recording_ && obs_output_active(recording_); }
-
-void ObsEngine::MeterUpdated(void* parameter, const float*, const float* peak, const float*) noexcept {
+void ObsEngine::MeterUpdated(void* parameter, const float*, const float* peak,
+                             const float*) noexcept {
   const float value = obs_db_to_mul(std::max(peak[0], peak[1]));
-  static_cast<std::atomic<float>*>(parameter)->store(std::isfinite(value) ? std::clamp(value, 0.0F, 1.0F) : 0.0F, std::memory_order_relaxed);
+  static_cast<std::atomic<float>*>(parameter)->store(
+      std::isfinite(value) ? std::clamp(value, 0.0F, 1.0F) : 0.0F,
+      std::memory_order_relaxed);
 }
+
+
+
 
 void ObsEngine::SetOutputError(obs_output* output, const char* operation, ErrorComponent component) {
   Error error{component, operation, OutputError(output)};
@@ -915,10 +1039,39 @@ void ObsEngine::Tick() {
     std::vector<std::string> executables;
     std::string detected_executable;
 
-    // Prefer the process owning the foreground window. Process enumeration
-    // order is arbitrary, so a background javaw.exe must not win over the
-    // Valorant/Fortnite window the user just opened.
+    HWND foreground_window = GetForegroundWindow();
+    DWORD foreground_pid = 0;
+    if (foreground_window) GetWindowThreadProcessId(foreground_window, &foreground_pid);
+
+    struct WindowProcessLists {
+      std::vector<DWORD> visible;
+      std::vector<DWORD> fullscreen;
+    } window_processes;
+    EnumWindows([](HWND hwnd, LPARAM parameter) -> BOOL {
+      if (!IsWindowVisible(hwnd)) return TRUE;
+      DWORD pid = 0;
+      GetWindowThreadProcessId(hwnd, &pid);
+      if (!pid) return TRUE;
+      auto& lists = *reinterpret_cast<WindowProcessLists*>(parameter);
+      if (std::find(lists.visible.begin(), lists.visible.end(), pid) == lists.visible.end())
+        lists.visible.push_back(pid);
+      if (IsFullscreenWindow(hwnd) &&
+          std::find(lists.fullscreen.begin(), lists.fullscreen.end(), pid) == lists.fullscreen.end())
+        lists.fullscreen.push_back(pid);
+      return TRUE;
+    }, reinterpret_cast<LPARAM>(&window_processes));
+
+    // Existing titles keep their familiar names. Unknown fullscreen apps use
+    // their executable's safe slug for the folder and filename prefix.
     const auto consider_process = [&](const PROCESSENTRY32W& process) {
+      // Each candidate must completely replace the prior candidate's profile;
+      // otherwise a foreground known game could block a better-scoring fullscreen app.
+      detected_game.clear();
+      folder_name.clear();
+      filename_prefix.clear();
+      detected_executable.clear();
+      executables.clear();
+
       std::wstring exe = process.szExeFile;
       std::transform(exe.begin(), exe.end(), exe.begin(),
                      [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
@@ -990,18 +1143,24 @@ void ObsEngine::Tick() {
       } else if (exe == L"bf2042.exe") {
         set_profile("Battlefield 2042", "battlefield-2042", "battlefield-2042", {"bf2042.exe"});
       }
+
+      const bool fullscreen_process =
+          std::find(window_processes.fullscreen.begin(), window_processes.fullscreen.end(),
+                    process.th32ProcessID) != window_processes.fullscreen.end();
+      if (detected_game.empty() && fullscreen_process && !IsIgnoredFullscreenExecutable(exe)) {
+        const auto executable_path = std::filesystem::path(process.szExeFile);
+        const auto display_name = PathToUtf8(executable_path.stem());
+        const auto slug = MakeApplicationProfileSlug(PathToUtf8(executable_path.filename()));
+        set_profile(display_name.c_str(), slug.c_str(), slug.c_str(), {});
+      }
       return !detected_game.empty();
     };
 
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot != INVALID_HANDLE_VALUE) {
-      DWORD foreground_pid = 0;
-      if (const HWND foreground = GetForegroundWindow())
-        GetWindowThreadProcessId(foreground, &foreground_pid);
-
       PROCESSENTRY32W process{};
       process.dwSize = sizeof(process);
-      // Pass 1: resolve the foreground game's process first.
+      // Pass 1: resolve the foreground application's process before all others.
       if (foreground_pid && Process32FirstW(snapshot, &process)) {
         do {
           if (process.th32ProcessID == foreground_pid) {
@@ -1010,19 +1169,6 @@ void ObsEngine::Tick() {
           }
         } while (Process32NextW(snapshot, &process));
       }
-      // Always score all supported processes, even when the foreground PID
-      // belongs to a launcher process such as VALORANT.exe. The launcher can be
-      // foreground briefly while the actual game audio/window belongs to
-      // VALORANT-Win64-Shipping.exe; accepting the first match pins audio to a
-      // process with no capturable window.
-      std::vector<DWORD> visible_window_pids;
-      EnumWindows([](HWND hwnd, LPARAM parameter) -> BOOL {
-        if (!IsWindowVisible(hwnd)) return TRUE;
-        DWORD pid = 0;
-        GetWindowThreadProcessId(hwnd, &pid);
-        if (pid) reinterpret_cast<std::vector<DWORD>*>(parameter)->push_back(pid);
-        return TRUE;
-      }, reinterpret_cast<LPARAM>(&visible_window_pids));
 
       struct Candidate {
         PROCESSENTRY32W process{};
@@ -1036,8 +1182,15 @@ void ObsEngine::Tick() {
           std::transform(exe.begin(), exe.end(), exe.begin(),
                          [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
           int score = -1;
-          if (exe == L"javaw.exe") score = 60;
-          else if (exe == L"minecraft.windows.exe") score = 65;
+          const bool fullscreen_process =
+              std::find(window_processes.fullscreen.begin(), window_processes.fullscreen.end(),
+                        process.th32ProcessID) != window_processes.fullscreen.end();
+          // Minecraft remains a special profile, but a background Java process
+          // must not steal the active profile from another fullscreen application.
+          if (exe == L"javaw.exe")
+            score = (fullscreen_process || process.th32ProcessID == foreground_pid) ? 240 : 60;
+          else if (exe == L"minecraft.windows.exe")
+            score = (fullscreen_process || process.th32ProcessID == foreground_pid) ? 245 : 65;
           else if (exe == L"valorant.exe" || exe == L"fortnite.exe" ||
                    exe == L"playgtav.exe") score = 35; // Launcher processes.
           else if (exe == L"valorant-win64-shipping.exe" ||
@@ -1056,10 +1209,12 @@ void ObsEngine::Tick() {
                    (exe.starts_with(L"fivem_") &&
                     exe.find(L"gtaprocess.exe") != std::wstring::npos))
             score = 70;
+          else if (fullscreen_process && !IsIgnoredFullscreenExecutable(exe))
+            score = 90;  // Any previously unknown fullscreen app gets its own profile.
 
           const bool has_visible_window =
-              std::find(visible_window_pids.begin(), visible_window_pids.end(),
-                        process.th32ProcessID) != visible_window_pids.end();
+              std::find(window_processes.visible.begin(), window_processes.visible.end(),
+                        process.th32ProcessID) != window_processes.visible.end();
           if (score >= 0 && has_visible_window) score += 100;
           // Prefer the focused game itself, but do not let a launcher
           // outrank a visible game executable such as VALORANT-Win64-Shipping.exe.
@@ -1084,14 +1239,33 @@ void ObsEngine::Tick() {
       const std::string desired_audio_selector = "::" + detected_executable;
       if (config_.game_audio_window != desired_audio_selector) {
         config_.game_audio_window = desired_audio_selector;
+        game_audio_selector_resolved_ = false;
+        next_game_audio_retry_ = now_for_game;
         if (game_audio_) {
           obs_set_output_source(1, nullptr);
+          if (game_audio_meter_) {
+            obs_volmeter_destroy(game_audio_meter_);
+            game_audio_meter_ = nullptr;
+          }
+          game_audio_level_.store(0.0F, std::memory_order_relaxed);
           obs_source_release(game_audio_);
           game_audio_ = nullptr;
         }
+      }
+
+      // WASAPI may not list a newly opened process until it starts producing
+      // audio. Retry the stable executable selector until the exact Track 3
+      // source appears instead of leaving the game audio bound to an old app.
+      if (!game_audio_selector_resolved_ && now_for_game >= next_game_audio_retry_) {
+        next_game_audio_retry_ = now_for_game + std::chrono::seconds(2);
         try {
           ConfigureAudio(config_);
-          logger_.Info("Automatic game audio selector switched to " + desired_audio_selector);
+          if (game_audio_selector_resolved_) {
+            logger_.Info("Automatic Track 3 game-audio selector resolved to " +
+                         desired_audio_selector);
+          } else {
+            logger_.Info("Waiting for WASAPI process audio session: " + desired_audio_selector);
+          }
         } catch (const std::exception& audio_exception) {
           logger_.Warning(std::string("Automatic game audio reconfiguration failed: ") +
                           audio_exception.what());
@@ -1138,6 +1312,7 @@ void ObsEngine::Tick() {
       release_encoder(music_encoder_);
 
       active_game_ = detected_game;
+      active_game_filename_prefix_ = filename_prefix;
 
       config_.target_fps = profile_fps;
       config_.obs_replay_bitrate_kbps = profile_bitrate_kbps;
@@ -1151,16 +1326,27 @@ void ObsEngine::Tick() {
       config_.rolling_buffer_bytes = static_cast<std::size_t>(
           std::max(32.0 * 1024.0 * 1024.0, required_bytes));
 
-      config_.output_directory = clips_root_ /
-          (folder_name.empty() ? std::filesystem::path{} : std::filesystem::path(folder_name));
+      const auto profile_folder = folder_name.empty()
+          ? std::filesystem::path{}
+          : std::filesystem::path(folder_name);
+      config_.output_directory = clips_root_ / profile_folder;
       config_.obs_filename_format = filename_prefix.empty()
           ? "clip_%CCYY-%MM-%DD_%hh-%mm-%ss"
           : filename_prefix + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
+      config_.recording_directory = recordings_root_ / profile_folder;
+
       std::error_code directory_error;
       std::filesystem::create_directories(config_.output_directory, directory_error);
       if (directory_error) {
-        logger_.Warning("Automatic game folder could not be created: " + directory_error.message());
-      } else {
+        logger_.Warning("Automatic game clip folder could not be created: " + directory_error.message());
+      }
+      std::error_code recording_directory_error;
+      std::filesystem::create_directories(config_.recording_directory, recording_directory_error);
+      if (recording_directory_error) {
+        logger_.Warning("Automatic game recording folder could not be created: " +
+                        recording_directory_error.message());
+      }
+      if (!directory_error) {
         if ((detected_game.empty() && selected_source_id_ != 0) ||
             (!detected_game.empty() &&
              (config_.target_mode != CaptureTargetMode::kGameWindow || !target ||
@@ -1284,6 +1470,7 @@ void ObsEngine::Tick() {
                   microphone_ && obs_source_audio_active(microphone_),
                   desktop_audio_level_.load(std::memory_order_relaxed),
                   microphone_level_.load(std::memory_order_relaxed));
+  state_.SetProcessAudioLevels(game_audio_level_.load(std::memory_order_relaxed), 0.0F, 0.0F);
   const auto buffered = obs_output_active(replay_) ? std::chrono::duration<double>(std::chrono::steady_clock::now() - replay_started_).count() : 0.0;
   state_.SetRollingMetrics(std::min(buffered, config_.clip_duration_seconds), 0, 0);
   if (IsRecording()) state_.SetRecording(true, false, recording_path_,
@@ -1318,7 +1505,7 @@ void ObsEngine::DrainAcceptedSaves() noexcept {
       ProcessSaveQueue();
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-  } catch (...) { OutputDebugStringA("Klip: exception while draining OBS replay saves\n"); }
+  } catch (...) { OutputDebugStringA("REVO: exception while draining OBS replay saves\n"); }
 }
 
 void ObsEngine::Shutdown() noexcept {
@@ -1343,6 +1530,9 @@ void ObsEngine::Shutdown() noexcept {
   if (desktop_audio_meter_) { obs_volmeter_destroy(desktop_audio_meter_); desktop_audio_meter_ = nullptr; }
   if (game_audio_meter_) { obs_volmeter_destroy(game_audio_meter_); game_audio_meter_ = nullptr; }
   if (microphone_meter_) { obs_volmeter_destroy(microphone_meter_); microphone_meter_ = nullptr; }
+  desktop_audio_level_.store(0.0F, std::memory_order_relaxed);
+  game_audio_level_.store(0.0F, std::memory_order_relaxed);
+  microphone_level_.store(0.0F, std::memory_order_relaxed);
   if (initialized_) for (std::uint32_t i = 0; i < 6; ++i) obs_set_output_source(i, nullptr);
   if (scene_) { obs_scene_release(scene_); scene_ = nullptr; capture_item_ = nullptr; overlay_item_ = nullptr; }
   if (capture_) { obs_source_release(capture_); capture_ = nullptr; }

@@ -1,14 +1,14 @@
-Klip 2.0 public beta
+REVO 3.0.4 public beta
 
-Extract the complete ZIP, then open Klip.exe. Keep bin, data,
+Extract the complete ZIP, then open REVO.exe. Keep bin, data,
 obs-plugins and licenses together. Do not copy only the executable.
 
-Close older Klip instances before starting. Settings and saved media remain
-in your Windows user folders unless KLIP_DATA_ROOT is explicitly configured.
-The window close button hides Klip; use the tray menu's Quit Klip to exit.
+Close older REVO instances before starting. Settings and saved media remain
+in your Windows user folders unless REVO_DATA_ROOT (or the legacy KLIP_DATA_ROOT alias) is explicitly configured.
+The window close button hides REVO; use the tray menu's Quit REVO to exit.
 
 This beta is unsigned. Check the published SHA256SUMS before running it.
-Do not disable antivirus or other Windows security features to install Klip.
+Do not disable antivirus or other Windows security features to install REVO.
 Requires Microsoft's Visual C++ 2015-2022 x64 runtime (also required by OBS).
 If missing, install it from https://aka.ms/vs/17/release/vc_redist.x64.exe.
 

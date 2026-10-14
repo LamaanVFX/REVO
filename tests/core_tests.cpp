@@ -22,6 +22,7 @@
 #include "klip/platform/dashboard_activity.h"
 #include "klip/obs/encoder_policy.h"
 #include "klip/obs/replay_policy.h"
+#include "klip/obs/game_profile_policy.h"
 
 namespace {
 
@@ -87,8 +88,13 @@ void TestConfig() {
   missing_live_overlay.live_overlay_enabled = true;
   CHECK(!klip::ValidateConfig(missing_live_overlay).empty());
 
+  klip::AppConfig plain_key_hotkeys;
+  plain_key_hotkeys.hotkeys.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  plain_key_hotkeys.hotkeys.save_virtual_key = 'V';
+  CHECK(klip::ValidateConfig(plain_key_hotkeys).empty());
+
   klip::AppConfig invalid_hotkeys;
-  invalid_hotkeys.hotkeys.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  invalid_hotkeys.hotkeys.save_modifiers = 0x8000;  // Unsupported modifier flag.
   CHECK(!klip::ValidateConfig(invalid_hotkeys).empty());
 
   klip::AppConfig duplicate_hotkeys;
@@ -663,6 +669,13 @@ int main() {
   CHECK(std::string(performance_obs.preset) == "p3" && std::string(performance_obs.multipass) == "disabled" && !performance_obs.adaptive_quantization);
   const auto maximum_obs = klip::ObsNvencPolicyFor(klip::EncoderQuality::kQuality);
   CHECK(std::string(maximum_obs.preset) == "p7" && std::string(maximum_obs.multipass) == "fullres" && maximum_obs.adaptive_quantization);
+  CHECK(klip::ObsNvencEncoderForGame("Minecraft") == "obs_nvenc_hevc_tex");
+  CHECK(klip::ObsNvencEncoderForGame("Valorant") == "obs_nvenc_h264_tex");
+  CHECK(klip::ObsNvencEncoderForGame("") == "obs_nvenc_h264_tex");
+  CHECK(klip::MakeApplicationProfileSlug("Brawlhalla.exe") == "brawlhalla");
+  CHECK(klip::MakeApplicationProfileSlug("My Cool Game-Win64.exe") == "my-cool-game-win64");
+  CHECK(klip::MakeApplicationProfileSlug("C:\\Games\\CON.exe") == "app-con");
+  CHECK(klip::MakeApplicationProfileSlug(".exe") == "application");
   CHECK(klip::DashboardWorkEnabled(true, false));
   CHECK(!klip::DashboardWorkEnabled(true, true));
   CHECK(!klip::DashboardWorkEnabled(false, false));
