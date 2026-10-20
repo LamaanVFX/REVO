@@ -67,7 +67,7 @@ void TestConfig() {
   CHECK(!klip::ValidateConfig(high_frame_rate).empty());
 
   klip::AppConfig invalid_gain;
-  invalid_gain.desktop_audio_gain = 0.01;
+  invalid_gain.desktop_audio_gain = 6.1;
   invalid_gain.microphone_audio_gain = -96.1;
   CHECK(klip::ValidateConfig(invalid_gain).size() == 2);
 
