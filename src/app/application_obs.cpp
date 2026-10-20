@@ -223,10 +223,10 @@ UiCommands KlipApplication::BuildUiCommands() {
       .set_capture_preview_enabled = [this](bool) { state_.SetSettingsStatus(false, "The libobs build does not render a capture preview."); },
       .set_desktop_audio_enabled = [this, audio](bool enabled) { config_.desktop_audio_enabled = enabled; audio(); PersistSettings(config_, false); },
       .set_microphone_enabled = [this, audio](bool enabled) { config_.microphone_enabled = enabled; audio(); PersistSettings(config_, false); },
-      .set_desktop_audio_gain = [this, audio](float gain) { config_.desktop_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206); audio(); },
-      .set_microphone_audio_gain = [this, audio](float gain) { config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206); audio(); },
-      .set_discord_audio_gain = [this, audio](float gain) { config_.discord_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206); audio(); },
-      .set_music_audio_gain = [this, audio](float gain) { config_.music_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206); audio(); },
+      .set_desktop_audio_gain = [this, audio](float gain) { config_.desktop_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206); audio(); },
+      .set_microphone_audio_gain = [this, audio](float gain) { config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206); audio(); },
+      .set_discord_audio_gain = [this, audio](float gain) { config_.discord_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206); audio(); },
+      .set_music_audio_gain = [this, audio](float gain) { config_.music_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206); audio(); },
       .persist_audio_gains = [this] { PersistSettings(config_, false); },
       .select_microphone = [this, audio](int index) {
         const auto snapshot = state_.Snapshot();
