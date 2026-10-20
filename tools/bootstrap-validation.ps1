@@ -65,12 +65,10 @@ function Get-PinnedReleaseAssetSha256($releaseTag, $assetName, $manifestSha256) 
 
   $assetHash = ''
   $entryName = ''
-  if ($line -match '^\\s*([0-9a-fA-F]{64})\\s+[* ]?(.+?)\\s*Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
-) {
+  if ($line -match '^\s*([0-9a-fA-F]{64})\s+[* ]?(.+?)\s*$') {
     $assetHash = $Matches[1].ToLowerInvariant()
     $entryName = $Matches[2].Trim().TrimStart('*')
-  } elseif ($line -match '^SHA256\\((.+)\\)\\s*=\\s*([0-9a-fA-F]{64})Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
-) {
+  } elseif ($line -match '^SHA256\((.+)\)\s*=\s*([0-9a-fA-F]{64})$') {
     $entryName = $Matches[1]
     $assetHash = $Matches[2].ToLowerInvariant()
   }
