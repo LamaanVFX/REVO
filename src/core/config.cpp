@@ -61,18 +61,15 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (config.audio_bitrate < 32'000) {
     reject("audio_bitrate", "must be at least 32000 bits/s");
   }
-  if (!std::isfinite(config.desktop_audio_gain) || config.desktop_audio_gain < 0.0 ||
-      config.desktop_audio_gain > 2.0) {
-    reject("desktop_audio_gain", "must be between 0.0 and 2.0");
-  }
-  if (!std::isfinite(config.game_audio_gain) || config.game_audio_gain < 0.0 ||
-      config.game_audio_gain > 2.0) {
-    reject("game_audio_gain", "must be between 0.0 and 2.0");
-  }
-  if (!std::isfinite(config.microphone_audio_gain) || config.microphone_audio_gain < 0.0 ||
-      config.microphone_audio_gain > 2.0) {
-    reject("microphone_audio_gain", "must be between 0.0 and 2.0");
-  }
+  const auto validate_audio_fader = [&](double value, const char* field) {
+    if (!std::isfinite(value) || value < -96.0 || value > 0.0)
+      reject(field, "must be between -96.0 dB and 0.0 dB");
+  };
+  validate_audio_fader(config.desktop_audio_gain, "desktop_audio_gain");
+  validate_audio_fader(config.game_audio_gain, "game_audio_gain");
+  validate_audio_fader(config.microphone_audio_gain, "microphone_audio_gain");
+  validate_audio_fader(config.discord_audio_gain, "discord_audio_gain");
+  validate_audio_fader(config.music_audio_gain, "music_audio_gain");
   const auto normalized = [](double value) {
     return std::isfinite(value) && value >= 0.0 && value <= 1.0;
   };
