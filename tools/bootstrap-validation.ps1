@@ -71,22 +71,3 @@ $ffmpegSha256 = Get-PinnedReleaseAssetSha256 $ffmpegRelease $ffmpegArchive 'e5f8
 Expand-PinnedPackage 'ffmpeg-8.1' "https://github.com/BtbN/FFmpeg-Builds/releases/download/$ffmpegRelease/$ffmpegArchive" $ffmpegSha256
 Expand-PinnedPackage 'winsdk' 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2705/microsoft.windows.sdk.cpp.10.0.28000.2705.nupkg' 'a74ca8f9af98bd61925d9e2932ad98f746306123167b8f0bba99cd9ea9f03807'
 Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
-) {
-    $assetHash = $Matches[1].ToLowerInvariant()
-    $entryName = $Matches[2].Trim().TrimStart('*')
-  } elseif ($line -match '^SHA256\((.+)\)\s*=\s*([0-9a-fA-F]{64})
-Expand-PinnedPackage 'winsdk' 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2705/microsoft.windows.sdk.cpp.10.0.28000.2705.nupkg' 'a74ca8f9af98bd61925d9e2932ad98f746306123167b8f0bba99cd9ea9f03807'
-Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
-) {
-    $entryName = $Matches[1]
-    $assetHash = $Matches[2].ToLowerInvariant()
-  } else { throw "Could not parse SHA-256 entry for $assetName from FFmpeg manifest" }
-  if ($entryName -ne $assetName) { throw "FFmpeg manifest entry mismatch: expected $assetName, found $entryName" }
-  return $assetHash
-}
-$ffmpegRelease = 'autobuild-2026-10-20-13-08'
-$ffmpegArchive = 'ffmpeg-n8.1.3-18-g46d899d7a0-win64-lgpl-shared-8.1.zip'
-$ffmpegSha256 = Get-PinnedReleaseAssetSha256 $ffmpegRelease $ffmpegArchive 'e5f8f88ba4290f22cefa349aaf660ede4c81e3aa615a28352fcc0be2597066a7'
-Expand-PinnedPackage 'ffmpeg-8.1' "https://github.com/BtbN/FFmpeg-Builds/releases/download/$ffmpegRelease/$ffmpegArchive" $ffmpegSha256
-Expand-PinnedPackage 'winsdk' 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2705/microsoft.windows.sdk.cpp.10.0.28000.2705.nupkg' 'a74ca8f9af98bd61925d9e2932ad98f746306123167b8f0bba99cd9ea9f03807'
-Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
