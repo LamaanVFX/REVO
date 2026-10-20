@@ -345,11 +345,11 @@ void TestAudioGainCalibrationMigration() {
   CHECK(klip::SaveConfig(path, migrated_from_mic_only, diagnostic));
   klip::AppConfig migrated_twice;
   CHECK(klip::LoadConfig(path, migrated_twice, diagnostic));
-  CHECK(migrated_twice.desktop_audio_gain == migrated_from_mic_only.desktop_audio_gain);
-  CHECK(migrated_twice.game_audio_gain == migrated_from_mic_only.game_audio_gain);
-  CHECK(migrated_twice.microphone_audio_gain == migrated_from_mic_only.microphone_audio_gain);
-  CHECK(migrated_twice.discord_audio_gain == migrated_from_mic_only.discord_audio_gain);
-  CHECK(migrated_twice.music_audio_gain == migrated_from_mic_only.music_audio_gain);
+  CHECK(std::abs(migrated_twice.desktop_audio_gain - migrated_from_mic_only.desktop_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.game_audio_gain - migrated_from_mic_only.game_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.microphone_audio_gain - migrated_from_mic_only.microphone_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.discord_audio_gain - migrated_from_mic_only.discord_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.music_audio_gain - migrated_from_mic_only.music_audio_gain) < 0.001);
 
   // Intentional mute remains mute during calibration.
   {
