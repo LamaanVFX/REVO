@@ -67,8 +67,8 @@ void TestConfig() {
   CHECK(!klip::ValidateConfig(high_frame_rate).empty());
 
   klip::AppConfig invalid_gain;
-  invalid_gain.desktop_audio_gain = -0.01;
-  invalid_gain.microphone_audio_gain = 2.01;
+  invalid_gain.desktop_audio_gain = 0.01;
+  invalid_gain.microphone_audio_gain = -96.1;
   CHECK(klip::ValidateConfig(invalid_gain).size() == 2);
 
   klip::AppConfig invalid_overlay;
@@ -105,7 +105,7 @@ void TestConfig() {
         "ctrl + shift + k");
 
   klip::AppConfig live_change = klip::AppConfig{};
-  live_change.desktop_audio_gain = 0.75;
+  live_change.desktop_audio_gain = -0.75;
   live_change.desktop_audio_enabled = false;
   live_change.microphone_enabled = true;
   live_change.capture_preview_enabled = true;
@@ -181,8 +181,8 @@ void TestConfigRoundTrip() {
   saved.video_bitrate = 8'000'000;
   saved.audio_bitrate = 128'000;
   saved.desktop_audio_enabled = false;
-  saved.desktop_audio_gain = 0.65;
-  saved.microphone_audio_gain = 1.35;
+  saved.desktop_audio_gain = -0.65;
+  saved.microphone_audio_gain = -1.35;
   saved.rolling_buffer_seconds = 90.0;
   saved.rolling_buffer_bytes = 96ULL * 1024ULL * 1024ULL;
   saved.target_mode = klip::CaptureTargetMode::kDisplay;
@@ -231,9 +231,9 @@ void TestConfigRoundTrip() {
   CHECK(loaded.audio_bitrate == 128'000);
   CHECK(!loaded.desktop_audio_enabled);
   CHECK(loaded.microphone_enabled);
-  CHECK(loaded.game_audio_gain == 1.0);
-  CHECK(loaded.desktop_audio_gain == 0.65);
-  CHECK(loaded.microphone_audio_gain == 1.35);
+  CHECK(loaded.game_audio_gain == 0.0);
+  CHECK(loaded.desktop_audio_gain == -0.65);
+  CHECK(loaded.microphone_audio_gain == -1.35);
   CHECK(loaded.rolling_buffer_seconds == 90.0);
   CHECK(loaded.rolling_buffer_bytes == 96ULL * 1024ULL * 1024ULL);
   CHECK(loaded.target_mode == klip::CaptureTargetMode::kDisplay);
