@@ -32,7 +32,7 @@ using Data = std::unique_ptr<obs_data_t, decltype(&obs_data_release)>;
 
 float GainMultiplierFromDb(double db) noexcept {
   if (!std::isfinite(db)) return 0.0F;
-  return obs_db_to_mul(static_cast<float>(std::clamp(db, -96.0, 6.0206)));
+  return obs_db_to_mul(static_cast<float>(std::clamp(db, -96.0, 12.0206)));
 }
 using Properties = std::unique_ptr<obs_properties_t, decltype(&obs_properties_destroy)>;
 Data MakeData() { return Data(obs_data_create(), obs_data_release); }
