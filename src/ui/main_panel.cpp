@@ -7,6 +7,7 @@
 #include <imgui.h>
 #if defined(KLIP_USE_LIBOBS)
 #include <obs.h>
+#include <obs-audio-controls.h>
 #endif
 
 #include <algorithm>
@@ -277,20 +278,57 @@ bool Switch(const char* id, ImVec2 position, bool enabled) {
   return clicked;
 }
 
-bool GainSlider(const char* id, ImVec2 position, float width, float& gain) {
+float ClampGainDb(float db) {
+  return std::isfinite(db) ? std::clamp(db, -96.0F, 0.0F) : -96.0F;
+}
+#if defined(KLIP_USE_LIBOBS)
+struct SharedObsFader {
+  obs_fader_t* fader = obs_fader_create(OBS_FADER_LOG);
+  ~SharedObsFader() { if (fader) obs_fader_destroy(fader); }
+};
+obs_fader_t* GainFader() { static SharedObsFader instance; return instance.fader; }
+float GainDbToProgress(float db) {
+  auto* fader = GainFader();
+  if (!fader) return std::clamp((ClampGainDb(db) + 96.0F) / 96.0F, 0.0F, 1.0F);
+  obs_fader_set_db(fader, ClampGainDb(db));
+  return std::clamp(obs_fader_get_deflection(fader), 0.0F, 1.0F);
+}
+float GainProgressToDb(float progress) {
+  auto* fader = GainFader();
+  if (!fader) return -96.0F + std::clamp(progress, 0.0F, 1.0F) * 96.0F;
+  obs_fader_set_deflection(fader, std::clamp(progress, 0.0F, 1.0F));
+  return ClampGainDb(obs_fader_get_db(fader));
+}
+#else
+float GainDbToProgress(float db) { return std::clamp((ClampGainDb(db) + 96.0F) / 96.0F, 0.0F, 1.0F); }
+float GainProgressToDb(float progress) { return -96.0F + std::clamp(progress, 0.0F, 1.0F) * 96.0F; }
+#endif
+float AudioLevelToDb(float level) {
+  if (!std::isfinite(level) || level <= 0.0F) return -96.0F;
+#if defined(KLIP_USE_LIBOBS)
+  return std::clamp(obs_mul_to_db(level), -96.0F, 0.0F);
+#else
+  return std::clamp(20.0F * std::log10(level), -96.0F, 0.0F);
+#endif
+}
+float AudioMeterPosition(float level) {
+  return std::clamp((AudioLevelToDb(level) + 60.0F) / 60.0F, 0.0F, 1.0F);
+}
+
+bool GainSlider(const char* id, ImVec2 position, float width, float& gain_db) {
   constexpr float height = 22.0F;
   ImGui::SetCursorScreenPos(position);
   ImGui::InvisibleButton(id, {width, height});
   const bool hovered = ImGui::IsItemHovered();
   const bool active = ImGui::IsItemActive();
   bool changed = false;
-  float progress = std::clamp(gain * 0.5F, 0.0F, 1.0F);
+  float progress = GainDbToProgress(gain_db);
   if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
     const float updated_progress =
         std::clamp((ImGui::GetIO().MousePos.x - position.x) / width, 0.0F, 1.0F);
-    const float updated_gain = updated_progress * 2.0F;
-    if (std::abs(updated_gain - gain) > 0.001F) {
-      gain = updated_gain;
+    const float updated_gain_db = GainProgressToDb(updated_progress);
+    if (std::abs(updated_gain_db - gain_db) > 0.01F) {
+      gain_db = updated_gain_db;
       progress = updated_progress;
       changed = true;
     }
@@ -1153,13 +1191,12 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_desktop_audio_gain(desktop_gain);
   }
   char desktop_gain_text[24]{};
-  std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "%d%%",
-                static_cast<int>(std::clamp(desktop_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
+  if (desktop_gain <= -95.99F) std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "-inf dB");
+  else std::snprintf(desktop_gain_text, sizeof(desktop_gain_text), "%.1f dB", desktop_gain);
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 15.0F, audio_row_y + 18.0F}, kTextU32,
            desktop_gain_text);
   const float meter_x = content.x + content_width - 208.0F;
-  const int lit_segments =
-      static_cast<int>(std::clamp(snapshot.desktop_audio_level, 0.0F, 1.0F) * 18.0F);
+  const int lit_segments = static_cast<int>(AudioMeterPosition(snapshot.desktop_audio_level) * 18.0F);
   for (int segment = 0; segment < 18; ++segment) {
     const ImU32 meter_color = segment < lit_segments ? kGreen : IM_COL32(32, 73, 55, 255);
     draw->AddRectFilled({meter_x + segment * 7.0F, audio_row_y + 22.0F},
@@ -1210,8 +1247,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_microphone_audio_gain(microphone_gain);
   }
   char microphone_gain_text[24]{};
-  std::snprintf(microphone_gain_text, sizeof(microphone_gain_text), "%d%%",
-                static_cast<int>(std::clamp(microphone_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
+  if (microphone_gain <= -95.99F) std::snprintf(microphone_gain_text, sizeof(microphone_gain_text), "-inf dB");
+  else std::snprintf(microphone_gain_text, sizeof(microphone_gain_text), "%.1f dB", microphone_gain);
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, microphone_y + 18.0F},
            microphone_enabled ? kTextU32 : kMutedU32, microphone_gain_text);
   if (Switch("##microphone-toggle", {content.x + content_width - 70.0F, microphone_y + 13.0F},
@@ -1233,8 +1270,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_discord_audio_gain(discord_gain);
   }
   char discord_gain_text[24]{};
-  std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%d%%",
-                static_cast<int>(std::clamp(discord_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
+  if (discord_gain <= -95.99F) std::snprintf(discord_gain_text, sizeof(discord_gain_text), "-inf dB");
+  else std::snprintf(discord_gain_text, sizeof(discord_gain_text), "%.1f dB", discord_gain);
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, discord_y + 18.0F},
            config.discord_audio_window.empty() ? kMutedU32 : kTextU32, discord_gain_text);
   if (ImGui::IsItemHovered() && config.discord_audio_window.empty())
@@ -1253,8 +1290,8 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
     commands.set_music_audio_gain(music_gain);
   }
   char music_gain_text[24]{};
-  std::snprintf(music_gain_text, sizeof(music_gain_text), "%d%%",
-                static_cast<int>(std::clamp(music_gain * 100.0F + 0.5F, 0.0F, 200.0F)));
+  if (music_gain <= -95.99F) std::snprintf(music_gain_text, sizeof(music_gain_text), "-inf dB");
+  else std::snprintf(music_gain_text, sizeof(music_gain_text), "%.1f dB", music_gain);
   DrawText(draw, semibold, 12.0F, {level_x + gain_width + 12.0F, music_y + 18.0F},
            config.music_audio_window.empty() ? kMutedU32 : kTextU32, music_gain_text);
   if (ImGui::IsItemHovered() && config.music_audio_window.empty())
@@ -1766,18 +1803,14 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         draft_.audio_bitrate = static_cast<std::int64_t>(audio_bitrate) * 1000;
         ResizeReplayBudget(draft_);
       }
-      int desktop_volume = static_cast<int>(draft_.desktop_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("desktop volume", &desktop_volume, 0, 200, "%d%%"))
-        draft_.desktop_audio_gain = static_cast<double>(desktop_volume) / 100.0;
-      int game_volume = static_cast<int>(draft_.game_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("game volume", &game_volume, 0, 200, "%d%%"))
-        draft_.game_audio_gain = static_cast<double>(game_volume) / 100.0;
-      int discord_volume = static_cast<int>(draft_.discord_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("Discord volume", &discord_volume, 0, 200, "%d%%"))
-        draft_.discord_audio_gain = static_cast<double>(discord_volume) / 100.0;
-      int music_volume = static_cast<int>(draft_.music_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("Spotify volume", &music_volume, 0, 200, "%d%%"))
-        draft_.music_audio_gain = static_cast<double>(music_volume) / 100.0;
+      float desktop_db = static_cast<float>(draft_.desktop_audio_gain);
+      if (ImGui::SliderFloat("desktop audio", &desktop_db, -96.0F, 0.0F, "%.1f dB")) draft_.desktop_audio_gain = desktop_db;
+      float game_db = static_cast<float>(draft_.game_audio_gain);
+      if (ImGui::SliderFloat("game audio", &game_db, -96.0F, 0.0F, "%.1f dB")) draft_.game_audio_gain = game_db;
+      float discord_db = static_cast<float>(draft_.discord_audio_gain);
+      if (ImGui::SliderFloat("Discord audio", &discord_db, -96.0F, 0.0F, "%.1f dB")) draft_.discord_audio_gain = discord_db;
+      float music_db = static_cast<float>(draft_.music_audio_gain);
+      if (ImGui::SliderFloat("Spotify audio", &music_db, -96.0F, 0.0F, "%.1f dB")) draft_.music_audio_gain = music_db;
 #if defined(KLIP_USE_LIBOBS)
       ImGui::TextWrapped("Track 1 mixes all Windows output, microphone, and Spotify; track 2 is microphone-only. Tracks 3–5 isolate game, Discord, and Spotify. Desktop audio follows the default Windows playback device, while Spotify is also routed into Track 1.");
       if (!draft_.excluded_audio_process.empty()) {
@@ -1804,9 +1837,8 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       ImGui::TextColored(kMuted,
                          "low-overhead process-tree exclusion; it does not mute playback for you.");
 #endif
-      int microphone_volume = static_cast<int>(draft_.microphone_audio_gain * 100.0 + 0.5);
-      if (ImGui::SliderInt("microphone volume", &microphone_volume, 0, 200, "%d%%"))
-        draft_.microphone_audio_gain = static_cast<double>(microphone_volume) / 100.0;
+      float microphone_db = static_cast<float>(draft_.microphone_audio_gain);
+      if (ImGui::SliderFloat("microphone audio", &microphone_db, -96.0F, 0.0F, "%.1f dB")) draft_.microphone_audio_gain = microphone_db;
       ImGui::Checkbox("enable microphone (voice / keyboard clicks) on launch",
                       &draft_.microphone_enabled);
     }
