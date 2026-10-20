@@ -2,6 +2,7 @@
 #include "klip/core/path_text.h"
 
 #include <algorithm>
+#include <cmath>
 #include <charconv>
 #include <fstream>
 #include <iomanip>
@@ -137,6 +138,7 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   if (key == "output_height") return ParseInteger(value, config.output_height);
   if (key == "video_bitrate") return ParseInteger(value, config.video_bitrate);
   if (key == "audio_bitrate") return ParseInteger(value, config.audio_bitrate);
+  if (key == "audio_gain_units") return value == "db";
   if (key == "desktop_audio_enabled") return ParseBool(value, config.desktop_audio_enabled);
   if (key == "desktop_audio_gain") return ParseDouble(value, config.desktop_audio_gain);
   if (key == "game_audio_gain") return ParseDouble(value, config.game_audio_gain);
@@ -175,14 +177,30 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   }
   if (key == "hotkey_save_modifiers")
     return ParseInteger(value, config.hotkeys.save_modifiers);
+  if (key == "hotkey_save2_modifiers")
+    return ParseInteger(value, config.hotkeys.save2_modifiers);
+  if (key == "hotkey_save3_modifiers")
+    return ParseInteger(value, config.hotkeys.save3_modifiers);
   if (key == "hotkey_record_modifiers")
     return ParseInteger(value, config.hotkeys.record_modifiers);
+  if (key == "hotkey_record2_modifiers")
+    return ParseInteger(value, config.hotkeys.record2_modifiers);
+  if (key == "hotkey_record3_modifiers")
+    return ParseInteger(value, config.hotkeys.record3_modifiers);
   if (key == "hotkey_toggle_ui_modifiers")
     return ParseInteger(value, config.hotkeys.toggle_ui_modifiers);
   if (key == "hotkey_save_virtual_key")
     return ParseInteger(value, config.hotkeys.save_virtual_key);
+  if (key == "hotkey_save2_virtual_key")
+    return ParseInteger(value, config.hotkeys.save2_virtual_key);
+  if (key == "hotkey_save3_virtual_key")
+    return ParseInteger(value, config.hotkeys.save3_virtual_key);
   if (key == "hotkey_record_virtual_key")
     return ParseInteger(value, config.hotkeys.record_virtual_key);
+  if (key == "hotkey_record2_virtual_key")
+    return ParseInteger(value, config.hotkeys.record2_virtual_key);
+  if (key == "hotkey_record3_virtual_key")
+    return ParseInteger(value, config.hotkeys.record3_virtual_key);
   if (key == "hotkey_toggle_ui_virtual_key")
     return ParseInteger(value, config.hotkeys.toggle_ui_virtual_key);
   if (key == "output_directory") {
@@ -257,6 +275,14 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   AppConfig loaded = config;
   bool has_obs_encoder_id = false;
   bool has_legacy_encoder_preferences = false;
+  bool has_db_audio_gain_units = false;
+  bool has_desktop_gain = false;
+  bool has_game_gain = false;
+  bool has_microphone_gain = false;
+  bool has_microphone_gain_calibration_v1 = false;
+  bool has_audio_gain_calibration_v2 = false;
+  bool has_discord_gain = false;
+  bool has_music_gain = false;
   std::string line;
   std::size_t line_number = 0;
   while (std::getline(input, line)) {
@@ -277,6 +303,52 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
     }
     has_obs_encoder_id |= key == "obs_encoder_id";
     has_legacy_encoder_preferences |= key == "encoder_preferences";
+    has_db_audio_gain_units |= key == "audio_gain_units";
+    has_desktop_gain |= key == "desktop_audio_gain";
+    has_game_gain |= key == "game_audio_gain";
+    has_microphone_gain |= key == "microphone_audio_gain";
+    has_microphone_gain_calibration_v1 |=
+        key == "microphone_gain_calibration_version" && value == "1";
+    has_audio_gain_calibration_v2 |=
+        key == "audio_gain_calibration_version" && value == "2";
+    has_discord_gain |= key == "discord_audio_gain";
+    has_music_gain |= key == "music_audio_gain";
+  }
+
+  // Older settings saved linear multipliers (0..2); new settings store OBS-style dB.
+  if (!has_db_audio_gain_units) {
+    const auto to_db = [](double multiplier) {
+      if (!std::isfinite(multiplier) || multiplier <= 0.0) return -96.0;
+      return std::clamp(20.0 * std::log10(multiplier), -96.0, 6.0206);
+    };
+    loaded.desktop_audio_gain = has_desktop_gain ? to_db(loaded.desktop_audio_gain) : 6.0;
+    loaded.game_audio_gain = has_game_gain ? to_db(loaded.game_audio_gain) : 6.0;
+    loaded.microphone_audio_gain = has_microphone_gain ? to_db(loaded.microphone_audio_gain) : 6.0;
+    loaded.discord_audio_gain = has_discord_gain ? to_db(loaded.discord_audio_gain) : 6.0;
+    loaded.music_audio_gain = has_music_gain ? to_db(loaded.music_audio_gain) : 6.0;
+  }
+
+  // All five REVO tracks were measured quieter than their OBS counterparts. Apply
+  // one visible +6 dB calibration to each saved track, once, preserving intentional
+  // mute values. A settings file written by the earlier microphone-only calibration
+  // already has its mic adjusted, so only its other four tracks receive the offset.
+  const auto apply_audio_calibration = [](double& gain) {
+    if (std::isfinite(gain) && gain > -95.99)
+      gain = std::clamp(gain + 6.0, -96.0, 12.0206);
+  };
+  if (!has_audio_gain_calibration_v2) {
+    if (has_microphone_gain_calibration_v1) {
+      if (has_desktop_gain) apply_audio_calibration(loaded.desktop_audio_gain);
+      if (has_game_gain) apply_audio_calibration(loaded.game_audio_gain);
+      if (has_discord_gain) apply_audio_calibration(loaded.discord_audio_gain);
+      if (has_music_gain) apply_audio_calibration(loaded.music_audio_gain);
+    } else {
+      if (has_desktop_gain) apply_audio_calibration(loaded.desktop_audio_gain);
+      if (has_game_gain) apply_audio_calibration(loaded.game_audio_gain);
+      if (has_microphone_gain) apply_audio_calibration(loaded.microphone_audio_gain);
+      if (has_discord_gain) apply_audio_calibration(loaded.discord_audio_gain);
+      if (has_music_gain) apply_audio_calibration(loaded.music_audio_gain);
+    }
   }
 
   // Only migrate an explicitly saved single-encoder choice in an old file.
@@ -294,7 +366,7 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   // Migrate older settings to the requested five-track recording layout.
   loaded.obs_separate_audio_tracks = true;
   loaded.capture_border = false;
-  loaded.obs_display_method = 2;
+  loaded.obs_display_method = 1;  // Display capture uses GDI/BitBlt; never default to WGC.
   loaded.obs_limit_game_capture_fps = true;
   if (loaded.discord_audio_window.empty()) loaded.discord_audio_window = "::Discord.exe";
   if (loaded.music_audio_window.empty()) loaded.music_audio_window = "::Spotify.exe";
@@ -357,6 +429,8 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "audio_bitrate=" << config.audio_bitrate << '\n';
   output << "desktop_audio_enabled=" << (config.desktop_audio_enabled ? "true" : "false")
          << '\n';
+  output << "audio_gain_units=db" << '\n';
+  output << "audio_gain_calibration_version=2" << '\n';
   output << "desktop_audio_gain=" << config.desktop_audio_gain << '\n';
   output << "game_audio_gain=" << config.game_audio_gain << '\n';
   output << "microphone_audio_gain=" << config.microphone_audio_gain << '\n';
@@ -382,10 +456,18 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "static_overlay_height=" << config.static_overlay_height << '\n';
   output << "static_overlay_opacity=" << config.static_overlay_opacity << '\n';
   output << "hotkey_save_modifiers=" << config.hotkeys.save_modifiers << '\n';
+  output << "hotkey_save2_modifiers=" << config.hotkeys.save2_modifiers << '\n';
+  output << "hotkey_save3_modifiers=" << config.hotkeys.save3_modifiers << '\n';
   output << "hotkey_record_modifiers=" << config.hotkeys.record_modifiers << '\n';
+  output << "hotkey_record2_modifiers=" << config.hotkeys.record2_modifiers << '\n';
+  output << "hotkey_record3_modifiers=" << config.hotkeys.record3_modifiers << '\n';
   output << "hotkey_toggle_ui_modifiers=" << config.hotkeys.toggle_ui_modifiers << '\n';
   output << "hotkey_save_virtual_key=" << config.hotkeys.save_virtual_key << '\n';
+  output << "hotkey_save2_virtual_key=" << config.hotkeys.save2_virtual_key << '\n';
+  output << "hotkey_save3_virtual_key=" << config.hotkeys.save3_virtual_key << '\n';
   output << "hotkey_record_virtual_key=" << config.hotkeys.record_virtual_key << '\n';
+  output << "hotkey_record2_virtual_key=" << config.hotkeys.record2_virtual_key << '\n';
+  output << "hotkey_record3_virtual_key=" << config.hotkeys.record3_virtual_key << '\n';
   output << "hotkey_toggle_ui_virtual_key=" << config.hotkeys.toggle_ui_virtual_key << '\n';
   output << "capture_mode=" << ModeName(config.target_mode) << '\n';
   output << "scaling_mode=" << ScalingName(config.scaling_mode) << '\n';

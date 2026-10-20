@@ -22,6 +22,7 @@
 #include "klip/platform/dashboard_activity.h"
 #include "klip/obs/encoder_policy.h"
 #include "klip/obs/replay_policy.h"
+#include "klip/obs/game_profile_policy.h"
 
 namespace {
 
@@ -66,8 +67,8 @@ void TestConfig() {
   CHECK(!klip::ValidateConfig(high_frame_rate).empty());
 
   klip::AppConfig invalid_gain;
-  invalid_gain.desktop_audio_gain = -0.01;
-  invalid_gain.microphone_audio_gain = 2.01;
+  invalid_gain.desktop_audio_gain = 12.1;
+  invalid_gain.microphone_audio_gain = -96.1;
   CHECK(klip::ValidateConfig(invalid_gain).size() == 2);
 
   klip::AppConfig invalid_overlay;
@@ -87,8 +88,13 @@ void TestConfig() {
   missing_live_overlay.live_overlay_enabled = true;
   CHECK(!klip::ValidateConfig(missing_live_overlay).empty());
 
+  klip::AppConfig plain_key_hotkeys;
+  plain_key_hotkeys.hotkeys.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  plain_key_hotkeys.hotkeys.save_virtual_key = 'V';
+  CHECK(klip::ValidateConfig(plain_key_hotkeys).empty());
+
   klip::AppConfig invalid_hotkeys;
-  invalid_hotkeys.hotkeys.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  invalid_hotkeys.hotkeys.save_modifiers = 0x8000;  // Unsupported modifier flag.
   CHECK(!klip::ValidateConfig(invalid_hotkeys).empty());
 
   klip::AppConfig duplicate_hotkeys;
@@ -99,7 +105,7 @@ void TestConfig() {
         "ctrl + shift + k");
 
   klip::AppConfig live_change = klip::AppConfig{};
-  live_change.desktop_audio_gain = 0.75;
+  live_change.desktop_audio_gain = -0.75;
   live_change.desktop_audio_enabled = false;
   live_change.microphone_enabled = true;
   live_change.capture_preview_enabled = true;
@@ -175,8 +181,8 @@ void TestConfigRoundTrip() {
   saved.video_bitrate = 8'000'000;
   saved.audio_bitrate = 128'000;
   saved.desktop_audio_enabled = false;
-  saved.desktop_audio_gain = 0.65;
-  saved.microphone_audio_gain = 1.35;
+  saved.desktop_audio_gain = -0.65;
+  saved.microphone_audio_gain = -1.35;
   saved.rolling_buffer_seconds = 90.0;
   saved.rolling_buffer_bytes = 96ULL * 1024ULL * 1024ULL;
   saved.target_mode = klip::CaptureTargetMode::kDisplay;
@@ -225,9 +231,9 @@ void TestConfigRoundTrip() {
   CHECK(loaded.audio_bitrate == 128'000);
   CHECK(!loaded.desktop_audio_enabled);
   CHECK(loaded.microphone_enabled);
-  CHECK(loaded.game_audio_gain == 1.0);
-  CHECK(loaded.desktop_audio_gain == 0.65);
-  CHECK(loaded.microphone_audio_gain == 1.35);
+  CHECK(loaded.game_audio_gain == 6.0);
+  CHECK(loaded.desktop_audio_gain == -0.65);
+  CHECK(loaded.microphone_audio_gain == -1.35);
   CHECK(loaded.rolling_buffer_seconds == 90.0);
   CHECK(loaded.rolling_buffer_bytes == 96ULL * 1024ULL * 1024ULL);
   CHECK(loaded.target_mode == klip::CaptureTargetMode::kDisplay);
@@ -280,6 +286,89 @@ void TestConfigRoundTrip() {
   CHECK(!loaded_live.static_overlay_enabled);
   CHECK(loaded_live.live_overlay_enabled);
   CHECK(loaded_live.live_overlay_window_title == "Camera  [WindowsCamera.exe]");
+  std::error_code ignored;
+  std::filesystem::remove(path, ignored);
+}
+
+void TestAudioGainCalibrationMigration() {
+  const auto path = std::filesystem::temp_directory_path() /
+                    "klip-core-test-audio-gain-calibration.ini";
+  std::string diagnostic;
+  {
+    std::ofstream output(path, std::ios::trunc);
+    output << "audio_gain_units=db\n";
+    output << "desktop_audio_gain=0\n";
+    output << "game_audio_gain=0\n";
+    output << "microphone_audio_gain=0\n";
+    output << "discord_audio_gain=0\n";
+    output << "music_audio_gain=0\n";
+  }
+
+  klip::AppConfig migrated;
+  CHECK(klip::LoadConfig(path, migrated, diagnostic));
+  CHECK(migrated.desktop_audio_gain == 6.0);
+  CHECK(migrated.game_audio_gain == 6.0);
+  CHECK(migrated.microphone_audio_gain == 6.0);
+  CHECK(migrated.discord_audio_gain == 6.0);
+  CHECK(migrated.music_audio_gain == 6.0);
+
+  // Saving records v2 so no track receives another offset at the next launch.
+  CHECK(klip::SaveConfig(path, migrated, diagnostic));
+  klip::AppConfig loaded_again;
+  CHECK(klip::LoadConfig(path, loaded_again, diagnostic));
+  CHECK(loaded_again.desktop_audio_gain == 6.0);
+  CHECK(loaded_again.game_audio_gain == 6.0);
+  CHECK(loaded_again.microphone_audio_gain == 6.0);
+  CHECK(loaded_again.discord_audio_gain == 6.0);
+  CHECK(loaded_again.music_audio_gain == 6.0);
+
+  // A file saved by the previous release already calibrated only its mic.
+  // Move the other four tracks by +6 dB without double-boosting the microphone.
+  {
+    std::ofstream output(path, std::ios::trunc);
+    output << "audio_gain_units=db\n";
+    output << "desktop_audio_gain=-7.2\n";
+    output << "game_audio_gain=-2.0\n";
+    output << "microphone_audio_gain=6.0\n";
+    output << "discord_audio_gain=-3.7\n";
+    output << "music_audio_gain=-1.2\n";
+    output << "microphone_gain_calibration_version=1\n";
+  }
+  klip::AppConfig migrated_from_mic_only;
+  CHECK(klip::LoadConfig(path, migrated_from_mic_only, diagnostic));
+  CHECK(std::abs(migrated_from_mic_only.desktop_audio_gain - (-1.2)) < 0.001);
+  CHECK(migrated_from_mic_only.game_audio_gain == 4.0);
+  CHECK(migrated_from_mic_only.microphone_audio_gain == 6.0);
+  CHECK(std::abs(migrated_from_mic_only.discord_audio_gain - 2.3) < 0.001);
+  CHECK(std::abs(migrated_from_mic_only.music_audio_gain - 4.8) < 0.001);
+
+  CHECK(klip::SaveConfig(path, migrated_from_mic_only, diagnostic));
+  klip::AppConfig migrated_twice;
+  CHECK(klip::LoadConfig(path, migrated_twice, diagnostic));
+  CHECK(std::abs(migrated_twice.desktop_audio_gain - migrated_from_mic_only.desktop_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.game_audio_gain - migrated_from_mic_only.game_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.microphone_audio_gain - migrated_from_mic_only.microphone_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.discord_audio_gain - migrated_from_mic_only.discord_audio_gain) < 0.001);
+  CHECK(std::abs(migrated_twice.music_audio_gain - migrated_from_mic_only.music_audio_gain) < 0.001);
+
+  // Intentional mute remains mute during calibration.
+  {
+    std::ofstream output(path, std::ios::trunc);
+    output << "audio_gain_units=db\n";
+    output << "desktop_audio_gain=-96\n";
+    output << "game_audio_gain=0\n";
+    output << "microphone_audio_gain=0\n";
+    output << "discord_audio_gain=0\n";
+    output << "music_audio_gain=0\n";
+  }
+  klip::AppConfig mute_preserved;
+  CHECK(klip::LoadConfig(path, mute_preserved, diagnostic));
+  CHECK(mute_preserved.desktop_audio_gain == -96.0);
+  CHECK(mute_preserved.game_audio_gain == 6.0);
+  CHECK(mute_preserved.microphone_audio_gain == 6.0);
+  CHECK(mute_preserved.discord_audio_gain == 6.0);
+  CHECK(mute_preserved.music_audio_gain == 6.0);
+
   std::error_code ignored;
   std::filesystem::remove(path, ignored);
 }
@@ -663,6 +752,13 @@ int main() {
   CHECK(std::string(performance_obs.preset) == "p3" && std::string(performance_obs.multipass) == "disabled" && !performance_obs.adaptive_quantization);
   const auto maximum_obs = klip::ObsNvencPolicyFor(klip::EncoderQuality::kQuality);
   CHECK(std::string(maximum_obs.preset) == "p7" && std::string(maximum_obs.multipass) == "fullres" && maximum_obs.adaptive_quantization);
+  CHECK(klip::ObsNvencEncoderForGame("Minecraft") == "obs_nvenc_hevc_tex");
+  CHECK(klip::ObsNvencEncoderForGame("Valorant") == "obs_nvenc_h264_tex");
+  CHECK(klip::ObsNvencEncoderForGame("") == "obs_nvenc_h264_tex");
+  CHECK(klip::MakeApplicationProfileSlug("Brawlhalla.exe") == "brawlhalla");
+  CHECK(klip::MakeApplicationProfileSlug("My Cool Game-Win64.exe") == "my-cool-game-win64");
+  CHECK(klip::MakeApplicationProfileSlug("C:\\Games\\CON.exe") == "app-con");
+  CHECK(klip::MakeApplicationProfileSlug(".exe") == "application");
   CHECK(klip::DashboardWorkEnabled(true, false));
   CHECK(!klip::DashboardWorkEnabled(true, true));
   CHECK(!klip::DashboardWorkEnabled(false, false));
@@ -671,6 +767,7 @@ int main() {
   TestPathToUtf8();
   TestAudioFrameCoverage();
   TestConfigRoundTrip();
+  TestAudioGainCalibrationMigration();
   TestFrameRatePersistence();
   TestLegacyObsEncoderMigration();
   TestSpscQueue();

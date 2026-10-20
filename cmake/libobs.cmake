@@ -15,7 +15,7 @@ set_target_properties(OBS::libobs PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${OBS_ROOT}/include/libobs;${CMAKE_CURRENT_BINARY_DIR}/obs-include")
 target_compile_definitions(klip_core PUBLIC KLIP_USE_LIBOBS)
 add_library(klip_media STATIC
-  src/obs/obs_engine.cpp src/core/error.cpp src/core/logger.cpp
+  src/obs/obs_engine.cpp src/obs/gdi_monitor_capture.cpp src/core/error.cpp src/core/logger.cpp
   src/graphics/d3d_device.cpp src/platform/hotkeys.cpp src/platform/user_paths.cpp
   src/platform/win32_window.cpp src/ui/imgui_host.cpp src/ui/main_panel.cpp)
 target_include_directories(klip_media PUBLIC include)
@@ -27,10 +27,21 @@ if(KLIP_ENABLE_TEST_HOOKS)
   target_compile_definitions(klip_media PUBLIC KLIP_ENABLE_TEST_HOOKS)
 endif()
 add_executable(klip_app WIN32 src/app/application_obs.cpp src/main.cpp)
-set(KLIP_ICON_RESOURCE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/klip.ico")
-configure_file(packaging/klip.rc.in "${CMAKE_CURRENT_BINARY_DIR}/klip.rc" @ONLY)
-target_sources(klip_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/klip.rc")
-set_target_properties(klip_app PROPERTIES OUTPUT_NAME Klip RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/64bit")
+
+# Generate the REVO icon used by the window/taskbar and the executable resource.
+set(REVO_ICON_BASE64_PATH "${CMAKE_CURRENT_SOURCE_DIR}/assets/revo.ico.base64")
+set(REVO_ICON_RESOURCE_PATH "${CMAKE_CURRENT_BINARY_DIR}/revo.ico")
+execute_process(
+  COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -Command
+    "$base64 = [System.IO.File]::ReadAllText('${REVO_ICON_BASE64_PATH}').Trim(); [System.IO.File]::WriteAllBytes('${REVO_ICON_RESOURCE_PATH}', [System.Convert]::FromBase64String($base64))"
+  RESULT_VARIABLE REVO_ICON_GENERATION_RESULT
+  ERROR_VARIABLE REVO_ICON_GENERATION_ERROR)
+if(NOT REVO_ICON_GENERATION_RESULT EQUAL 0 OR NOT EXISTS "${REVO_ICON_RESOURCE_PATH}")
+  message(FATAL_ERROR "Could not generate the REVO application icon: ${REVO_ICON_GENERATION_ERROR}")
+endif()
+configure_file(packaging/revo.rc.in "${CMAKE_CURRENT_BINARY_DIR}/revo.rc" @ONLY)
+target_sources(klip_app PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/revo.rc")
+set_target_properties(klip_app PROPERTIES OUTPUT_NAME REVO RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin/64bit")
 target_link_libraries(klip_app PRIVATE klip_media imgui::imgui)
 if(MINGW)
   target_link_options(klip_app PRIVATE -municode)

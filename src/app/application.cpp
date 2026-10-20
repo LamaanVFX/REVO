@@ -29,8 +29,16 @@ std::string WideToUtf8(const std::wstring& value) {
 bool SameHotkeys(const HotkeyConfig& left, const HotkeyConfig& right) {
   return left.save_modifiers == right.save_modifiers &&
          left.save_virtual_key == right.save_virtual_key &&
+         left.save2_modifiers == right.save2_modifiers &&
+         left.save2_virtual_key == right.save2_virtual_key &&
+         left.save3_modifiers == right.save3_modifiers &&
+         left.save3_virtual_key == right.save3_virtual_key &&
          left.record_modifiers == right.record_modifiers &&
          left.record_virtual_key == right.record_virtual_key &&
+         left.record2_modifiers == right.record2_modifiers &&
+         left.record2_virtual_key == right.record2_virtual_key &&
+         left.record3_modifiers == right.record3_modifiers &&
+         left.record3_virtual_key == right.record3_virtual_key &&
          left.toggle_ui_modifiers == right.toggle_ui_modifiers &&
          left.toggle_ui_virtual_key == right.toggle_ui_virtual_key;
 }
@@ -609,9 +617,9 @@ bool KlipApplication::StartRecording(Error& error) {
 }
 
 void KlipApplication::HandleHotkey(int id) {
-  if (id == Hotkeys::kSaveClip) {
-    clip_writer_.RequestClip();
-  } else if (id == Hotkeys::kToggleRecording) {
+  if (Hotkeys::IsSaveClip(id)) {
+    if (clip_writer_.RequestClip()) window_.ShowToast(L"CLIP SAVED");
+  } else if (Hotkeys::IsToggleRecording(id)) {
     Error error;
     if (recording_writer_.IsRecording()) {
       packet_router_.RequestRecordingStop(
@@ -619,11 +627,14 @@ void KlipApplication::HandleHotkey(int id) {
           audio_encoder_.SubmittedFrames() + game_audio_encoder_.SubmittedFrames() +
               microphone_audio_encoder_.SubmittedFrames() + discord_audio_encoder_.SubmittedFrames() +
               music_audio_encoder_.SubmittedFrames());
+      window_.ShowToast(L"RECORDING STOPPED");
     } else if (state_.Snapshot().status != CaptureStatus::kBuffering) {
       return;
     } else if (!StartRecording(error)) {
       state_.SetError(error);
       logger_.ErrorMessage(error);
+    } else {
+      window_.ShowToast(L"RECORDING STARTED");
     }
   } else if (id == Hotkeys::kToggleUi) {
     window_.ToggleVisibility();
@@ -632,7 +643,9 @@ void KlipApplication::HandleHotkey(int id) {
 
 UiCommands KlipApplication::BuildUiCommands() {
   return UiCommands{
-      .save_clip = [this] { clip_writer_.RequestClip(); },
+      .save_clip = [this] {
+        if (clip_writer_.RequestClip()) window_.ShowToast(L"CLIP SAVED");
+      },
       .toggle_recording =
           [this] {
             Error error;
@@ -642,11 +655,14 @@ UiCommands KlipApplication::BuildUiCommands() {
                   audio_encoder_.SubmittedFrames() + game_audio_encoder_.SubmittedFrames() +
                       microphone_audio_encoder_.SubmittedFrames() + discord_audio_encoder_.SubmittedFrames() +
                       music_audio_encoder_.SubmittedFrames());
+              window_.ShowToast(L"RECORDING STOPPED");
             } else if (state_.Snapshot().status != CaptureStatus::kBuffering) {
               return;
             } else if (!StartRecording(error)) {
               state_.SetError(error);
               logger_.ErrorMessage(error);
+            } else {
+              window_.ShowToast(L"RECORDING STARTED");
             }
           },
       .set_target_mode =
@@ -693,22 +709,22 @@ UiCommands KlipApplication::BuildUiCommands() {
           },
       .set_desktop_audio_gain =
           [this](float gain) {
-            config_.desktop_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            config_.desktop_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206);
             audio_.SetDesktopGain(gain);
           },
       .set_microphone_audio_gain =
           [this](float gain) {
-            config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206);
             audio_.SetMicrophoneGain(gain);
           },
       .set_discord_audio_gain =
           [this](float gain) {
-            config_.discord_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            config_.discord_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206);
             audio_.SetDiscordGain(gain);
           },
       .set_music_audio_gain =
           [this](float gain) {
-            config_.music_audio_gain = std::clamp(static_cast<double>(gain), 0.0, 2.0);
+            config_.music_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 12.0206);
             audio_.SetMusicGain(gain);
           },
       .persist_audio_gains = [this] { PersistSettings(config_, false); },
@@ -915,6 +931,7 @@ void KlipApplication::UpdateRollingMetrics() {
   const auto buffer = media_buffer_.Stats();
   state_.SetRollingMetrics(buffer.duration_seconds, buffer.bytes, buffer.packets);
   recording_writer_.Tick();
+
 }
 
 }  // namespace klip

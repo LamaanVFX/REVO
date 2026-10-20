@@ -1,6 +1,7 @@
 #include "klip/core/config.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <sstream>
 #include <unordered_set>
@@ -60,18 +61,15 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (config.audio_bitrate < 32'000) {
     reject("audio_bitrate", "must be at least 32000 bits/s");
   }
-  if (!std::isfinite(config.desktop_audio_gain) || config.desktop_audio_gain < 0.0 ||
-      config.desktop_audio_gain > 2.0) {
-    reject("desktop_audio_gain", "must be between 0.0 and 2.0");
-  }
-  if (!std::isfinite(config.game_audio_gain) || config.game_audio_gain < 0.0 ||
-      config.game_audio_gain > 2.0) {
-    reject("game_audio_gain", "must be between 0.0 and 2.0");
-  }
-  if (!std::isfinite(config.microphone_audio_gain) || config.microphone_audio_gain < 0.0 ||
-      config.microphone_audio_gain > 2.0) {
-    reject("microphone_audio_gain", "must be between 0.0 and 2.0");
-  }
+  const auto validate_audio_fader = [&](double value, const char* field) {
+    if (!std::isfinite(value) || value < -96.0 || value > 12.0206)
+      reject(field, "must be between -96.0 dB and +12.02 dB");
+  };
+  validate_audio_fader(config.desktop_audio_gain, "desktop_audio_gain");
+  validate_audio_fader(config.game_audio_gain, "game_audio_gain");
+  validate_audio_fader(config.microphone_audio_gain, "microphone_audio_gain");
+  validate_audio_fader(config.discord_audio_gain, "discord_audio_gain");
+  validate_audio_fader(config.music_audio_gain, "music_audio_gain");
   const auto normalized = [](double value) {
     return std::isfinite(value) && value >= 0.0 && value <= 1.0;
   };
@@ -129,29 +127,30 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
     reject("encoder_preferences", "must contain at least one encoder");
   }
 
-  if ((config.hotkeys.save_modifiers & ~kAllowedHotkeyModifiers) != 0 ||
-      (config.hotkeys.record_modifiers & ~kAllowedHotkeyModifiers) != 0 ||
-      (config.hotkeys.toggle_ui_modifiers & ~kAllowedHotkeyModifiers) != 0) {
-    reject("hotkeys", "contains unsupported modifier flags");
+  const std::array<std::pair<unsigned int, unsigned int>, 7> shortcuts{{
+      {config.hotkeys.save_modifiers, config.hotkeys.save_virtual_key},
+      {config.hotkeys.save2_modifiers, config.hotkeys.save2_virtual_key},
+      {config.hotkeys.save3_modifiers, config.hotkeys.save3_virtual_key},
+      {config.hotkeys.record_modifiers, config.hotkeys.record_virtual_key},
+      {config.hotkeys.record2_modifiers, config.hotkeys.record2_virtual_key},
+      {config.hotkeys.record3_modifiers, config.hotkeys.record3_virtual_key},
+      {config.hotkeys.toggle_ui_modifiers, config.hotkeys.toggle_ui_virtual_key},
+  }};
+  for (const auto& [modifiers, key] : shortcuts) {
+    if ((modifiers & ~kAllowedHotkeyModifiers) != 0)
+      reject("hotkeys", "contains unsupported modifier flags");
+    if (key == 0 || key > 0xFE)
+      reject("hotkeys", "shortcut keys must be valid Windows virtual keys");
   }
-  if ((config.hotkeys.save_modifiers & kChordModifiers) == 0 ||
-      (config.hotkeys.record_modifiers & kChordModifiers) == 0 ||
-      (config.hotkeys.toggle_ui_modifiers & kChordModifiers) == 0) {
-    reject("hotkeys", "each shortcut must include Ctrl, Alt, Shift, or Windows");
-  }
-  if (config.hotkeys.save_virtual_key == 0 || config.hotkeys.save_virtual_key > 0xFE ||
-      config.hotkeys.record_virtual_key == 0 || config.hotkeys.record_virtual_key > 0xFE ||
-      config.hotkeys.toggle_ui_virtual_key == 0 ||
-      config.hotkeys.toggle_ui_virtual_key > 0xFE) {
-    reject("hotkeys", "shortcut keys must be valid Windows virtual keys");
-  }
-  if (SameHotkey(config.hotkeys.save_modifiers, config.hotkeys.save_virtual_key,
-                 config.hotkeys.record_modifiers, config.hotkeys.record_virtual_key) ||
-      SameHotkey(config.hotkeys.save_modifiers, config.hotkeys.save_virtual_key,
-                 config.hotkeys.toggle_ui_modifiers, config.hotkeys.toggle_ui_virtual_key) ||
-      SameHotkey(config.hotkeys.record_modifiers, config.hotkeys.record_virtual_key,
-                 config.hotkeys.toggle_ui_modifiers, config.hotkeys.toggle_ui_virtual_key)) {
-    reject("hotkeys", "clip, recording, and hide shortcuts must be different");
+  for (std::size_t left = 0; left < shortcuts.size(); ++left) {
+    for (std::size_t right = left + 1; right < shortcuts.size(); ++right) {
+      if (SameHotkey(shortcuts[left].first, shortcuts[left].second,
+                     shortcuts[right].first, shortcuts[right].second)) {
+        reject("hotkeys", "clip, recording, and hide shortcuts must be different");
+        left = shortcuts.size();
+        break;
+      }
+    }
   }
 
   std::unordered_set<std::string> encoders;

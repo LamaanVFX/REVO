@@ -63,6 +63,9 @@ struct ApplicationSnapshot {
   bool microphone_active = false;
   float desktop_audio_level = 0.0F;
   float microphone_level = 0.0F;
+  float game_audio_level = 0.0F;
+  float discord_audio_level = 0.0F;
+  float music_audio_level = 0.0F;
   std::vector<std::string> microphones;
   std::vector<AudioApplicationOption> audio_applications;
   std::string detected_game_audio_application;
@@ -101,6 +104,7 @@ class ApplicationState {
   void SetEncoderStatus(std::string status);
   void SetAudio(bool desktop_active, bool microphone_active, float desktop_level,
                 float microphone_level);
+  void SetProcessAudioLevels(float game_level, float discord_level, float music_level);
   void SetMicrophoneEnabled(bool enabled);
   void SetMicrophones(std::vector<std::string> microphones, int selected_index);
   void SetAudioApplications(std::vector<AudioApplicationOption> applications);

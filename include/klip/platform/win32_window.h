@@ -5,6 +5,7 @@
 #include <functional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "klip/core/error.h"
 #include "klip/platform/dashboard_activity.h"
@@ -25,6 +26,7 @@ class Win32Window {
   bool PumpMessages();
   void ToggleVisibility();
   void SetHotkeyCallback(HotkeyCallback callback);
+  void ShowToast(const std::wstring& message);
   bool TakeResize(UINT& width, UINT& height);
   bool TakeRedrawRequest() noexcept { return std::exchange(redraw_requested_, false); }
   [[nodiscard]] HWND Handle() const noexcept { return window_; }
@@ -33,11 +35,16 @@ class Win32Window {
 
  private:
   static LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param);
+  static LRESULT CALLBACK ToastWindowProc(HWND window, UINT message, WPARAM w_param, LPARAM l_param);
   LRESULT HandleMessage(UINT message, WPARAM w_param, LPARAM l_param);
   void UpdateTray(bool add) noexcept;
+  bool EnsureToastClass();
 
   HINSTANCE instance_ = nullptr;
   HWND window_ = nullptr;
+  std::vector<HWND> toast_windows_;
+  std::wstring toast_text_;
+  bool toast_class_registered_ = false;
   HICON large_icon_ = nullptr;
   HICON small_icon_ = nullptr;
   bool visible_ = true;

@@ -1,22 +1,21 @@
-KLIP 2.0 — LICENSE NOTICE
+REVO 3.0.4 — LICENSE NOTICE
 Copyright (C) 2026 Andrewkernel and contributors
 
-Klip 2.0 is free software: you can redistribute it and/or modify it under
- the GNU General Public License as published by the Free Software Foundation,
- either version 3 of the License, or (at your option) any later version.
+REVO 3.0.4 is free software: you can redistribute it and/or modify it under
+the GNU General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Klip is distributed in the hope that it will be useful, but WITHOUT ANY
+REVO is distributed in the hope that it will be useful, but WITHOUT ANY
 WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
 FOR A PARTICULAR PURPOSE. See LICENSE for the complete GNU GPL terms.
 
-The earlier proprietary Klip EULA does not apply to Klip 2.0. This notice
+The earlier proprietary Klip EULA does not apply to REVO 3.0.4. This notice
 adds no restrictions on use, modification or redistribution. Installation
 acknowledges this notice; running the program does not require accepting
 additional contractual terms.
 
 Source, build instructions and third-party sources accompany the release:
-https://github.com/andrewkernel/klip/releases/tag/v2.0.0
-https://github.com/andrewkernel/klip/tree/v2.0.0
+https://github.com/LamaanVFX/klipedit
 
 Record only content you are authorized to capture. See PRIVACY.md for local
 settings/media/log handling, and THIRD_PARTY_NOTICES.md for other components.

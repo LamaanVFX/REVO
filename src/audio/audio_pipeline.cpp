@@ -25,6 +25,11 @@ extern "C" {
 namespace klip {
 namespace {
 
+float GainMultiplierFromDb(float db) noexcept {
+  if (!std::isfinite(db)) return 0.0F;
+  return static_cast<float>(std::pow(10.0, std::clamp(db, -96.0F, 12.0206F) / 20.0));
+}
+
 constexpr int kMaximumBufferedFrames = AudioEncoder::kSampleRate;
 constexpr wchar_t kProcessLoopbackDevice[] = L"VAD\\Process_Loopback";
 
@@ -187,15 +192,15 @@ bool AudioPipeline::Initialize(std::int64_t qpc_origin, std::int64_t qpc_frequen
   desktop_retry_after_ = {};
   microphone_retry_after_ = {};
   desktop_enabled_.store(config.desktop_audio_enabled, std::memory_order_release);
-  desktop_gain_.store(static_cast<float>(std::clamp(config.desktop_audio_gain, 0.0, 2.0)),
+  desktop_gain_.store(GainMultiplierFromDb(static_cast<float>(config.desktop_audio_gain)),
                       std::memory_order_release);
-  microphone_gain_.store(static_cast<float>(std::clamp(config.microphone_audio_gain, 0.0, 2.0)),
+  microphone_gain_.store(GainMultiplierFromDb(static_cast<float>(config.microphone_audio_gain)),
                          std::memory_order_release);
-  game_gain_.store(static_cast<float>(std::clamp(config.game_audio_gain, 0.0, 2.0)),
+  game_gain_.store(GainMultiplierFromDb(static_cast<float>(config.game_audio_gain)),
                    std::memory_order_release);
-  discord_gain_.store(static_cast<float>(std::clamp(config.discord_audio_gain, 0.0, 2.0)),
+  discord_gain_.store(GainMultiplierFromDb(static_cast<float>(config.discord_audio_gain)),
                       std::memory_order_release);
-  music_gain_.store(static_cast<float>(std::clamp(config.music_audio_gain, 0.0, 2.0)),
+  music_gain_.store(GainMultiplierFromDb(static_cast<float>(config.music_audio_gain)),
                     std::memory_order_release);
   qpc_frequency_ = qpc_frequency;
   qpc_origin_ = av_rescale(qpc_origin, 10'000'000LL, qpc_frequency);
@@ -305,7 +310,7 @@ void AudioPipeline::SetMicrophoneEnabled(bool enabled) {
 }
 
 void AudioPipeline::SetDesktopGain(float gain) noexcept {
-  desktop_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+  desktop_gain_.store(GainMultiplierFromDb(gain), std::memory_order_release);
 }
 
 void AudioPipeline::SetDesktopEnabled(bool enabled) {
@@ -355,17 +360,17 @@ void AudioPipeline::SetExcludedApplication(std::string executable_name) {
 }
 
 void AudioPipeline::SetMicrophoneGain(float gain) noexcept {
-  microphone_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+  microphone_gain_.store(GainMultiplierFromDb(gain), std::memory_order_release);
 }
 
 void AudioPipeline::SetGameGain(float gain) noexcept {
-  game_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+  game_gain_.store(GainMultiplierFromDb(gain), std::memory_order_release);
 }
 void AudioPipeline::SetDiscordGain(float gain) noexcept {
-  discord_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+  discord_gain_.store(GainMultiplierFromDb(gain), std::memory_order_release);
 }
 void AudioPipeline::SetMusicGain(float gain) noexcept {
-  music_gain_.store(std::clamp(gain, 0.0F, 2.0F), std::memory_order_release);
+  music_gain_.store(GainMultiplierFromDb(gain), std::memory_order_release);
 }
 
 void AudioPipeline::SelectMicrophone(int index) {

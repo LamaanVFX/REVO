@@ -92,6 +92,14 @@ void ApplicationState::SetAudio(bool desktop_active, bool microphone_active, flo
   snapshot_.microphone_level = microphone_level;
 }
 
+void ApplicationState::SetProcessAudioLevels(float game_level, float discord_level,
+                                                float music_level) {
+  std::scoped_lock lock(mutex_);
+  snapshot_.game_audio_level = game_level;
+  snapshot_.discord_audio_level = discord_level;
+  snapshot_.music_audio_level = music_level;
+}
+
 void ApplicationState::SetMicrophoneEnabled(bool enabled) {
   std::scoped_lock lock(mutex_);
   snapshot_.microphone_enabled = enabled;

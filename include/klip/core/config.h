@@ -34,10 +34,19 @@ struct HotkeyConfig {
   static constexpr unsigned int kWindows = 0x0008;
   static constexpr unsigned int kNoRepeat = 0x4000;
 
+  // Primary shortcuts preserve the original settings file names.
   unsigned int save_modifiers = kAlt | kNoRepeat;
   unsigned int save_virtual_key = 'C';
+  unsigned int save2_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int save2_virtual_key = 'C';
+  unsigned int save3_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int save3_virtual_key = 0x79;  // F10
   unsigned int record_modifiers = kAlt | kNoRepeat;
   unsigned int record_virtual_key = 'R';
+  unsigned int record2_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int record2_virtual_key = 'R';
+  unsigned int record3_modifiers = kControl | kAlt | kShift | kNoRepeat;
+  unsigned int record3_virtual_key = 0x7A;  // F11
   unsigned int toggle_ui_modifiers = kAlt | kNoRepeat;
   unsigned int toggle_ui_virtual_key = 'X';
 };
@@ -54,7 +63,7 @@ struct AppConfig {
   std::string discord_audio_window = "::Discord.exe";
   std::string music_audio_window = "::Spotify.exe";
   std::string output_container = "mkv";
-  int obs_display_method = 2; // Use Windows Graphics Capture; auto=0, DXGI=1, WGC=2.
+  int obs_display_method = 1; // Legacy setting only; display capture uses Klip GDI/BitBlt.
   bool obs_limit_game_capture_fps = true; // Limit capture copies to output FPS; never caps the game itself.
   double clip_duration_seconds = 60.0;
   std::uint32_t target_fps = 60;
@@ -68,11 +77,13 @@ struct AppConfig {
   std::int64_t video_bitrate = 12'000'000;
   std::int64_t audio_bitrate = 192'000;
   bool desktop_audio_enabled = true;
-  double desktop_audio_gain = 1.0;
-  double game_audio_gain = 1.0;
-  double microphone_audio_gain = 1.0;
-  double discord_audio_gain = 1.0;
-  double music_audio_gain = 1.0;
+  // OBS-style fader dB: -96 dB is mute; 0 dB is unity gain.
+  // +6 dB calibration is applied consistently to all REVO audio tracks.
+  double desktop_audio_gain = 6.0;
+  double game_audio_gain = 6.0;
+  double microphone_audio_gain = 6.0;
+  double discord_audio_gain = 6.0;
+  double music_audio_gain = 6.0;
   std::filesystem::path output_directory = "clips";
   std::filesystem::path recording_directory = "recordings";
   std::filesystem::path log_path = "klip.log";

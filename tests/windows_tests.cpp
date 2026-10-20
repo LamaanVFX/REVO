@@ -97,6 +97,22 @@ void TestAudioRecoveryBackoff() {
   CHECK(klip::audio_detail::ShouldRetryCapture(true, false, false, retry_after, retry_after));
 }
 
+void TestModifierFreeHotkeyRegistration() {
+  HWND app = CreateWindowExW(0, L"STATIC", L"Klip single-key test", 0, 0, 0, 0, 0,
+                             HWND_MESSAGE, nullptr, nullptr, nullptr);
+  CHECK(app != nullptr);
+  if (!app) return;
+  klip::HotkeyConfig config;
+  config.save_modifiers = klip::HotkeyConfig::kNoRepeat;
+  config.save_virtual_key = VK_F20;
+  klip::Hotkeys hotkeys;
+  klip::Error error;
+  CHECK(hotkeys.Register(app, config, error));
+  CHECK(hotkeys.SaveRegistered());
+  hotkeys.Unregister();
+  DestroyWindow(app);
+}
+
 void TestPartialHotkeyRegistration() {
   HWND app = CreateWindowExW(0, L"STATIC", L"Klip test", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr,
                              nullptr, nullptr);
@@ -133,6 +149,87 @@ void TestHotkeyWindowDispatch() {
   klip::Error error;
   CHECK(window.Create(GetModuleHandleW(nullptr), SW_HIDE, error));
   if (window.Handle() == nullptr) return;
+
+  // The compiled REVO resource should populate both Win32 window icon slots,
+  // plus the class icon that Windows also consults for the taskbar.
+  const auto large_icon =
+      reinterpret_cast<HICON>(SendMessageW(window.Handle(), WM_GETICON, ICON_BIG, 0));
+  const auto small_icon =
+      reinterpret_cast<HICON>(SendMessageW(window.Handle(), WM_GETICON, ICON_SMALL, 0));
+  CHECK(large_icon != nullptr);
+  CHECK(small_icon != nullptr);
+  CHECK(reinterpret_cast<HICON>(GetClassLongPtrW(window.Handle(), GCLP_HICON)) == large_icon);
+  CHECK(reinterpret_cast<HICON>(GetClassLongPtrW(window.Handle(), GCLP_HICONSM)) == small_icon);
+
+  // A popup should be visible in the top-right of every connected display,
+  // even while the main REVO window is hidden.
+  std::vector<RECT> monitor_areas;
+  EnumDisplayMonitors(
+      nullptr, nullptr,
+      [](HMONITOR monitor, HDC, LPRECT, LPARAM parameter) -> BOOL {
+        auto& areas = *reinterpret_cast<std::vector<RECT>*>(parameter);
+        MONITORINFO info{};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(monitor, &info)) areas.push_back(info.rcWork);
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&monitor_areas));
+  CHECK(!monitor_areas.empty());
+
+  window.ShowToast(L"CLIP SAVED");
+  std::vector<HWND> toasts;
+  EnumWindows(
+      [](HWND candidate, LPARAM parameter) -> BOOL {
+        if (!IsWindowVisible(candidate)) return TRUE;
+        wchar_t class_name[128]{};
+        GetClassNameW(candidate, class_name, 128);
+        if (lstrcmpW(class_name, L"REVOStatusToastClass") == 0)
+          reinterpret_cast<std::vector<HWND>*>(parameter)->push_back(candidate);
+        return TRUE;
+      },
+      reinterpret_cast<LPARAM>(&toasts));
+  CHECK(toasts.size() == monitor_areas.size());
+
+  std::vector<bool> monitor_has_toast(monitor_areas.size(), false);
+  HWND toast_to_demote = nullptr;
+  for (const HWND toast : toasts) {
+    CHECK(IsWindowVisible(toast));
+    const auto toast_ex_style = GetWindowLongPtrW(toast, GWL_EXSTYLE);
+    CHECK((toast_ex_style & WS_EX_TOPMOST) != 0);
+    CHECK((toast_ex_style & WS_EX_TOOLWINDOW) != 0);
+    CHECK((toast_ex_style & WS_EX_NOACTIVATE) != 0);
+    CHECK(GetWindow(toast, GW_OWNER) == nullptr);
+    RECT toast_rect{};
+    CHECK(GetWindowRect(toast, &toast_rect));
+    bool positioned_on_monitor = false;
+    for (std::size_t index = 0; index < monitor_areas.size(); ++index) {
+      const RECT& work = monitor_areas[index];
+      const bool in_top_right = toast_rect.left >= work.left &&
+                                toast_rect.right <= work.right &&
+                                toast_rect.top >= work.top &&
+                                toast_rect.top < work.top + 40 &&
+                                toast_rect.right > work.right - 380;
+      if (in_top_right) {
+        CHECK(!monitor_has_toast[index]);
+        monitor_has_toast[index] = true;
+        positioned_on_monitor = true;
+      }
+    }
+    CHECK(positioned_on_monitor);
+    if (!toast_to_demote) toast_to_demote = toast;
+  }
+  for (const bool has_toast : monitor_has_toast) CHECK(has_toast);
+
+  // Simulate another app pushing a popup out of the topmost band; the next
+  // refresh must restore its topmost Z-order without activating it.
+  if (toast_to_demote) {
+    CHECK(SetWindowPos(toast_to_demote, HWND_NOTOPMOST, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE));
+    CHECK((GetWindowLongPtrW(toast_to_demote, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0);
+    CHECK(PostMessageW(toast_to_demote, WM_TIMER, 2, 0));
+    CHECK(window.PumpMessages());
+    CHECK((GetWindowLongPtrW(toast_to_demote, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+  }
 
   int save_clip_calls = 0;
   int recording_calls = 0;
@@ -611,6 +708,7 @@ int main() {
   TestNativeCaptureDefaults();
   TestWaveFormats();
   TestAudioRecoveryBackoff();
+  TestModifierFreeHotkeyRegistration();
   TestPartialHotkeyRegistration();
   TestHotkeyWindowDispatch();
   TestRecordingOverloadStops();
