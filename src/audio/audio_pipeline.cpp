@@ -26,7 +26,7 @@ namespace klip {
 namespace {
 
 float GainMultiplierFromDb(float db) noexcept {
-  if (!std::isfinite(db) || db <= -96.0F) return 0.0F;
+  if (!std::isfinite(db)) return 0.0F;
   return static_cast<float>(std::pow(10.0, std::clamp(db, -96.0F, 6.0206F) / 20.0));
 }
 
