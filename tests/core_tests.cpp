@@ -290,6 +290,41 @@ void TestConfigRoundTrip() {
   std::filesystem::remove(path, ignored);
 }
 
+void TestMicrophoneGainCalibrationMigration() {
+  const auto path = std::filesystem::temp_directory_path() /
+                    "klip-core-test-microphone-gain-calibration.ini";
+  std::string diagnostic;
+  {
+    std::ofstream output(path, std::ios::trunc);
+    output << "audio_gain_units=db\n";
+    output << "microphone_audio_gain=0\n";
+  }
+
+  klip::AppConfig migrated;
+  CHECK(klip::LoadConfig(path, migrated, diagnostic));
+  CHECK(migrated.microphone_audio_gain == 6.0);
+
+  // Saving records the migration version, so the measured +6 dB offset is not
+  // applied a second time on the next launch.
+  CHECK(klip::SaveConfig(path, migrated, diagnostic));
+  klip::AppConfig loaded_again;
+  CHECK(klip::LoadConfig(path, loaded_again, diagnostic));
+  CHECK(loaded_again.microphone_audio_gain == 6.0);
+
+  {
+    std::ofstream output(path, std::ios::trunc);
+    output << "audio_gain_units=db\n";
+    output << "microphone_audio_gain=1.25\n";
+    output << "microphone_gain_calibration_version=1\n";
+  }
+  klip::AppConfig already_calibrated;
+  CHECK(klip::LoadConfig(path, already_calibrated, diagnostic));
+  CHECK(already_calibrated.microphone_audio_gain == 1.25);
+
+  std::error_code ignored;
+  std::filesystem::remove(path, ignored);
+}
+
 void TestFrameRatePersistence() {
   const auto path = std::filesystem::temp_directory_path() / "klip-core-test-legacy-fps.ini";
   {
@@ -684,6 +719,7 @@ int main() {
   TestPathToUtf8();
   TestAudioFrameCoverage();
   TestConfigRoundTrip();
+  TestMicrophoneGainCalibrationMigration();
   TestFrameRatePersistence();
   TestLegacyObsEncoderMigration();
   TestSpscQueue();
