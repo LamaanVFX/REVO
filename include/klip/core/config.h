@@ -77,11 +77,12 @@ struct AppConfig {
   std::int64_t video_bitrate = 12'000'000;
   std::int64_t audio_bitrate = 192'000;
   bool desktop_audio_enabled = true;
-  double desktop_audio_gain = 1.0;
-  double game_audio_gain = 1.0;
-  double microphone_audio_gain = 1.0;
-  double discord_audio_gain = 1.0;
-  double music_audio_gain = 1.0;
+  // OBS-style fader dB: -96 dB is mute; 0 dB is unity gain.
+  double desktop_audio_gain = 0.0;
+  double game_audio_gain = 0.0;
+  double microphone_audio_gain = 0.0;
+  double discord_audio_gain = 0.0;
+  double music_audio_gain = 0.0;
   std::filesystem::path output_directory = "clips";
   std::filesystem::path recording_directory = "recordings";
   std::filesystem::path log_path = "klip.log";
