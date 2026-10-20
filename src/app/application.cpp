@@ -709,22 +709,22 @@ UiCommands KlipApplication::BuildUiCommands() {
           },
       .set_desktop_audio_gain =
           [this](float gain) {
-            config_.desktop_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 0.0);
+            config_.desktop_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206);
             audio_.SetDesktopGain(gain);
           },
       .set_microphone_audio_gain =
           [this](float gain) {
-            config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 0.0);
+            config_.microphone_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206);
             audio_.SetMicrophoneGain(gain);
           },
       .set_discord_audio_gain =
           [this](float gain) {
-            config_.discord_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 0.0);
+            config_.discord_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206);
             audio_.SetDiscordGain(gain);
           },
       .set_music_audio_gain =
           [this](float gain) {
-            config_.music_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 0.0);
+            config_.music_audio_gain = std::clamp(static_cast<double>(gain), -96.0, 6.0206);
             audio_.SetMusicGain(gain);
           },
       .persist_audio_gains = [this] { PersistSettings(config_, false); },
