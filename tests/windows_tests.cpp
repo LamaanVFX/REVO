@@ -194,7 +194,11 @@ void TestHotkeyWindowDispatch() {
   HWND toast_to_demote = nullptr;
   for (const HWND toast : toasts) {
     CHECK(IsWindowVisible(toast));
-    CHECK((GetWindowLongPtrW(toast, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0);
+    const auto toast_ex_style = GetWindowLongPtrW(toast, GWL_EXSTYLE);
+    CHECK((toast_ex_style & WS_EX_TOPMOST) != 0);
+    CHECK((toast_ex_style & WS_EX_TOOLWINDOW) != 0);
+    CHECK((toast_ex_style & WS_EX_NOACTIVATE) != 0);
+    CHECK(GetWindow(toast, GW_OWNER) == nullptr);
     RECT toast_rect{};
     CHECK(GetWindowRect(toast, &toast_rect));
     bool positioned_on_monitor = false;
