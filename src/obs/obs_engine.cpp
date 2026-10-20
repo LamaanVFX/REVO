@@ -29,6 +29,11 @@
 namespace klip {
 namespace {
 using Data = std::unique_ptr<obs_data_t, decltype(&obs_data_release)>;
+
+float GainMultiplierFromDb(double db) noexcept {
+  if (!std::isfinite(db) || db <= -96.0) return 0.0F;
+  return obs_db_to_mul(static_cast<float>(std::clamp(db, -96.0, 0.0)));
+}
 using Properties = std::unique_ptr<obs_properties_t, decltype(&obs_properties_destroy)>;
 Data MakeData() { return Data(obs_data_create(), obs_data_release); }
 
@@ -570,7 +575,7 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
   configure(desktop_audio_, desktop_audio_meter_, desktop_audio_level_,
             config.obs_separate_audio_tracks && config.desktop_audio_enabled,
             "wasapi_output_capture", "REVO desktop audio", 5, "default",
-            static_cast<float>(config.desktop_audio_gain), 1U);
+            GainMultiplierFromDb(config.desktop_audio_gain), 1U);
   if (config.obs_separate_audio_tracks && config.desktop_audio_enabled && desktop_audio_) {
     logger_.Info("Desktop audio captures the default Windows render endpoint (all system output)");
   }
@@ -627,9 +632,9 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
         : 1U;
     obs_source_set_audio_mixers(source, source_mixers);
     const float gain = std::string_view(name) == "REVO Discord audio"
-                           ? static_cast<float>(config.discord_audio_gain)
-                           : spotify_source ? static_cast<float>(config.music_audio_gain)
-                                            : static_cast<float>(config.game_audio_gain);
+                           ? GainMultiplierFromDb(config.discord_audio_gain)
+                           : spotify_source ? GainMultiplierFromDb(config.music_audio_gain)
+                                            : GainMultiplierFromDb(config.game_audio_gain);
     obs_source_set_volume(source, gain);
     obs_set_output_source(channel, source);
   };
@@ -638,7 +643,7 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
   configure(microphone_, microphone_meter_, microphone_level_,
             config.microphone_enabled && microphone_available,
             "wasapi_input_capture", "REVO microphone", 2, device,
-            static_cast<float>(config.microphone_audio_gain),
+            GainMultiplierFromDb(config.microphone_audio_gain),
             config.obs_separate_audio_tracks ? (1U | (1U << 1)) : 1U);
   configure_process(discord_audio_, "REVO Discord audio", config.discord_audio_window, 3, 1U << 3);
   configure_process(music_audio_, "REVO Spotify audio", config.music_audio_window, 4, 1U << 4);
