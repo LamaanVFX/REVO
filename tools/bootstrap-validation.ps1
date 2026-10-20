@@ -42,9 +42,41 @@ Expand-PinnedPackage 'llvm' 'https://github.com/mstorsjo/llvm-mingw/releases/dow
 Expand-PinnedPackage 'cmake' 'https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.zip' '4d52ebab7193a698651639ed80d8d04fd903358843572cf44c7fd234cb7c26ab'
 Expand-PinnedPackage 'ninja' 'https://github.com/ninja-build/ninja/releases/download/v1.13.2/ninja-win.zip' '07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65'
 
-# Use a dated FFmpeg archive with its content hash pinned directly. The release's
-# checksums.sha256 file can change independently of this repository and caused
-# clean GitHub Actions runners to fail before compilation.
-Expand-PinnedPackage 'ffmpeg-8.1' 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-05-13-07/ffmpeg-n8.1.3-14-g330caae0c1-win64-lgpl-shared-8.1.zip' '534653068a3ac64ed5d02361e1ad59e4cb99a713f425444b470514999e437473'
+# Pin the manifest for this dated FFmpeg release, then verify the exact archive
+# hash from that manifest before extracting it. This keeps the asset pinned while
+# avoiding references to older release archives that upstream has removed.
+function Get-PinnedReleaseAssetSha256($releaseTag, $assetName, $manifestSha256) {
+  $manifestUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$releaseTag/checksums.sha256"
+  $download = Join-Path $root "ffmpeg-release-checksums.$([guid]::NewGuid().ToString('N')).download"
+  & curl.exe -fL --retry 3 --silent --show-error $manifestUrl -o $download
+  if ($LASTEXITCODE -ne 0) { throw "FFmpeg checksum-manifest download failed: $manifestUrl" }
+  $actualManifestHash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant()
+  if ($actualManifestHash -ne $manifestSha256) {
+    Remove-Item -LiteralPath $download -Force
+    throw "FFmpeg checksum-manifest mismatch: expected $manifestSha256, found $actualManifestHash"
+  }
+  $line = Get-Content -LiteralPath $download | Where-Object { $_.Contains($assetName) } | Select-Object -First 1
+  Remove-Item -LiteralPath $download -Force
+  if (-not $line) { throw "Pinned FFmpeg checksum manifest does not contain $assetName" }
+  if ($line -match '^\s*([0-9a-fA-F]{64})\s+[* ]?(.+?)\s*
+Expand-PinnedPackage 'winsdk' 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2705/microsoft.windows.sdk.cpp.10.0.28000.2705.nupkg' 'a74ca8f9af98bd61925d9e2932ad98f746306123167b8f0bba99cd9ea9f03807'
+Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
+) {
+    $assetHash = $Matches[1].ToLowerInvariant()
+    $entryName = $Matches[2].Trim().TrimStart('*')
+  } elseif ($line -match '^SHA256\((.+)\)\s*=\s*([0-9a-fA-F]{64})
+Expand-PinnedPackage 'winsdk' 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2705/microsoft.windows.sdk.cpp.10.0.28000.2705.nupkg' 'a74ca8f9af98bd61925d9e2932ad98f746306123167b8f0bba99cd9ea9f03807'
+Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
+) {
+    $entryName = $Matches[1]
+    $assetHash = $Matches[2].ToLowerInvariant()
+  } else { throw "Could not parse SHA-256 entry for $assetName from FFmpeg manifest" }
+  if ($entryName -ne $assetName) { throw "FFmpeg manifest entry mismatch: expected $assetName, found $entryName" }
+  return $assetHash
+}
+$ffmpegRelease = 'autobuild-2026-10-20-13-08'
+$ffmpegArchive = 'ffmpeg-n8.1.3-18-g46d899d7a0-win64-lgpl-shared-8.1.zip'
+$ffmpegSha256 = Get-PinnedReleaseAssetSha256 $ffmpegRelease $ffmpegArchive 'e5f8f88ba4290f22cefa349aaf660ede4c81e3aa615a28352fcc0be2597066a7'
+Expand-PinnedPackage 'ffmpeg-8.1' "https://github.com/BtbN/FFmpeg-Builds/releases/download/$ffmpegRelease/$ffmpegArchive" $ffmpegSha256
 Expand-PinnedPackage 'winsdk' 'https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.cpp/10.0.28000.2705/microsoft.windows.sdk.cpp.10.0.28000.2705.nupkg' 'a74ca8f9af98bd61925d9e2932ad98f746306123167b8f0bba99cd9ea9f03807'
 Expand-PinnedPackage 'imgui-1.92.8' 'https://github.com/ocornut/imgui/archive/refs/tags/v1.92.8.zip' '27765c56ab27ce47472d0bea43cf1e3301c726362ce585e99a059e3b37616870'
