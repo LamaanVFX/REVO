@@ -2,6 +2,7 @@
 #include "klip/core/path_text.h"
 
 #include <algorithm>
+#include <cmath>
 #include <charconv>
 #include <fstream>
 #include <iomanip>
@@ -137,6 +138,7 @@ bool AssignValue(AppConfig& config, const std::string& key, const std::string& v
   if (key == "output_height") return ParseInteger(value, config.output_height);
   if (key == "video_bitrate") return ParseInteger(value, config.video_bitrate);
   if (key == "audio_bitrate") return ParseInteger(value, config.audio_bitrate);
+  if (key == "audio_gain_units") return value == "db";
   if (key == "desktop_audio_enabled") return ParseBool(value, config.desktop_audio_enabled);
   if (key == "desktop_audio_gain") return ParseDouble(value, config.desktop_audio_gain);
   if (key == "game_audio_gain") return ParseDouble(value, config.game_audio_gain);
@@ -273,6 +275,7 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   AppConfig loaded = config;
   bool has_obs_encoder_id = false;
   bool has_legacy_encoder_preferences = false;
+  bool has_db_audio_gain_units = false;
   std::string line;
   std::size_t line_number = 0;
   while (std::getline(input, line)) {
@@ -293,6 +296,20 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
     }
     has_obs_encoder_id |= key == "obs_encoder_id";
     has_legacy_encoder_preferences |= key == "encoder_preferences";
+    has_db_audio_gain_units |= key == "audio_gain_units";
+  }
+
+  // Older settings saved linear multipliers (0..2); new settings store OBS-style dB.
+  if (!has_db_audio_gain_units) {
+    const auto to_db = [](double multiplier) {
+      if (!std::isfinite(multiplier) || multiplier <= 0.0) return -96.0;
+      return std::clamp(20.0 * std::log10(multiplier), -96.0, 0.0);
+    };
+    loaded.desktop_audio_gain = to_db(loaded.desktop_audio_gain);
+    loaded.game_audio_gain = to_db(loaded.game_audio_gain);
+    loaded.microphone_audio_gain = to_db(loaded.microphone_audio_gain);
+    loaded.discord_audio_gain = to_db(loaded.discord_audio_gain);
+    loaded.music_audio_gain = to_db(loaded.music_audio_gain);
   }
 
   // Only migrate an explicitly saved single-encoder choice in an old file.
@@ -373,6 +390,7 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "audio_bitrate=" << config.audio_bitrate << '\n';
   output << "desktop_audio_enabled=" << (config.desktop_audio_enabled ? "true" : "false")
          << '\n';
+  output << "audio_gain_units=db" << '\n';
   output << "desktop_audio_gain=" << config.desktop_audio_gain << '\n';
   output << "game_audio_gain=" << config.game_audio_gain << '\n';
   output << "microphone_audio_gain=" << config.microphone_audio_gain << '\n';
