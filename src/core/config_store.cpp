@@ -279,6 +279,7 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   bool has_desktop_gain = false;
   bool has_game_gain = false;
   bool has_microphone_gain = false;
+  bool has_microphone_gain_calibration_v1 = false;
   bool has_discord_gain = false;
   bool has_music_gain = false;
   std::string line;
@@ -305,6 +306,8 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
     has_desktop_gain |= key == "desktop_audio_gain";
     has_game_gain |= key == "game_audio_gain";
     has_microphone_gain |= key == "microphone_audio_gain";
+    has_microphone_gain_calibration_v1 |=
+        key == "microphone_gain_calibration_version" && value == "1";
     has_discord_gain |= key == "discord_audio_gain";
     has_music_gain |= key == "music_audio_gain";
   }
@@ -320,6 +323,16 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
     loaded.microphone_audio_gain = has_microphone_gain ? to_db(loaded.microphone_audio_gain) : 0.0;
     loaded.discord_audio_gain = has_discord_gain ? to_db(loaded.discord_audio_gain) : 0.0;
     loaded.music_audio_gain = has_music_gain ? to_db(loaded.music_audio_gain) : 0.0;
+  }
+
+  // The measured REVO microphone track is 6 dB below OBS for the same input.
+  // Apply this calibration once to saved dB/legacy settings so the UI shows the
+  // actual effective fader value, instead of hiding a gain boost in the signal path.
+  // Preserve intentional mute settings and never reapply after a save.
+  if (!has_microphone_gain_calibration_v1 && has_microphone_gain &&
+      loaded.microphone_audio_gain > -95.99) {
+    loaded.microphone_audio_gain =
+        std::clamp(loaded.microphone_audio_gain + 6.0, -96.0, 6.0206);
   }
 
   // Only migrate an explicitly saved single-encoder choice in an old file.
@@ -401,6 +414,7 @@ bool SaveConfig(const std::filesystem::path& path, const AppConfig& config,
   output << "desktop_audio_enabled=" << (config.desktop_audio_enabled ? "true" : "false")
          << '\n';
   output << "audio_gain_units=db" << '\n';
+  output << "microphone_gain_calibration_version=1" << '\n';
   output << "desktop_audio_gain=" << config.desktop_audio_gain << '\n';
   output << "game_audio_gain=" << config.game_audio_gain << '\n';
   output << "microphone_audio_gain=" << config.microphone_audio_gain << '\n';
