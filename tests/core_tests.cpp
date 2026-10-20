@@ -67,7 +67,7 @@ void TestConfig() {
   CHECK(!klip::ValidateConfig(high_frame_rate).empty());
 
   klip::AppConfig invalid_gain;
-  invalid_gain.desktop_audio_gain = 6.1;
+  invalid_gain.desktop_audio_gain = 12.1;
   invalid_gain.microphone_audio_gain = -96.1;
   CHECK(klip::ValidateConfig(invalid_gain).size() == 2);
 
@@ -231,7 +231,7 @@ void TestConfigRoundTrip() {
   CHECK(loaded.audio_bitrate == 128'000);
   CHECK(!loaded.desktop_audio_enabled);
   CHECK(loaded.microphone_enabled);
-  CHECK(loaded.game_audio_gain == 0.0);
+  CHECK(loaded.game_audio_gain == 6.0);
   CHECK(loaded.desktop_audio_gain == -0.65);
   CHECK(loaded.microphone_audio_gain == -1.35);
   CHECK(loaded.rolling_buffer_seconds == 90.0);
@@ -290,36 +290,84 @@ void TestConfigRoundTrip() {
   std::filesystem::remove(path, ignored);
 }
 
-void TestMicrophoneGainCalibrationMigration() {
+void TestAudioGainCalibrationMigration() {
   const auto path = std::filesystem::temp_directory_path() /
-                    "klip-core-test-microphone-gain-calibration.ini";
+                    "klip-core-test-audio-gain-calibration.ini";
   std::string diagnostic;
   {
     std::ofstream output(path, std::ios::trunc);
     output << "audio_gain_units=db\n";
+    output << "desktop_audio_gain=0\n";
+    output << "game_audio_gain=0\n";
     output << "microphone_audio_gain=0\n";
+    output << "discord_audio_gain=0\n";
+    output << "music_audio_gain=0\n";
   }
 
   klip::AppConfig migrated;
   CHECK(klip::LoadConfig(path, migrated, diagnostic));
+  CHECK(migrated.desktop_audio_gain == 6.0);
+  CHECK(migrated.game_audio_gain == 6.0);
   CHECK(migrated.microphone_audio_gain == 6.0);
+  CHECK(migrated.discord_audio_gain == 6.0);
+  CHECK(migrated.music_audio_gain == 6.0);
 
-  // Saving records the migration version, so the measured +6 dB offset is not
-  // applied a second time on the next launch.
+  // Saving records v2 so no track receives another offset at the next launch.
   CHECK(klip::SaveConfig(path, migrated, diagnostic));
   klip::AppConfig loaded_again;
   CHECK(klip::LoadConfig(path, loaded_again, diagnostic));
+  CHECK(loaded_again.desktop_audio_gain == 6.0);
+  CHECK(loaded_again.game_audio_gain == 6.0);
   CHECK(loaded_again.microphone_audio_gain == 6.0);
+  CHECK(loaded_again.discord_audio_gain == 6.0);
+  CHECK(loaded_again.music_audio_gain == 6.0);
 
+  // A file saved by the previous release already calibrated only its mic.
+  // Move the other four tracks by +6 dB without double-boosting the microphone.
   {
     std::ofstream output(path, std::ios::trunc);
     output << "audio_gain_units=db\n";
-    output << "microphone_audio_gain=1.25\n";
+    output << "desktop_audio_gain=-7.2\n";
+    output << "game_audio_gain=-2.0\n";
+    output << "microphone_audio_gain=6.0\n";
+    output << "discord_audio_gain=-3.7\n";
+    output << "music_audio_gain=-1.2\n";
     output << "microphone_gain_calibration_version=1\n";
   }
-  klip::AppConfig already_calibrated;
-  CHECK(klip::LoadConfig(path, already_calibrated, diagnostic));
-  CHECK(already_calibrated.microphone_audio_gain == 1.25);
+  klip::AppConfig migrated_from_mic_only;
+  CHECK(klip::LoadConfig(path, migrated_from_mic_only, diagnostic));
+  CHECK(std::abs(migrated_from_mic_only.desktop_audio_gain - (-1.2)) < 0.001);
+  CHECK(migrated_from_mic_only.game_audio_gain == 4.0);
+  CHECK(migrated_from_mic_only.microphone_audio_gain == 6.0);
+  CHECK(std::abs(migrated_from_mic_only.discord_audio_gain - 2.3) < 0.001);
+  CHECK(std::abs(migrated_from_mic_only.music_audio_gain - 4.8) < 0.001);
+
+  CHECK(klip::SaveConfig(path, migrated_from_mic_only, diagnostic));
+  klip::AppConfig migrated_twice;
+  CHECK(klip::LoadConfig(path, migrated_twice, diagnostic));
+  CHECK(migrated_twice.desktop_audio_gain == migrated_from_mic_only.desktop_audio_gain);
+  CHECK(migrated_twice.game_audio_gain == migrated_from_mic_only.game_audio_gain);
+  CHECK(migrated_twice.microphone_audio_gain == migrated_from_mic_only.microphone_audio_gain);
+  CHECK(migrated_twice.discord_audio_gain == migrated_from_mic_only.discord_audio_gain);
+  CHECK(migrated_twice.music_audio_gain == migrated_from_mic_only.music_audio_gain);
+
+  // Intentional mute remains mute during calibration.
+  {
+    std::ofstream output(path, std::ios::trunc);
+    output << "audio_gain_units=db\n";
+    output << "desktop_audio_gain=-96\n";
+    output << "game_audio_gain=0\n";
+    output << "microphone_audio_gain=0\n";
+    output << "discord_audio_gain=0\n";
+    output << "music_audio_gain=0\n";
+  }
+  klip::AppConfig mute_preserved;
+  CHECK(klip::LoadConfig(path, mute_preserved, diagnostic));
+  CHECK(mute_preserved.desktop_audio_gain == -96.0);
+  CHECK(mute_preserved.game_audio_gain == 6.0);
+  CHECK(mute_preserved.microphone_audio_gain == 6.0);
+  CHECK(mute_preserved.discord_audio_gain == 6.0);
+  CHECK(mute_preserved.music_audio_gain == 6.0);
 
   std::error_code ignored;
   std::filesystem::remove(path, ignored);
@@ -719,7 +767,7 @@ int main() {
   TestPathToUtf8();
   TestAudioFrameCoverage();
   TestConfigRoundTrip();
-  TestMicrophoneGainCalibrationMigration();
+  TestAudioGainCalibrationMigration();
   TestFrameRatePersistence();
   TestLegacyObsEncoderMigration();
   TestSpscQueue();
