@@ -276,6 +276,11 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   bool has_obs_encoder_id = false;
   bool has_legacy_encoder_preferences = false;
   bool has_db_audio_gain_units = false;
+  bool has_desktop_gain = false;
+  bool has_game_gain = false;
+  bool has_microphone_gain = false;
+  bool has_discord_gain = false;
+  bool has_music_gain = false;
   std::string line;
   std::size_t line_number = 0;
   while (std::getline(input, line)) {
@@ -297,6 +302,11 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
     has_obs_encoder_id |= key == "obs_encoder_id";
     has_legacy_encoder_preferences |= key == "encoder_preferences";
     has_db_audio_gain_units |= key == "audio_gain_units";
+    has_desktop_gain |= key == "desktop_audio_gain";
+    has_game_gain |= key == "game_audio_gain";
+    has_microphone_gain |= key == "microphone_audio_gain";
+    has_discord_gain |= key == "discord_audio_gain";
+    has_music_gain |= key == "music_audio_gain";
   }
 
   // Older settings saved linear multipliers (0..2); new settings store OBS-style dB.
@@ -305,11 +315,11 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
       if (!std::isfinite(multiplier) || multiplier <= 0.0) return -96.0;
       return std::clamp(20.0 * std::log10(multiplier), -96.0, 0.0);
     };
-    loaded.desktop_audio_gain = to_db(loaded.desktop_audio_gain);
-    loaded.game_audio_gain = to_db(loaded.game_audio_gain);
-    loaded.microphone_audio_gain = to_db(loaded.microphone_audio_gain);
-    loaded.discord_audio_gain = to_db(loaded.discord_audio_gain);
-    loaded.music_audio_gain = to_db(loaded.music_audio_gain);
+    loaded.desktop_audio_gain = has_desktop_gain ? to_db(loaded.desktop_audio_gain) : 0.0;
+    loaded.game_audio_gain = has_game_gain ? to_db(loaded.game_audio_gain) : 0.0;
+    loaded.microphone_audio_gain = has_microphone_gain ? to_db(loaded.microphone_audio_gain) : 0.0;
+    loaded.discord_audio_gain = has_discord_gain ? to_db(loaded.discord_audio_gain) : 0.0;
+    loaded.music_audio_gain = has_music_gain ? to_db(loaded.music_audio_gain) : 0.0;
   }
 
   // Only migrate an explicitly saved single-encoder choice in an old file.
