@@ -62,8 +62,8 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
     reject("audio_bitrate", "must be at least 32000 bits/s");
   }
   const auto validate_audio_fader = [&](double value, const char* field) {
-    if (!std::isfinite(value) || value < -96.0 || value > 6.0206)
-      reject(field, "must be between -96.0 dB and +6.02 dB");
+    if (!std::isfinite(value) || value < -96.0 || value > 12.0206)
+      reject(field, "must be between -96.0 dB and +12.02 dB");
   };
   validate_audio_fader(config.desktop_audio_gain, "desktop_audio_gain");
   validate_audio_fader(config.game_audio_gain, "game_audio_gain");
