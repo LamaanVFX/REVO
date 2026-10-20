@@ -279,7 +279,7 @@ bool Switch(const char* id, ImVec2 position, bool enabled) {
 }
 
 float ClampGainDb(float db) {
-  return std::isfinite(db) ? std::clamp(db, -96.0F, 0.0F) : -96.0F;
+  return std::isfinite(db) ? std::clamp(db, -96.0F, 6.0206F) : -96.0F;
 }
 #if defined(KLIP_USE_LIBOBS)
 struct SharedObsFader {
@@ -287,21 +287,37 @@ struct SharedObsFader {
   ~SharedObsFader() { if (fader) obs_fader_destroy(fader); }
 };
 obs_fader_t* GainFader() { static SharedObsFader instance; return instance.fader; }
+constexpr float kBoostMaxDb = 6.0206F;
+constexpr float kBoostStart = 0.92F; // Reserve the rightmost 8% for REVO's legacy +6 dB boost.
 float GainDbToProgress(float db) {
+  db = ClampGainDb(db);
+  if (db > 0.0F) return kBoostStart + (db / kBoostMaxDb) * (1.0F - kBoostStart);
   auto* fader = GainFader();
-  if (!fader) return std::clamp((ClampGainDb(db) + 96.0F) / 96.0F, 0.0F, 1.0F);
-  obs_fader_set_db(fader, ClampGainDb(db));
-  return std::clamp(obs_fader_get_deflection(fader), 0.0F, 1.0F);
+  if (!fader) return kBoostStart * std::clamp((db + 96.0F) / 96.0F, 0.0F, 1.0F);
+  obs_fader_set_db(fader, db);
+  return kBoostStart * std::clamp(obs_fader_get_deflection(fader), 0.0F, 1.0F);
 }
 float GainProgressToDb(float progress) {
+  progress = std::clamp(progress, 0.0F, 1.0F);
+  if (progress >= kBoostStart) return ((progress - kBoostStart) / (1.0F - kBoostStart)) * kBoostMaxDb;
   auto* fader = GainFader();
-  if (!fader) return -96.0F + std::clamp(progress, 0.0F, 1.0F) * 96.0F;
-  obs_fader_set_deflection(fader, std::clamp(progress, 0.0F, 1.0F));
+  if (!fader) return -96.0F + (progress / kBoostStart) * 96.0F;
+  obs_fader_set_deflection(fader, progress / kBoostStart);
   return ClampGainDb(obs_fader_get_db(fader));
 }
 #else
-float GainDbToProgress(float db) { return std::clamp((ClampGainDb(db) + 96.0F) / 96.0F, 0.0F, 1.0F); }
-float GainProgressToDb(float progress) { return -96.0F + std::clamp(progress, 0.0F, 1.0F) * 96.0F; }
+constexpr float kBoostMaxDb = 6.0206F;
+constexpr float kBoostStart = 0.92F;
+float GainDbToProgress(float db) {
+  db = ClampGainDb(db);
+  return db > 0.0F ? kBoostStart + (db / kBoostMaxDb) * (1.0F - kBoostStart)
+                   : kBoostStart * std::clamp((db + 96.0F) / 96.0F, 0.0F, 1.0F);
+}
+float GainProgressToDb(float progress) {
+  progress = std::clamp(progress, 0.0F, 1.0F);
+  return progress >= kBoostStart ? ((progress - kBoostStart) / (1.0F - kBoostStart)) * kBoostMaxDb
+                                 : -96.0F + (progress / kBoostStart) * 96.0F;
+}
 #endif
 float AudioLevelToDb(float level) {
   if (!std::isfinite(level) || level <= 0.0F) return -96.0F;
@@ -1238,7 +1254,7 @@ void MainPanel::RenderDashboard(const ApplicationSnapshot& snapshot, const AppCo
   DrawText(draw, semibold, 12.0F, {content.x + 76.0F, microphone_y + 21.0F},
            microphone_enabled ? kTextU32 : kMutedU32, mic_label);
   DrawProgress(draw, {content.x + 76.0F, microphone_y + 42.0F}, {164.0F, 3.0F},
-               snapshot.microphone_level, snapshot.microphone_active ? kGreen : kPanelBorder);
+               AudioMeterPosition(snapshot.microphone_level), snapshot.microphone_active ? kGreen : kPanelBorder);
   float microphone_gain = static_cast<float>(config.microphone_audio_gain);
   if (GainSlider("##microphone-gain", {level_x, microphone_y + 15.0F}, gain_width,
                  microphone_gain) &&
@@ -1804,13 +1820,13 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
         ResizeReplayBudget(draft_);
       }
       float desktop_db = static_cast<float>(draft_.desktop_audio_gain);
-      if (ImGui::SliderFloat("desktop audio", &desktop_db, -96.0F, 0.0F, "%.1f dB")) draft_.desktop_audio_gain = desktop_db;
+      if (ImGui::SliderFloat("desktop audio", &desktop_db, -96.0F, 6.0206F, "%.1f dB")) draft_.desktop_audio_gain = desktop_db;
       float game_db = static_cast<float>(draft_.game_audio_gain);
-      if (ImGui::SliderFloat("game audio", &game_db, -96.0F, 0.0F, "%.1f dB")) draft_.game_audio_gain = game_db;
+      if (ImGui::SliderFloat("game audio", &game_db, -96.0F, 6.0206F, "%.1f dB")) draft_.game_audio_gain = game_db;
       float discord_db = static_cast<float>(draft_.discord_audio_gain);
-      if (ImGui::SliderFloat("Discord audio", &discord_db, -96.0F, 0.0F, "%.1f dB")) draft_.discord_audio_gain = discord_db;
+      if (ImGui::SliderFloat("Discord audio", &discord_db, -96.0F, 6.0206F, "%.1f dB")) draft_.discord_audio_gain = discord_db;
       float music_db = static_cast<float>(draft_.music_audio_gain);
-      if (ImGui::SliderFloat("Spotify audio", &music_db, -96.0F, 0.0F, "%.1f dB")) draft_.music_audio_gain = music_db;
+      if (ImGui::SliderFloat("Spotify audio", &music_db, -96.0F, 6.0206F, "%.1f dB")) draft_.music_audio_gain = music_db;
 #if defined(KLIP_USE_LIBOBS)
       ImGui::TextWrapped("Track 1 mixes all Windows output, microphone, and Spotify; track 2 is microphone-only. Tracks 3–5 isolate game, Discord, and Spotify. Desktop audio follows the default Windows playback device, while Spotify is also routed into Track 1.");
       if (!draft_.excluded_audio_process.empty()) {
@@ -1838,7 +1854,7 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
                          "low-overhead process-tree exclusion; it does not mute playback for you.");
 #endif
       float microphone_db = static_cast<float>(draft_.microphone_audio_gain);
-      if (ImGui::SliderFloat("microphone audio", &microphone_db, -96.0F, 0.0F, "%.1f dB")) draft_.microphone_audio_gain = microphone_db;
+      if (ImGui::SliderFloat("microphone audio", &microphone_db, -96.0F, 6.0206F, "%.1f dB")) draft_.microphone_audio_gain = microphone_db;
       ImGui::Checkbox("enable microphone (voice / keyboard clicks) on launch",
                       &draft_.microphone_enabled);
     }
