@@ -313,7 +313,7 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
   if (!has_db_audio_gain_units) {
     const auto to_db = [](double multiplier) {
       if (!std::isfinite(multiplier) || multiplier <= 0.0) return -96.0;
-      return std::clamp(20.0 * std::log10(multiplier), -96.0, 0.0);
+      return std::clamp(20.0 * std::log10(multiplier), -96.0, 6.0206);
     };
     loaded.desktop_audio_gain = has_desktop_gain ? to_db(loaded.desktop_audio_gain) : 0.0;
     loaded.game_audio_gain = has_game_gain ? to_db(loaded.game_audio_gain) : 0.0;
