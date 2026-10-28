@@ -455,9 +455,9 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
 
 void ObsEngine::RemoveValorantColorCorrection() noexcept {
   if (!valorant_color_filter_) return;
-  // Apply/remove the correction on the composed scene, not the raw game
-  // capture source. This keeps the VALORANT capture/hook source untouched.
-  auto* target = scene_ ? obs_scene_get_source(scene_) : nullptr;
+  // Keep correction on the game-capture source, like a normal OBS source
+  // filter, so the processing stage and color-space behavior match OBS.
+  auto* target = capture_;
   if (target) obs_source_filter_remove(target, valorant_color_filter_);
   obs_source_release(valorant_color_filter_);
   valorant_color_filter_ = nullptr;
@@ -465,8 +465,8 @@ void ObsEngine::RemoveValorantColorCorrection() noexcept {
 }
 
 void ObsEngine::UpdateValorantColorCorrection() {
-  auto* target = scene_ ? obs_scene_get_source(scene_) : nullptr;
-  const bool should_apply = target && capture_ &&
+  auto* target = capture_;
+  const bool should_apply = target &&
                             config_.target_mode == CaptureTargetMode::kGameWindow &&
                             active_game_ == "Valorant" && valorant_process_running_;
   if (!should_apply) {
@@ -483,8 +483,7 @@ void ObsEngine::UpdateValorantColorCorrection() {
   obs_data_set_double(settings.get(), "brightness", 0.0010);
   obs_data_set_double(settings.get(), "saturation", 0.40);
   obs_data_set_double(settings.get(), "hue_shift", 0.0);
-  // OBS 32.1.2 registers v1 before v2 under the same ID, and source lookup
-  // selects v1. Its opacity is an integer percentage; 1.0 would mean 1% opacity.
+  // color_filter_v2 uses a float opacity range of 0.0..1.0; 1.0 is fully opaque.
   obs_data_set_double(settings.get(), "opacity", 1.0);
   obs_data_set_int(settings.get(), "color_multiply", 0x00FFFFFF);
   obs_data_set_int(settings.get(), "color_add", 0x00000000);
@@ -496,8 +495,7 @@ void ObsEngine::UpdateValorantColorCorrection() {
     logger_.Warning("Could not create OBS Color Correction v2 filter for VALORANT");
     return;
   }
-  // Apply correction after scene composition, leaving the raw VALORANT game
-  // capture source and its anti-cheat-compatible hook untouched.
+  // Apply as a standard source filter so OBS and REVO use the same stage.
   obs_source_filter_add(target, filter);
   // Keep our own reference so it can be removed cleanly when the game closes
   // or the capture source changes.
