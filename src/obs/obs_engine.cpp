@@ -455,14 +455,19 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
 
 void ObsEngine::RemoveValorantColorCorrection() noexcept {
   if (!valorant_color_filter_) return;
-  if (capture_) obs_source_filter_remove(capture_, valorant_color_filter_);
+  // Apply/remove the correction on the composed scene, not the raw game
+  // capture source. This keeps the VALORANT capture/hook source untouched.
+  auto* target = scene_ ? obs_scene_get_source(scene_) : nullptr;
+  if (target) obs_source_filter_remove(target, valorant_color_filter_);
   obs_source_release(valorant_color_filter_);
   valorant_color_filter_ = nullptr;
   logger_.Info("VALORANT-only color correction disabled");
 }
 
 void ObsEngine::UpdateValorantColorCorrection() {
-  const bool should_apply = capture_ && config_.target_mode == CaptureTargetMode::kGameWindow &&
+  auto* target = scene_ ? obs_scene_get_source(scene_) : nullptr;
+  const bool should_apply = target && capture_ &&
+                            config_.target_mode == CaptureTargetMode::kGameWindow &&
                             active_game_ == "Valorant" && valorant_process_running_;
   if (!should_apply) {
     RemoveValorantColorCorrection();
@@ -489,7 +494,9 @@ void ObsEngine::UpdateValorantColorCorrection() {
     logger_.Warning("Could not create OBS Color Correction v2 filter for VALORANT");
     return;
   }
-  obs_source_filter_add(capture_, filter);
+  // Apply correction after scene composition, leaving the raw VALORANT game
+  // capture source and its anti-cheat-compatible hook untouched.
+  obs_source_filter_add(target, filter);
   // Keep our own reference so it can be removed cleanly when the game closes
   // or the capture source changes.
   valorant_color_filter_ = filter;
