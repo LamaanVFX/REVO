@@ -485,11 +485,11 @@ void ObsEngine::UpdateValorantColorCorrection() {
   obs_data_set_double(settings.get(), "hue_shift", 0.0);
   // OBS 32.1.2 registers v1 before v2 under the same ID, and source lookup
   // selects v1. Its opacity is an integer percentage; 1.0 would mean 1% opacity.
-  obs_data_set_int(settings.get(), "opacity", 100);
+  obs_data_set_double(settings.get(), "opacity", 1.0);
   obs_data_set_int(settings.get(), "color_multiply", 0x00FFFFFF);
   obs_data_set_int(settings.get(), "color_add", 0x00000000);
 
-  auto* filter = obs_source_create_private("color_filter",
+  auto* filter = obs_source_create_private("color_filter_v2",
                                            "REVO VALORANT Color Correction",
                                            settings.get());
   if (!filter) {
@@ -548,7 +548,7 @@ bool ObsEngine::ConfigureOverlay(Error& error) {
   }
   if (config_.static_overlay_opacity < 1.0) {
     // Pinned OBS registers its float-opacity implementation as color_filter_v2.
-    Properties properties(obs_get_source_properties("color_filter"), obs_properties_destroy);
+    Properties properties(obs_get_source_properties("color_filter_v2"), obs_properties_destroy);
     auto* opacity = properties ? obs_properties_get(properties.get(), "opacity") : nullptr;
     if (!opacity || obs_property_get_type(opacity) != OBS_PROPERTY_FLOAT ||
         config_.static_overlay_opacity < obs_property_float_min(opacity) ||
@@ -557,7 +557,7 @@ bool ObsEngine::ConfigureOverlay(Error& error) {
     }
     auto filter_settings = MakeData();
     obs_data_set_double(filter_settings.get(), "opacity", config_.static_overlay_opacity);
-    auto* filter = obs_source_create_private("color_filter", "REVO overlay opacity", filter_settings.get());
+    auto* filter = obs_source_create_private("color_filter_v2", "REVO overlay opacity", filter_settings.get());
     if (!filter) { error = Error{ErrorComponent::kCapture, "create overlay opacity", "OBS opacity filter creation failed"}; return false; }
     obs_source_filter_add(overlay_, filter);
     obs_source_release(filter);  // The source now owns the filter reference.
