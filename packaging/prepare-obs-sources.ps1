@@ -32,8 +32,19 @@ foreach($script in Get-ChildItem "$recipes/deps.ffmpeg","$recipes/deps.windows" 
       New-Item -ItemType Directory -Force $source | Out-Null
       git -C $source init --quiet
       git -C $source remote add origin $uri
-      git -C $source fetch --quiet --depth 1 origin $hash
-      if($LASTEXITCODE){throw "Source fetch failed: $name"}
+      # Upstream Git hosts can return transient 5xx errors. Retry pinned
+      # source fetches before failing the packaging job; never change revision.
+      $fetchSucceeded=$false
+      for($attempt=1; $attempt -le 5; $attempt++){
+        git -C $source fetch --quiet --depth 1 origin $hash
+        if($LASTEXITCODE -eq 0){$fetchSucceeded=$true; break}
+        if($attempt -lt 5){
+          $delay=[Math]::Min(30, [int][Math]::Pow(2, $attempt))
+          Write-Warning "Fetch failed for $name (attempt $attempt/5); retrying in $delay seconds."
+          Start-Sleep -Seconds $delay
+        }
+      }
+      if(-not $fetchSucceeded){throw "Source fetch failed after 5 attempts: $name"}
       git -C $source checkout --quiet --detach FETCH_HEAD
     }
     if((& git -C $source rev-parse HEAD) -ne $hash){throw "Source revision mismatch: $name"}
