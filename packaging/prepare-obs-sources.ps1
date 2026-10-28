@@ -23,6 +23,12 @@ foreach($script in Get-ChildItem "$recipes/deps.ffmpeg","$recipes/deps.windows" 
   $name=$defaults.Name.SafeGetValue()
   if($name -notin $required -or $manifest.name -contains $name){continue}
   $uri=$defaults.Uri.SafeGetValue()
+  # Xiph's GitLab endpoint has been returning persistent HTTP 502 errors.
+  # Use the official Xiph.Org GitHub mirror for libvorbis while preserving
+  # the exact revision pinned by the OBS dependency recipe.
+  if($name -eq 'libvorbis' -and $uri -eq 'https://gitlab.xiph.org/xiph/vorbis.git'){
+    $uri='https://github.com/xiph/vorbis.git'
+  }
   $hash=if($defaults.Hash){$defaults.Hash.Extent.Text.Trim("'`"")}else{$defaults.Hashes.SafeGetValue().x64}
   $archive=Join-Path $Destination "$name-source.zip"
   if($uri -match '\.git$'){
