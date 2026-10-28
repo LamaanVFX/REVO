@@ -483,7 +483,9 @@ void ObsEngine::UpdateValorantColorCorrection() {
   obs_data_set_double(settings.get(), "brightness", 0.0010);
   obs_data_set_double(settings.get(), "saturation", 0.40);
   obs_data_set_double(settings.get(), "hue_shift", 0.0);
-  obs_data_set_double(settings.get(), "opacity", 1.0);
+  // Keep OBS's version-specific default opacity. OBS 32.1.2 registers both v1
+  // (integer percent) and v2 (float 0..1) under the same "color_filter" ID;
+  // forcing 1.0 can make a v1 filter 1% opaque and the whole output look black.
   obs_data_set_int(settings.get(), "color_multiply", 0x00FFFFFF);
   obs_data_set_int(settings.get(), "color_add", 0x00000000);
 
