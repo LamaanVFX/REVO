@@ -21,7 +21,7 @@ if(-not (Test-Path $archive)){
 if((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $sha){throw 'OBS runtime SHA-256 mismatch'}
 $official=Join-Path $download 'official'
 if(-not (Test-Path "$official/bin/64bit/obs.dll")){Expand-Archive $archive $official}
-$modules=@('win-capture','win-wasapi','obs-nvenc','obs-qsv11','obs-ffmpeg','obs-x264','image-source','obs-filters')
+$modules=@('win-capture','win-wasapi','obs-nvenc','obs-qsv11','obs-ffmpeg','obs-outputs','obs-x264','image-source','obs-filters')
 if(Test-Path "$Destination/pin.json"){
   $existing=Get-Content "$Destination/pin.json" -Raw | ConvertFrom-Json
   $missing=@($modules | Where-Object {$_ -notin $existing.modules -or -not (Test-Path "$Destination/obs-plugins/64bit/$_.dll")})
