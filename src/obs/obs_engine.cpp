@@ -37,6 +37,30 @@ float GainMultiplierFromDb(double db) noexcept {
 using Properties = std::unique_ptr<obs_properties_t, decltype(&obs_properties_destroy)>;
 Data MakeData() { return Data(obs_data_create(), obs_data_release); }
 
+bool IsValorantShippingProcessRunning() noexcept {
+  HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+  PROCESSENTRY32W process{};
+  process.dwSize = sizeof(process);
+  bool running = false;
+  if (Process32FirstW(snapshot, &process)) {
+    do {
+      std::wstring exe = process.szExeFile;
+      std::transform(exe.begin(), exe.end(), exe.begin(),
+                     [](wchar_t ch) { return static_cast<wchar_t>(towlower(ch)); });
+      // Deliberately exclude VALORANT.exe: the launcher can remain open
+      // without the actual game being captured.
+      if (exe == L"valorant-win64-shipping.exe") {
+        running = true;
+        break;
+      }
+    } while (Process32NextW(snapshot, &process));
+  }
+  CloseHandle(snapshot);
+  return running;
+}
+
 std::filesystem::path RuntimeRoot() {
   std::wstring path(32768, L'\0');
   auto size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
@@ -264,10 +288,8 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     }, reinterpret_cast<LPARAM>(&logger_));
     obs_leave_graphics();
 
-    std::vector<const char*> modules{"win-capture", "win-wasapi", "obs-ffmpeg", "obs-nvenc", "obs-qsv11", "obs-x264"};
+    std::vector<const char*> modules{"win-capture", "win-wasapi", "obs-ffmpeg", "obs-outputs", "obs-nvenc", "obs-qsv11", "obs-x264", "obs-filters"};
     if (config.static_overlay_enabled) modules.push_back("image-source");
-    if ((config.static_overlay_enabled || config.live_overlay_enabled) && config.static_overlay_opacity < 1.0)
-      modules.push_back("obs-filters");
     for (const char* name : modules) {
       obs_module_t* module = nullptr;
       const auto binary = PathToUtf8(root / "obs-plugins/64bit" / (std::string(name) + ".dll"));
@@ -277,7 +299,8 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
       logger_.Info(std::string("OBS module ") + name + (loaded ? " loaded" : " unavailable"));
       if (!loaded && (std::string_view(name) == "win-capture" ||
                       std::string_view(name) == "win-wasapi" || std::string_view(name) == "obs-ffmpeg" ||
-                      std::string_view(name) == "image-source" || std::string_view(name) == "obs-filters"))
+                      std::string_view(name) == "obs-outputs" || std::string_view(name) == "image-source" ||
+                      std::string_view(name) == "obs-filters"))
         throw std::runtime_error(std::string("Required OBS module failed: ") + name);
     }
     obs_post_load_modules();
@@ -406,6 +429,7 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
   auto* next = obs_source_create(type, display_capture ? "REVO display (GDI)" : "REVO gameplay", settings.get(), nullptr);
   if (!next) { error = Error{ErrorComponent::kCapture, "create OBS source", std::string(type) + " creation failed"}; return false; }
   if (capture_item_) obs_sceneitem_remove(capture_item_);
+  RemoveValorantColorCorrection();
   if (capture_) obs_source_release(capture_);
   capture_ = next;
   capture_started_ = std::chrono::steady_clock::now();
@@ -421,12 +445,63 @@ bool ObsEngine::ConfigureCapture(CaptureTargetMode mode, const std::string& labe
   config_.target_mode = mode;
   selected_source_id_ = selected ? selected->id : 0;
   state_.SetTarget(mode, selected ? selected->label : !pending_game_label_.empty() ? "Waiting for " + pending_game_label_ : "Automatic fullscreen game (OBS Game Capture)", selected_source_id_);
+  UpdateValorantColorCorrection();
   logger_.Info(std::string("OBS capture type=") + type + " source=" + (selected ? selected->label : "automatic fullscreen"));
   if (replay_ && obs_output_active(replay_)) {
     StopOutput(replay_);
     replay_waiting_for_source_ = true;
   }
   return true;
+}
+
+void ObsEngine::RemoveValorantColorCorrection() noexcept {
+  if (!valorant_color_filter_) return;
+  // Keep correction on the game-capture source, like a normal OBS source
+  // filter, so the processing stage and color-space behavior match OBS.
+  auto* target = capture_;
+  if (target) obs_source_filter_remove(target, valorant_color_filter_);
+  obs_source_release(valorant_color_filter_);
+  valorant_color_filter_ = nullptr;
+  logger_.Info("VALORANT-only color correction disabled");
+}
+
+void ObsEngine::UpdateValorantColorCorrection() {
+  auto* target = capture_;
+  const bool should_apply = target &&
+                            config_.target_mode == CaptureTargetMode::kGameWindow &&
+                            active_game_ == "Valorant" && valorant_process_running_;
+  if (!should_apply) {
+    RemoveValorantColorCorrection();
+    return;
+  }
+  if (valorant_color_filter_) return;
+
+  auto settings = MakeData();
+  // OBS Color Correction v2 values. These settings are intentionally fixed
+  // and are only attached to the VALORANT capture source.
+  obs_data_set_double(settings.get(), "gamma", 0.0);
+  obs_data_set_double(settings.get(), "contrast", 0.15);
+  obs_data_set_double(settings.get(), "brightness", 0.0010);
+  obs_data_set_double(settings.get(), "saturation", 0.40);
+  obs_data_set_double(settings.get(), "hue_shift", 0.0);
+  // color_filter_v2 uses a float opacity range of 0.0..1.0; 1.0 is fully opaque.
+  obs_data_set_double(settings.get(), "opacity", 1.0);
+  obs_data_set_int(settings.get(), "color_multiply", 0x00FFFFFF);
+  obs_data_set_int(settings.get(), "color_add", 0x00000000);
+
+  auto* filter = obs_source_create_private("color_filter_v2",
+                                           "REVO VALORANT Color Correction",
+                                           settings.get());
+  if (!filter) {
+    logger_.Warning("Could not create OBS Color Correction v2 filter for VALORANT");
+    return;
+  }
+  // Apply as a standard source filter so OBS and REVO use the same stage.
+  obs_source_filter_add(target, filter);
+  // Keep our own reference so it can be removed cleanly when the game closes
+  // or the capture source changes.
+  valorant_color_filter_ = filter;
+  logger_.Info("VALORANT-only color correction enabled: contrast=0.15 saturation=0.40 brightness=0.0010");
 }
 
 bool ObsEngine::ConfigureOverlay(Error& error) {
@@ -876,18 +951,29 @@ bool ObsEngine::StartRecording(Error& error) {
   const std::string recording_pattern = active_game_filename_prefix_.empty()
       ? "recording_%CCYY-%MM-%DD_%hh-%mm-%ss"
       : active_game_filename_prefix_ + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
+  const std::string selected_recording_container = config_.recording_container.empty()
+      ? config_.output_container : config_.recording_container;
+  const bool hybrid_mp4 = selected_recording_container == "hybrid_mp4";
+  const std::string recording_extension = hybrid_mp4 ? "mp4" : selected_recording_container;
   std::string filename_format;
-  if (!ReserveOutputFilename(config_.recording_directory, config_.output_container,
+  if (!ReserveOutputFilename(config_.recording_directory, recording_extension,
                              recording_pattern, recording_reservation_,
                              filename_format, error,
                              ErrorComponent::kRecordingWriter)) return false;
   recording_path_ = recording_reservation_.Path();
   auto settings = MakeData();
   obs_data_set_string(settings.get(), "path", PathToUtf8(recording_path_).c_str());
-  recording_ = obs_output_create("ffmpeg_muxer", "REVO recording", settings.get(), nullptr);
+  // OBS's mp4_output is its native Hybrid MP4 muxer. ffmpeg_muxer produces
+  // conventional MP4/MKV and is retained for the other recording formats.
+  const char* output_id = hybrid_mp4 ? "mp4_output" : "ffmpeg_muxer";
+  recording_ = obs_output_create(output_id,
+                                 hybrid_mp4 ? "REVO Hybrid MP4 recording" : "REVO recording",
+                                 settings.get(), nullptr);
   if (!recording_) {
     recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
-    error = Error{ErrorComponent::kRecordingWriter, "create OBS recording", "ffmpeg_muxer output is unavailable"}; return false;
+    error = Error{ErrorComponent::kRecordingWriter, "create OBS recording",
+                  std::string(output_id) + " output is unavailable"};
+    return false;
   }
   obs_output_set_video_encoder(recording_, video_encoder_);
   obs_output_set_audio_encoder(recording_, audio_encoder_, 0);
@@ -904,7 +990,9 @@ bool ObsEngine::StartRecording(Error& error) {
   }
   recording_started_ = std::chrono::steady_clock::now();
   state_.SetRecording(true, false, recording_path_);
-  logger_.Info("OBS RECORDING STARTED file=" + PathToUtf8(recording_path_));
+  logger_.Info(std::string("OBS RECORDING STARTED format=") +
+               (hybrid_mp4 ? "hybrid_mp4" : selected_recording_container) +
+               " file=" + PathToUtf8(recording_path_));
   return true;
 }
 
@@ -1032,6 +1120,15 @@ void ObsEngine::ProcessSaveQueue() {
 void ObsEngine::Tick() {
   if (!initialized_ || !replay_) return;
   ProcessOutputSignals();
+
+  // Poll independently of recording state so the VALORANT filter is removed
+  // promptly if the game exits during a manual recording.
+  const auto now_for_valorant_filter = std::chrono::steady_clock::now();
+  if (now_for_valorant_filter >= next_valorant_filter_check_) {
+    next_valorant_filter_check_ = now_for_valorant_filter + std::chrono::seconds(1);
+    valorant_process_running_ = IsValorantShippingProcessRunning();
+    UpdateValorantColorCorrection();
+  }
 
   // Automatically follow the first supported game process. The process list is
   // sampled once per second, never on the capture/encoding thread.
@@ -1318,6 +1415,7 @@ void ObsEngine::Tick() {
 
       active_game_ = detected_game;
       active_game_filename_prefix_ = filename_prefix;
+      UpdateValorantColorCorrection();
 
       config_.target_fps = profile_fps;
       config_.obs_replay_bitrate_kbps = profile_bitrate_kbps;
@@ -1539,6 +1637,7 @@ void ObsEngine::Shutdown() noexcept {
   game_audio_level_.store(0.0F, std::memory_order_relaxed);
   microphone_level_.store(0.0F, std::memory_order_relaxed);
   if (initialized_) for (std::uint32_t i = 0; i < 6; ++i) obs_set_output_source(i, nullptr);
+  RemoveValorantColorCorrection();
   if (scene_) { obs_scene_release(scene_); scene_ = nullptr; capture_item_ = nullptr; overlay_item_ = nullptr; }
   if (capture_) { obs_source_release(capture_); capture_ = nullptr; }
   if (overlay_) { obs_source_release(overlay_); overlay_ = nullptr; }

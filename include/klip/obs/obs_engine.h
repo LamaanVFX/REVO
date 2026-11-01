@@ -51,6 +51,8 @@ class ObsEngine {
                            const float* input_peak) noexcept;
   bool ConfigureEncoder(Error& error);
   bool ConfigureOverlay(Error& error);
+  void UpdateValorantColorCorrection();
+  void RemoveValorantColorCorrection() noexcept;
   void UpdateSceneLayout();
   void UpdateAudioMeters();
   bool StartReplayBuffer(Error& error);
@@ -77,7 +79,9 @@ class ObsEngine {
   std::string pending_overlay_label_;
   std::chrono::steady_clock::time_point next_source_refresh_{};
   std::chrono::steady_clock::time_point next_game_detection_{};
+  std::chrono::steady_clock::time_point next_valorant_filter_check_{};
   std::chrono::steady_clock::time_point next_game_audio_retry_{};
+  bool valorant_process_running_ = false;
   bool game_audio_selector_resolved_ = false;
   std::filesystem::path clips_root_;
   std::filesystem::path recordings_root_;
@@ -87,6 +91,7 @@ class ObsEngine {
   obs_scene* scene_ = nullptr;
   obs_scene_item* capture_item_ = nullptr;
   obs_source* capture_ = nullptr;
+  obs_source* valorant_color_filter_ = nullptr;
   obs_source* overlay_ = nullptr;
   obs_scene_item* overlay_item_ = nullptr;
   std::uint32_t layout_width_ = 0, layout_height_ = 0;
