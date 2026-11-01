@@ -288,7 +288,7 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
     }, reinterpret_cast<LPARAM>(&logger_));
     obs_leave_graphics();
 
-    std::vector<const char*> modules{"win-capture", "win-wasapi", "obs-ffmpeg", "obs-nvenc", "obs-qsv11", "obs-x264", "obs-filters"};
+    std::vector<const char*> modules{"win-capture", "win-wasapi", "obs-ffmpeg", "obs-outputs", "obs-nvenc", "obs-qsv11", "obs-x264", "obs-filters"};
     if (config.static_overlay_enabled) modules.push_back("image-source");
     for (const char* name : modules) {
       obs_module_t* module = nullptr;
@@ -299,7 +299,8 @@ bool ObsEngine::Initialize(const AppConfig& config, HWND window, Error& error) {
       logger_.Info(std::string("OBS module ") + name + (loaded ? " loaded" : " unavailable"));
       if (!loaded && (std::string_view(name) == "win-capture" ||
                       std::string_view(name) == "win-wasapi" || std::string_view(name) == "obs-ffmpeg" ||
-                      std::string_view(name) == "image-source" || std::string_view(name) == "obs-filters"))
+                      std::string_view(name) == "obs-outputs" || std::string_view(name) == "image-source" ||
+                      std::string_view(name) == "obs-filters"))
         throw std::runtime_error(std::string("Required OBS module failed: ") + name);
     }
     obs_post_load_modules();
@@ -950,18 +951,29 @@ bool ObsEngine::StartRecording(Error& error) {
   const std::string recording_pattern = active_game_filename_prefix_.empty()
       ? "recording_%CCYY-%MM-%DD_%hh-%mm-%ss"
       : active_game_filename_prefix_ + "-%CCYY-%MM-%DD_%hh-%mm-%ss";
+  const std::string selected_recording_container = config_.recording_container.empty()
+      ? config_.output_container : config_.recording_container;
+  const bool hybrid_mp4 = selected_recording_container == "hybrid_mp4";
+  const std::string recording_extension = hybrid_mp4 ? "mp4" : selected_recording_container;
   std::string filename_format;
-  if (!ReserveOutputFilename(config_.recording_directory, config_.output_container,
+  if (!ReserveOutputFilename(config_.recording_directory, recording_extension,
                              recording_pattern, recording_reservation_,
                              filename_format, error,
                              ErrorComponent::kRecordingWriter)) return false;
   recording_path_ = recording_reservation_.Path();
   auto settings = MakeData();
   obs_data_set_string(settings.get(), "path", PathToUtf8(recording_path_).c_str());
-  recording_ = obs_output_create("ffmpeg_muxer", "REVO recording", settings.get(), nullptr);
+  // OBS's mp4_output is its native Hybrid MP4 muxer. ffmpeg_muxer produces
+  // conventional MP4/MKV and is retained for the other recording formats.
+  const char* output_id = hybrid_mp4 ? "mp4_output" : "ffmpeg_muxer";
+  recording_ = obs_output_create(output_id,
+                                 hybrid_mp4 ? "REVO Hybrid MP4 recording" : "REVO recording",
+                                 settings.get(), nullptr);
   if (!recording_) {
     recording_reservation_.RemoveEmpty(); recording_reservation_.Forget();
-    error = Error{ErrorComponent::kRecordingWriter, "create OBS recording", "ffmpeg_muxer output is unavailable"}; return false;
+    error = Error{ErrorComponent::kRecordingWriter, "create OBS recording",
+                  std::string(output_id) + " output is unavailable"};
+    return false;
   }
   obs_output_set_video_encoder(recording_, video_encoder_);
   obs_output_set_audio_encoder(recording_, audio_encoder_, 0);
@@ -978,7 +990,9 @@ bool ObsEngine::StartRecording(Error& error) {
   }
   recording_started_ = std::chrono::steady_clock::now();
   state_.SetRecording(true, false, recording_path_);
-  logger_.Info("OBS RECORDING STARTED file=" + PathToUtf8(recording_path_));
+  logger_.Info(std::string("OBS RECORDING STARTED format=") +
+               (hybrid_mp4 ? "hybrid_mp4" : selected_recording_container) +
+               " file=" + PathToUtf8(recording_path_));
   return true;
 }
 
