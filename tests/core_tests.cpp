@@ -47,6 +47,15 @@ std::string OptionValue(const klip::EncoderTuning& tuning, const std::string& ke
 void TestConfig() {
   klip::AppConfig config;
   CHECK(klip::ValidateConfig(config).empty());
+  klip::AppConfig hybrid_recording;
+  hybrid_recording.recording_container = "hybrid_mp4";
+#if defined(KLIP_USE_LIBOBS)
+  CHECK(klip::ValidateConfig(hybrid_recording).empty());
+#else
+  CHECK(!klip::ValidateConfig(hybrid_recording).empty());
+#endif
+  hybrid_recording.recording_container = "avi";
+  CHECK(!klip::ValidateConfig(hybrid_recording).empty());
   auto obs_invalid = config;
   obs_invalid.obs_cq = 52;
   obs_invalid.obs_filename_format = "../clip";
@@ -118,6 +127,9 @@ void TestConfig() {
   klip::AppConfig storage_change;
   storage_change.output_directory = "D:/Klip Clips";
   CHECK(klip::RequiresMediaPipelineReconfigure(klip::AppConfig{}, storage_change));
+  klip::AppConfig recording_format_change;
+  recording_format_change.recording_container = "hybrid_mp4";
+  CHECK(klip::RequiresMediaPipelineReconfigure(klip::AppConfig{}, recording_format_change));
   klip::AppConfig capture_limiter;
   CHECK(capture_limiter.obs_limit_game_capture_fps);
   capture_limiter.obs_limit_game_capture_fps = false;
