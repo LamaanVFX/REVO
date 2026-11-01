@@ -1937,11 +1937,26 @@ void MainPanel::RenderSettings(const ApplicationSnapshot& snapshot, const AppCon
       SectionLabel("storage / files and diagnostics");
       SectionLabel("storage / local files");
 #if defined(KLIP_USE_LIBOBS)
-      const char* container_names[] = {"MKV (recommended / crash-safe)", "MP4"};
-      int container_index = draft_.output_container == "mp4" ? 1 : 0;
-      if (ImGui::Combo("clip and recording container", &container_index, container_names, 2))
-        draft_.output_container = container_index == 1 ? "mp4" : "mkv";
-      ImGui::TextColored(kMuted, "MKV is the safe default. MP4 is supported but may be less recoverable after an interrupted write.");
+      const char* clip_container_names[] = {"MKV (recommended / crash-safe)", "MP4"};
+      int clip_container_index = draft_.output_container == "mp4" ? 1 : 0;
+      if (ImGui::Combo("instant replay clip container", &clip_container_index, clip_container_names, 2))
+        draft_.output_container = clip_container_index == 1 ? "mp4" : "mkv";
+
+      const char* recording_container_names[] = {"Same as clips", "MKV", "MP4", "Hybrid MP4 (OBS)"};
+      int recording_container_index = 0;
+      if (draft_.recording_container == "mkv") recording_container_index = 1;
+      else if (draft_.recording_container == "mp4") recording_container_index = 2;
+      else if (draft_.recording_container == "hybrid_mp4") recording_container_index = 3;
+      if (ImGui::Combo("manual recording container", &recording_container_index,
+                       recording_container_names, 4)) {
+        switch (recording_container_index) {
+          case 1: draft_.recording_container = "mkv"; break;
+          case 2: draft_.recording_container = "mp4"; break;
+          case 3: draft_.recording_container = "hybrid_mp4"; break;
+          default: draft_.recording_container.clear(); break;
+        }
+      }
+      ImGui::TextColored(kMuted, "Hybrid MP4 uses OBS's native recoverable MP4 muxer for manual recordings. Instant clips use the clip container above.");
 #endif
       ImGui::InputText("clips folder", clips_path_.data(), clips_path_.size());
       ImGui::InputText("recordings folder", recordings_path_.data(), recordings_path_.size());
