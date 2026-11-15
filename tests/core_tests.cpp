@@ -320,7 +320,7 @@ void TestAudioGainCalibrationMigration() {
   CHECK(klip::LoadConfig(path, migrated, diagnostic));
   CHECK(migrated.desktop_audio_gain == 6.0);
   CHECK(migrated.game_audio_gain == 6.0);
-  CHECK(migrated.microphone_audio_gain == 0.0);
+  CHECK(migrated.microphone_audio_gain == 6.0);
   CHECK(migrated.discord_audio_gain == 6.0);
   CHECK(migrated.music_audio_gain == 6.0);
 
@@ -330,12 +330,12 @@ void TestAudioGainCalibrationMigration() {
   CHECK(klip::LoadConfig(path, loaded_again, diagnostic));
   CHECK(loaded_again.desktop_audio_gain == 6.0);
   CHECK(loaded_again.game_audio_gain == 6.0);
-  CHECK(loaded_again.microphone_audio_gain == 0.0);
+  CHECK(loaded_again.microphone_audio_gain == 6.0);
   CHECK(loaded_again.discord_audio_gain == 6.0);
   CHECK(loaded_again.music_audio_gain == 6.0);
 
-  // A file saved by the earlier microphone-only migration keeps its explicitly
-  // saved mic gain; only the other four playback tracks receive calibration.
+  // A file saved by the previous release already calibrated only its mic.
+  // Move the other four tracks by +6 dB without double-boosting the microphone.
   {
     std::ofstream output(path, std::ios::trunc);
     output << "audio_gain_units=db\n";
@@ -363,7 +363,7 @@ void TestAudioGainCalibrationMigration() {
   CHECK(std::abs(migrated_twice.discord_audio_gain - migrated_from_mic_only.discord_audio_gain) < 0.001);
   CHECK(std::abs(migrated_twice.music_audio_gain - migrated_from_mic_only.music_audio_gain) < 0.001);
 
-  // Intentional mute remains mute during calibration; the mic is not auto-boosted.
+  // Intentional mute remains mute during calibration.
   {
     std::ofstream output(path, std::ios::trunc);
     output << "audio_gain_units=db\n";
@@ -377,7 +377,7 @@ void TestAudioGainCalibrationMigration() {
   CHECK(klip::LoadConfig(path, mute_preserved, diagnostic));
   CHECK(mute_preserved.desktop_audio_gain == -96.0);
   CHECK(mute_preserved.game_audio_gain == 6.0);
-  CHECK(mute_preserved.microphone_audio_gain == 0.0);
+  CHECK(mute_preserved.microphone_audio_gain == 6.0);
   CHECK(mute_preserved.discord_audio_gain == 6.0);
   CHECK(mute_preserved.music_audio_gain == 6.0);
 
