@@ -1,0 +1,61 @@
+name: REVO Toast Notifications OBS Plugin
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/valorant-auto-color-correction
+    paths:
+      - "obs-plugin/**"
+      - "cmake/libobs.cmake"
+      - "tools/bootstrap-validation.ps1"
+      - "tools/build-obs.ps1"
+      - "tools/prepare-obs.ps1"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Check out REVO
+        uses: actions/checkout@v4
+
+      - name: Bootstrap pinned Windows build tools
+        shell: pwsh
+        run: |
+          & tools/bootstrap-validation.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Tool bootstrap failed" }
+
+      - name: Build REVO and native OBS plugin
+        shell: pwsh
+        run: |
+          & tools/build-obs.ps1 -Configuration Release -BuildSuffix obs-toasts
+          if ($LASTEXITCODE -ne 0) { throw "Windows Release build failed" }
+
+      - name: Package OBS plugin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $build = Join-Path $PWD "build-obs-Release-obs-toasts"
+          $stage = Join-Path $env:RUNNER_TEMP "revo-toast-plugin"
+          $dll = Join-Path $build "obs-plugins/64bit/revo-toasts.dll"
+          $locale = Join-Path $build "data/obs-plugins/revo-toasts/locale/en-US.ini"
+          if (-not (Test-Path $dll)) { throw "Plugin DLL was not produced: $dll" }
+          if (-not (Test-Path $locale)) { throw "Plugin locale was not produced: $locale" }
+          New-Item -ItemType Directory -Force (Join-Path $stage "obs-plugins/64bit") | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $stage "data/obs-plugins/revo-toasts/locale") | Out-Null
+          Copy-Item $dll (Join-Path $stage "obs-plugins/64bit/revo-toasts.dll")
+          Copy-Item $locale (Join-Path $stage "data/obs-plugins/revo-toasts/locale/en-US.ini")
+          Copy-Item "obs-plugin/README.md" (Join-Path $stage "README.txt")
+          $zip = Join-Path $env:GITHUB_WORKSPACE "REVO-Toast-Notifications-OBS-win64.zip"
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Force
+
+      - name: Upload installable OBS plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: REVO-Toast-Notifications-OBS-win64
+          path: REVO-Toast-Notifications-OBS-win64.zip
+          if-no-files-found: error
+          retention-days: 30
