@@ -73,17 +73,18 @@ struct AppConfig {
   std::uint32_t output_width = 1920;
   std::uint32_t output_height = 1080;
 #else
-  std::uint32_t output_width = 0;   // Zero locks the first target's width for the media pipeline.
-  std::uint32_t output_height = 0;  // Zero locks the first target's height for the media pipeline.
+  std::uint32_t output_width = 0;
+  std::uint32_t output_height = 0;
 #endif
   std::int64_t video_bitrate = 12'000'000;
   std::int64_t audio_bitrate = 192'000;
   bool desktop_audio_enabled = true;
   // OBS-style fader dB: -96 dB is mute; 0 dB is unity gain.
-  // +6 dB calibration is applied consistently to all REVO audio tracks.
+  // Keep the raw microphone input at unity by default; gain belongs at the interface
+  // or in an intentional OBS/REVO fader adjustment to avoid accidental clipping.
   double desktop_audio_gain = 6.0;
   double game_audio_gain = 6.0;
-  double microphone_audio_gain = 6.0;
+  double microphone_audio_gain = 0.0;
   double discord_audio_gain = 6.0;
   double music_audio_gain = 6.0;
   std::filesystem::path output_directory = "clips";
