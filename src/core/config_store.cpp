@@ -318,38 +318,33 @@ bool LoadConfig(const std::filesystem::path& path, AppConfig& config, std::strin
 
   // Older settings saved linear multipliers (0..2); new settings store OBS-style dB.
   if (!has_db_audio_gain_units) {
-    const auto to_db = [](double multiplier) {
+    const to_db = [](double multiplier) {
       if (!std::isfinite(multiplier) || multiplier <= 0.0) return -96.0;
       return std::clamp(20.0 * std::log10(multiplier), -96.0, 6.0206);
     };
     loaded.desktop_audio_gain = has_desktop_gain ? to_db(loaded.desktop_audio_gain) : 6.0;
     loaded.game_audio_gain = has_game_gain ? to_db(loaded.game_audio_gain) : 6.0;
-    loaded.microphone_audio_gain = has_microphone_gain ? to_db(loaded.microphone_audio_gain) : 6.0;
+    // Never migrate an implicit microphone boost. A clean WASAPI signal at unity
+    // is safer; users can raise the mic fader intentionally when needed.
+    loaded.microphone_audio_gain = has_microphone_gain ? to_db(loaded.microphone_audio_gain) : 0.0;
     loaded.discord_audio_gain = has_discord_gain ? to_db(loaded.discord_audio_gain) : 6.0;
     loaded.music_audio_gain = has_music_gain ? to_db(loaded.music_audio_gain) : 6.0;
   }
 
-  // All five REVO tracks were measured quieter than their OBS counterparts. Apply
-  // one visible +6 dB calibration to each saved track, once, preserving intentional
-  // mute values. A settings file written by the earlier microphone-only calibration
-  // already has its mic adjusted, so only its other four tracks receive the offset.
+  // Keep the historic +6 dB calibration for playback tracks, but do not apply it
+  // to the microphone: boosting a live mic by 6 dB can clip peaks and sound harsh.
   const auto apply_audio_calibration = [](double& gain) {
     if (std::isfinite(gain) && gain > -95.99)
       gain = std::clamp(gain + 6.0, -96.0, 12.0206);
   };
   if (!has_audio_gain_calibration_v2) {
-    if (has_microphone_gain_calibration_v1) {
-      if (has_desktop_gain) apply_audio_calibration(loaded.desktop_audio_gain);
-      if (has_game_gain) apply_audio_calibration(loaded.game_audio_gain);
-      if (has_discord_gain) apply_audio_calibration(loaded.discord_audio_gain);
-      if (has_music_gain) apply_audio_calibration(loaded.music_audio_gain);
-    } else {
-      if (has_desktop_gain) apply_audio_calibration(loaded.desktop_audio_gain);
-      if (has_game_gain) apply_audio_calibration(loaded.game_audio_gain);
-      if (has_microphone_gain) apply_audio_calibration(loaded.microphone_audio_gain);
-      if (has_discord_gain) apply_audio_calibration(loaded.discord_audio_gain);
-      if (has_music_gain) apply_audio_calibration(loaded.music_audio_gain);
-    }
+    if (has_desktop_gain) apply_audio_calibration(loaded.desktop_audio_gain);
+    if (has_game_gain) apply_audio_calibration(loaded.game_audio_gain);
+    if (has_discord_gain) apply_audio_calibration(loaded.discord_audio_gain);
+    if (has_music_gain) apply_audio_calibration(loaded.music_audio_gain);
+  } else if (has_microphone_gain_calibration_v1 && has_microphone_gain) {
+    // Preserve a deliberately calibrated mic only when settings came from the
+    // microphone-only migration; otherwise its value stays exactly as saved.
   }
 
   // Only migrate an explicitly saved single-encoder choice in an old file.
