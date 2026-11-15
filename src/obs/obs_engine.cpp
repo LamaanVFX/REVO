@@ -720,6 +720,17 @@ void ObsEngine::ConfigureAudio(const AppConfig& config) {
             "wasapi_input_capture", "REVO microphone", 2, device,
             GainMultiplierFromDb(config.microphone_audio_gain),
             config.obs_separate_audio_tracks ? (1U | (1U << 1)) : 1U);
+  obs_audio_info microphone_audio_info{};
+  if (obs_get_audio_info(&microphone_audio_info)) {
+    const auto microphone_mixers = config.obs_separate_audio_tracks ? 3U : 1U;
+    logger_.Info("REVO microphone route: preferred_label=\"" +
+                 config.preferred_microphone_name + "\" device_id=\"" + device +
+                 "\" gain_db=" + std::to_string(config.microphone_audio_gain) +
+                 " mixer_mask=" + std::to_string(microphone_mixers) +
+                 " use_device_timing=false engine_rate=" +
+                 std::to_string(microphone_audio_info.samples_per_sec) +
+                 " engine_speakers=" + std::to_string(microphone_audio_info.speakers));
+  }
   configure_process(discord_audio_, "REVO Discord audio", config.discord_audio_window, 3, 1U << 3);
   configure_process(music_audio_, "REVO Spotify audio", config.music_audio_window, 4, 1U << 4);
 
