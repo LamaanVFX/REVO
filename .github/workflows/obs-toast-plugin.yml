@@ -66,8 +66,8 @@ jobs:
           $locale = Join-Path $build "data/locale/en-US.ini"
           if (-not (Test-Path $dll)) { throw "Plugin DLL was not produced: $dll" }
           if (-not (Test-Path $locale)) { throw "Plugin locale was not produced: $locale" }
-          New-Item -ItemType Directory -Force (Join-Path $moduleDir "bin/64bit"), (Join-Path $moduleDir "data/locale") | Out-Null
-          Copy-Item $dll (Join-Path $moduleDir "bin/64bit/revo-toasts.dll")
+          New-Item -ItemType Directory -Force (Join-Path $moduleDir "data/locale") | Out-Null
+          Copy-Item $dll (Join-Path $moduleDir "revo-toasts.dll")
           Copy-Item $locale (Join-Path $moduleDir "data/locale/en-US.ini")
           Copy-Item "obs-plugin/README.md" (Join-Path $moduleDir "README.txt")
           $zip = Join-Path $env:GITHUB_WORKSPACE "REVO-Toast-Notifications-OBS33-win64.zip"
