@@ -10,6 +10,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -93,45 +94,66 @@ void FillRoundedRectangle(Graphics &graphics, const RectF &rect, REAL radius,
 
 HBITMAP CreateToastBitmap(const ToastMessage &toast)
 {
-  Bitmap bitmap(kToastWidth, kToastHeight, PixelFormat32bppPARGB);
-  Graphics graphics(&bitmap);
-  graphics.SetSmoothingMode(SmoothingModeAntiAlias);
-  graphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
-  graphics.SetCompositingMode(CompositingModeSourceOver);
-  graphics.Clear(Color(0, 0, 0, 0));
+  BITMAPINFO bitmap_info{};
+  bitmap_info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bitmap_info.bmiHeader.biWidth = kToastWidth;
+  bitmap_info.bmiHeader.biHeight = -kToastHeight; // top-down DIB
+  bitmap_info.bmiHeader.biPlanes = 1;
+  bitmap_info.bmiHeader.biBitCount = 32;
+  bitmap_info.bmiHeader.biCompression = BI_RGB;
 
-  SolidBrush shadow(Color(95, 0, 0, 0));
-  FillRoundedRectangle(graphics, RectF(5.0F, 8.0F, 508.0F, 118.0F), 18.0F, shadow);
+  void *pixel_memory = nullptr;
+  HBITMAP dib = CreateDIBSection(nullptr, &bitmap_info, DIB_RGB_COLORS,
+                                 &pixel_memory, nullptr, 0);
+  if (!dib || !pixel_memory) {
+    if (dib)
+      DeleteObject(dib);
+    return nullptr;
+  }
+  std::memset(pixel_memory, 0, static_cast<size_t>(kToastWidth) * kToastHeight * 4);
 
-  SolidBrush panel(Color(235, 20, 13, 34));
-  FillRoundedRectangle(graphics, RectF(0.0F, 0.0F, 508.0F, 118.0F), 18.0F, panel);
+  // Bind GDI+ directly to a premultiplied-alpha DIB. UpdateLayeredWindow
+  // requires premultiplied BGRA bytes for correct translucent composition.
+  {
+    Bitmap bitmap(kToastWidth, kToastHeight, kToastWidth * 4,
+                  PixelFormat32bppPARGB, static_cast<BYTE *>(pixel_memory));
+    Graphics graphics(&bitmap);
+    graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+    graphics.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+    graphics.SetCompositingMode(CompositingModeSourceOver);
+    graphics.Clear(Color(0, 0, 0, 0));
 
-  SolidBrush accent(toast.accent);
-  FillRoundedRectangle(graphics, RectF(0.0F, 20.0F, 5.0F, 78.0F), 2.5F, accent);
+    SolidBrush shadow(Color(95, 0, 0, 0));
+    FillRoundedRectangle(graphics, RectF(5.0F, 8.0F, 508.0F, 118.0F), 18.0F, shadow);
 
-  SolidBrush icon_back(Color(45, 156, 255, 255));
-  graphics.FillEllipse(&icon_back, 26.0F, 35.0F, 48.0F, 48.0F);
-  Pen icon_ring(toast.accent, 2.0F);
-  graphics.DrawEllipse(&icon_ring, 26.0F, 35.0F, 48.0F, 48.0F);
+    SolidBrush panel(Color(235, 20, 13, 34));
+    FillRoundedRectangle(graphics, RectF(0.0F, 0.0F, 508.0F, 118.0F), 18.0F, panel);
 
-  Font brand_font(L"Segoe UI", 12.0F, FontStyleBold, UnitPixel);
-  Font title_font(L"Segoe UI", 29.0F, FontStyleBold, UnitPixel);
-  Font detail_font(L"Segoe UI", 15.0F, FontStyleRegular, UnitPixel);
-  SolidBrush brand_brush(Color(190, 197, 194, 211));
-  SolidBrush title_brush(Color(255, 250, 248, 255));
-  SolidBrush detail_brush(Color(220, 201, 196, 216));
+    SolidBrush accent(toast.accent);
+    FillRoundedRectangle(graphics, RectF(0.0F, 20.0F, 5.0F, 78.0F), 2.5F, accent);
 
-  const REAL text_x = 96.0F;
-  graphics.DrawString(L"REVO  /  STATUS", -1, &brand_font,
-                      RectF(text_x, 13.0F, 392.0F, 20.0F), nullptr, &brand_brush);
-  graphics.DrawString(toast.title.c_str(), -1, &title_font,
-                      RectF(text_x, 35.0F, 394.0F, 40.0F), nullptr, &title_brush);
-  graphics.DrawString(toast.subtitle.c_str(), -1, &detail_font,
-                      RectF(text_x, 83.0F, 394.0F, 24.0F), nullptr, &detail_brush);
+    SolidBrush icon_back(Color(45, 156, 255, 255));
+    graphics.FillEllipse(&icon_back, 26.0F, 35.0F, 48.0F, 48.0F);
+    Pen icon_ring(toast.accent, 2.0F);
+    graphics.DrawEllipse(&icon_ring, 26.0F, 35.0F, 48.0F, 48.0F);
 
-  HBITMAP result = nullptr;
-  bitmap.GetHBITMAP(Color(0, 0, 0, 0), &result);
-  return result;
+    Font brand_font(L"Segoe UI", 12.0F, FontStyleBold, UnitPixel);
+    Font title_font(L"Segoe UI", 29.0F, FontStyleBold, UnitPixel);
+    Font detail_font(L"Segoe UI", 15.0F, FontStyleRegular, UnitPixel);
+    SolidBrush brand_brush(Color(190, 197, 194, 211));
+    SolidBrush title_brush(Color(255, 250, 248, 255));
+    SolidBrush detail_brush(Color(220, 201, 196, 216));
+
+    const REAL text_x = 96.0F;
+    graphics.DrawString(L"REVO  /  STATUS", -1, &brand_font,
+                        RectF(text_x, 13.0F, 392.0F, 20.0F), nullptr, &brand_brush);
+    graphics.DrawString(toast.title.c_str(), -1, &title_font,
+                        RectF(text_x, 35.0F, 394.0F, 40.0F), nullptr, &title_brush);
+    graphics.DrawString(toast.subtitle.c_str(), -1, &detail_font,
+                        RectF(text_x, 83.0F, 394.0F, 24.0F), nullptr, &detail_brush);
+  }
+
+  return dib;
 }
 
 void ShowToastOnWindow(HWND window, const ToastMessage &toast)
