@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <vector>
@@ -284,8 +285,12 @@ bool StartToastThread()
 
   g_toast_thread = std::thread(ToastThreadMain);
   std::unique_lock<std::mutex> lock(g_thread_mutex);
-  g_thread_ready.wait_for(lock, std::chrono::seconds(5), [] { return g_thread_started; });
-  return g_thread_started;
+  const bool started = g_thread_ready.wait_for(
+      lock, std::chrono::seconds(5), [] { return g_thread_started; });
+  lock.unlock();
+  if (!started && g_toast_thread.joinable())
+    g_toast_thread.join();
+  return started;
 }
 
 void StopToastThread()
