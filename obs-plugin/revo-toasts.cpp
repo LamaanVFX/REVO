@@ -391,13 +391,43 @@ bool IsOverlayInScene(obs_scene_t *scene, obs_source_t *target)
   return context.found;
 }
 
-void EnsureOverlayInScenes()
+void EnsureOverlayInScenes(bool allow_create)
 {
-  if (!g_overlay_source || !g_frontend.get_scenes || g_frontend_exit_seen)
+  if (!g_frontend.get_scenes || g_frontend_exit_seen)
     return;
 
   obs_frontend_source_list scenes{};
   g_frontend.get_scenes(&scenes);
+  if (scenes.sources.num == 0) {
+    da_free(scenes.sources);
+    return;
+  }
+
+  // Reuse the source restored from the scene collection. Creating a second
+  // source before scene loading completes would duplicate it on every restart.
+  obs_source_t *saved_source = obs_get_source_by_name(kSourceName);
+  if (saved_source && std::string_view(obs_source_get_id(saved_source)) == kSourceId) {
+    if (g_overlay_source && g_overlay_source != saved_source)
+      obs_source_release(g_overlay_source);
+    g_overlay_source = saved_source; // obs_get_source_by_name returns a retained reference
+  } else {
+    if (saved_source)
+      obs_source_release(saved_source);
+    if (g_overlay_source) {
+      obs_source_release(g_overlay_source);
+      g_overlay_source = nullptr;
+    }
+    if (allow_create)
+      g_overlay_source = obs_source_create(kSourceId, kSourceName, nullptr, nullptr);
+  }
+
+  if (!g_overlay_source) {
+    for (size_t i = 0; i < scenes.sources.num; ++i)
+      obs_source_release(scenes.sources.array[i]);
+    da_free(scenes.sources);
+    return;
+  }
+
   for (size_t i = 0; i < scenes.sources.num; ++i) {
     obs_scene_t *scene = obs_scene_from_source(scenes.sources.array[i]);
     if (!scene || IsOverlayInScene(scene, g_overlay_source))
@@ -459,10 +489,12 @@ void FrontendEvent(enum obs_frontend_event event, void *)
     PublishToast(ToastKind::ClipSaved);
     break;
   case OBS_FRONTEND_EVENT_FINISHED_LOADING:
+    EnsureOverlayInScenes(true);
+    break;
   case OBS_FRONTEND_EVENT_SCENE_CHANGED:
   case OBS_FRONTEND_EVENT_SCENE_LIST_CHANGED:
   case OBS_FRONTEND_EVENT_SCENE_COLLECTION_CHANGED:
-    EnsureOverlayInScenes();
+    EnsureOverlayInScenes(false);
     break;
   case OBS_FRONTEND_EVENT_EXIT:
     RemoveOverlayFromScenes();
@@ -515,19 +547,9 @@ bool obs_module_load(void)
   }
 
   g_frontend.add_event_callback(FrontendEvent, nullptr);
-  g_overlay_source = obs_source_create(kSourceId, kSourceName, nullptr, nullptr);
-  if (!g_overlay_source) {
-    g_frontend.remove_event_callback(FrontendEvent, nullptr);
-    if (g_frontend.owned)
-      FreeLibrary(g_frontend.module);
-    g_frontend = {};
-    GdiplusShutdown(g_gdiplus_token);
-    g_gdiplus_token = 0;
-    blog(LOG_ERROR, "[REVO Toasts] Could not create the overlay source.");
-    return false;
-  }
-
-  EnsureOverlayInScenes();
+  // If a saved instance already exists, attach to it. A new source is created
+  // only after OBS announces that the scene collection has finished loading.
+  EnsureOverlayInScenes(false);
   blog(LOG_INFO, "[REVO Toasts] Loaded. Recording and replay notifications are enabled.");
   return true;
 }
