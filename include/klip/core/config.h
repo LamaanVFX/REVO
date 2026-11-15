@@ -80,11 +80,10 @@ struct AppConfig {
   std::int64_t audio_bitrate = 192'000;
   bool desktop_audio_enabled = true;
   // OBS-style fader dB: -96 dB is mute; 0 dB is unity gain.
-  // Keep the raw microphone input at unity by default; gain belongs at the interface
-  // or in an intentional OBS/REVO fader adjustment to avoid accidental clipping.
+  // +6 dB calibration is applied consistently to all REVO audio tracks.
   double desktop_audio_gain = 6.0;
   double game_audio_gain = 6.0;
-  double microphone_audio_gain = 0.0;
+  double microphone_audio_gain = 6.0;
   double discord_audio_gain = 6.0;
   double music_audio_gain = 6.0;
   std::filesystem::path output_directory = "clips";
