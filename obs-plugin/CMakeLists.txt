@@ -16,6 +16,8 @@ target_compile_definitions(revo_toasts PRIVATE
 target_link_libraries(revo_toasts PRIVATE
   OBS::libobs
   gdiplus
+  user32
+  gdi32
 )
 
 if(MSVC)
