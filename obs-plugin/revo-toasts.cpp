@@ -1,6 +1,5 @@
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
 #include <windows.h>
+#include <propidl.h>
 #include <gdiplus.h>
 
 #include <obs-module.h>
@@ -309,7 +308,7 @@ void SetOverlayDefaults(obs_data_t *settings)
   obs_data_set_default_int(settings, "duration_seconds", kDefaultDurationSeconds);
 }
 
-bool PreviewToastButton(void *, obs_properties_t *)
+bool PreviewToastButton(obs_properties_t *, obs_property_t *, void *)
 {
   PublishToast(ToastKind::Preview);
   return true;
