@@ -19,16 +19,18 @@ Built against OBS Studio **33.0.1**, Windows x64. Use a matching build for other
 ## Install — standard OBS installation
 
 1. Close OBS Studio.
-2. Extract the ZIP into your user OBS plugins folder:
-   `%APPDATA%\obs-studio\plugins\`
+2. Extract the ZIP into:
+   `C:\ProgramData\obs-studio\plugins\`
 3. Confirm the extracted layout is:
-   `%APPDATA%\obs-studio\plugins\revo-toasts\bin\64bit\revo-toasts.dll`
-   `%APPDATA%\obs-studio\plugins\revo-toasts\data\locale\en-US.ini`
+   `C:\ProgramData\obs-studio\plugins\revo-toasts\revo-toasts.dll`
+   `C:\ProgramData\obs-studio\plugins\revo-toasts\data\locale\en-US.ini`
 4. Start OBS Studio.
+
+This uses the current OBS 33 plugin layout, with the DLL directly inside the plugin folder.
 
 ## Install — portable OBS
 
-Extract the `revo-toasts` folder into the portable OBS `plugins` directory, preserving the `bin\64bit` and `data\locale` subfolders.
+Extract the `revo-toasts` folder into the portable OBS `plugins` directory. The DLL should be directly inside `plugins\revo-toasts\`, alongside the `data` folder.
 
 ## Uninstall
 
