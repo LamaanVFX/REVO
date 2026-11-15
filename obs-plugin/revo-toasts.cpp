@@ -407,9 +407,14 @@ void EnsureOverlayInScenes(bool allow_create)
   // source before scene loading completes would duplicate it on every restart.
   obs_source_t *saved_source = obs_get_source_by_name(kSourceName);
   if (saved_source && std::string_view(obs_source_get_id(saved_source)) == kSourceId) {
-    if (g_overlay_source && g_overlay_source != saved_source)
-      obs_source_release(g_overlay_source);
-    g_overlay_source = saved_source; // obs_get_source_by_name returns a retained reference
+    if (g_overlay_source == saved_source) {
+      // Keep the existing retained reference and discard this lookup reference.
+      obs_source_release(saved_source);
+    } else {
+      if (g_overlay_source)
+        obs_source_release(g_overlay_source);
+      g_overlay_source = saved_source;
+    }
   } else {
     if (saved_source)
       obs_source_release(saved_source);
