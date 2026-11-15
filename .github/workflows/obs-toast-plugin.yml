@@ -9,6 +9,14 @@ on:
       - "obs-plugin/**"
       - "tools/prepare-obs-plugin-33.ps1"
       - "tools/bootstrap-validation.ps1"
+      - ".github/workflows/obs-toast-plugin.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "obs-plugin/**"
+      - "tools/prepare-obs-plugin-33.ps1"
+      - "tools/bootstrap-validation.ps1"
+      - ".github/workflows/obs-toast-plugin.yml"
 
 permissions:
   contents: read
