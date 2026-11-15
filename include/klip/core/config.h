@@ -62,7 +62,9 @@ struct AppConfig {
   std::string game_audio_window;
   std::string discord_audio_window = "::Discord.exe";
   std::string music_audio_window = "::Spotify.exe";
-  std::string output_container = "mkv";
+  std::string output_container = "mkv";  // Instant replay clip container.
+  // Empty means match the clip container; hybrid_mp4 selects OBS Hybrid MP4 for recordings.
+  std::string recording_container;
   int obs_display_method = 1; // Legacy setting only; display capture uses Klip GDI/BitBlt.
   bool obs_limit_game_capture_fps = true; // Limit capture copies to output FPS; never caps the game itself.
   double clip_duration_seconds = 60.0;
@@ -71,8 +73,8 @@ struct AppConfig {
   std::uint32_t output_width = 1920;
   std::uint32_t output_height = 1080;
 #else
-  std::uint32_t output_width = 0;   // Zero locks the first target's width for the media pipeline.
-  std::uint32_t output_height = 0;  // Zero locks the first target's height for the media pipeline.
+  std::uint32_t output_width = 0;
+  std::uint32_t output_height = 0;
 #endif
   std::int64_t video_bitrate = 12'000'000;
   std::int64_t audio_bitrate = 192'000;

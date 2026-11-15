@@ -34,6 +34,13 @@ std::vector<ValidationIssue> ValidateConfig(const AppConfig& config) {
   if (config.obs_encoder_id.empty()) issues.push_back({"obs_encoder_id", "must not be empty"});
   if (config.output_container != "mkv" && config.output_container != "mp4")
     issues.push_back({"output_container", "must be mkv or mp4"});
+  if (!config.recording_container.empty() && config.recording_container != "mkv" &&
+      config.recording_container != "mp4" && config.recording_container != "hybrid_mp4")
+    issues.push_back({"recording_container", "must be empty (same as clips), mkv, mp4, or hybrid_mp4"});
+#if !defined(KLIP_USE_LIBOBS)
+  if (config.recording_container == "hybrid_mp4")
+    issues.push_back({"recording_container", "Hybrid MP4 requires the OBS output backend"});
+#endif
   if (config.obs_filename_format.empty() || config.obs_filename_format.size() > 200 ||
       config.obs_filename_format.find_first_of("/\\:\r\n") != std::string::npos ||
       config.obs_filename_format.find("..") != std::string::npos)
@@ -252,6 +259,7 @@ bool RequiresMediaPipelineReconfigure(const AppConfig& current, const AppConfig&
          current.discord_audio_window != updated.discord_audio_window ||
          current.music_audio_window != updated.music_audio_window ||
          current.output_container != updated.output_container ||
+         current.recording_container != updated.recording_container ||
          current.target_fps != updated.target_fps ||
          current.output_width != updated.output_width ||
          current.output_height != updated.output_height ||

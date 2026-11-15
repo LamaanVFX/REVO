@@ -1,0 +1,82 @@
+name: REVO Toast Notifications OBS Plugin
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/valorant-auto-color-correction
+    paths:
+      - "obs-plugin/**"
+      - "tools/prepare-obs-plugin-33.ps1"
+      - "tools/bootstrap-validation.ps1"
+      - ".github/workflows/obs-toast-plugin.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "obs-plugin/**"
+      - "tools/prepare-obs-plugin-33.ps1"
+      - "tools/bootstrap-validation.ps1"
+      - ".github/workflows/obs-toast-plugin.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Check out REVO
+        uses: actions/checkout@v4
+
+      - name: Bootstrap pinned Windows build tools
+        shell: pwsh
+        run: |
+          & tools/bootstrap-validation.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Tool bootstrap failed" }
+
+      - name: Prepare pinned OBS 33.0.1 SDK
+        shell: pwsh
+        run: |
+          & tools/prepare-obs-plugin-33.ps1
+          if ($LASTEXITCODE -ne 0) { throw "OBS 33.0.1 SDK preparation failed" }
+
+      - name: Build native OBS plugin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $deps = Join-Path $PWD "work/validation-tools"
+          $llvm = (Get-ChildItem (Join-Path $deps "llvm") -Directory | Select-Object -First 1).FullName
+          $cmake = (Get-ChildItem (Join-Path $deps "cmake") -Directory | Select-Object -First 1).FullName
+          $env:PATH = "$llvm/bin;$cmake/bin;$deps/ninja;$env:PATH"
+          $build = Join-Path $PWD "build-obs-plugin-33"
+          $obsRoot = Join-Path $PWD "work/obs-plugin-sdk-33.0.1"
+          & cmake -S obs-plugin/standalone -B $build -G Ninja "-DCMAKE_BUILD_TYPE=Release" "-DCMAKE_CXX_COMPILER=$llvm/bin/clang++.exe" "-DOBS_ROOT=$obsRoot"
+          if ($LASTEXITCODE -ne 0) { throw "OBS plugin CMake configuration failed" }
+          & cmake --build $build --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw "OBS plugin compilation failed" }
+
+      - name: Package OBS 33.0.1 plugin
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $build = Join-Path $PWD "build-obs-plugin-33/dist/revo-toasts"
+          $stage = Join-Path $env:RUNNER_TEMP "revo-toast-plugin"
+          $moduleDir = Join-Path $stage "revo-toasts"
+          $dll = Join-Path $build "revo-toasts.dll"
+          $locale = Join-Path $build "data/locale/en-US.ini"
+          if (-not (Test-Path $dll)) { throw "Plugin DLL was not produced: $dll" }
+          if (-not (Test-Path $locale)) { throw "Plugin locale was not produced: $locale" }
+          New-Item -ItemType Directory -Force (Join-Path $moduleDir "data/locale") | Out-Null
+          Copy-Item $dll (Join-Path $moduleDir "revo-toasts.dll")
+          Copy-Item $locale (Join-Path $moduleDir "data/locale/en-US.ini")
+          Copy-Item "obs-plugin/README.md" (Join-Path $moduleDir "README.txt")
+          $zip = Join-Path $env:GITHUB_WORKSPACE "REVO-Toast-Notifications-OBS33-win64.zip"
+          Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Force
+
+      - name: Upload installable OBS plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: REVO-Toast-Notifications-OBS33-win64
+          path: REVO-Toast-Notifications-OBS33-win64.zip
+          if-no-files-found: error
+          retention-days: 30

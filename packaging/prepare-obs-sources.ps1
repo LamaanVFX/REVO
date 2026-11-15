@@ -23,6 +23,12 @@ foreach($script in Get-ChildItem "$recipes/deps.ffmpeg","$recipes/deps.windows" 
   $name=$defaults.Name.SafeGetValue()
   if($name -notin $required -or $manifest.name -contains $name){continue}
   $uri=$defaults.Uri.SafeGetValue()
+  # Xiph's GitLab endpoint has been returning persistent HTTP 502 errors.
+  # Use the official Xiph.Org GitHub mirror for libvorbis while preserving
+  # the exact revision pinned by the OBS dependency recipe.
+  if($name -eq 'libvorbis' -and $uri -eq 'https://gitlab.xiph.org/xiph/vorbis.git'){
+    $uri='https://github.com/xiph/vorbis.git'
+  }
   $hash=if($defaults.Hash){$defaults.Hash.Extent.Text.Trim("'`"")}else{$defaults.Hashes.SafeGetValue().x64}
   $archive=Join-Path $Destination "$name-source.zip"
   if($uri -match '\.git$'){
@@ -32,8 +38,19 @@ foreach($script in Get-ChildItem "$recipes/deps.ffmpeg","$recipes/deps.windows" 
       New-Item -ItemType Directory -Force $source | Out-Null
       git -C $source init --quiet
       git -C $source remote add origin $uri
-      git -C $source fetch --quiet --depth 1 origin $hash
-      if($LASTEXITCODE){throw "Source fetch failed: $name"}
+      # Upstream Git hosts can return transient 5xx errors. Retry pinned
+      # source fetches before failing the packaging job; never change revision.
+      $fetchSucceeded=$false
+      for($attempt=1; $attempt -le 5; $attempt++){
+        git -C $source fetch --quiet --depth 1 origin $hash
+        if($LASTEXITCODE -eq 0){$fetchSucceeded=$true; break}
+        if($attempt -lt 5){
+          $delay=[Math]::Min(30, [int][Math]::Pow(2, $attempt))
+          Write-Warning "Fetch failed for $name (attempt $attempt/5); retrying in $delay seconds."
+          Start-Sleep -Seconds $delay
+        }
+      }
+      if(-not $fetchSucceeded){throw "Source fetch failed after 5 attempts: $name"}
       git -C $source checkout --quiet --detach FETCH_HEAD
     }
     if((& git -C $source rev-parse HEAD) -ne $hash){throw "Source revision mismatch: $name"}

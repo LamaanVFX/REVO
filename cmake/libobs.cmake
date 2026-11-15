@@ -68,3 +68,6 @@ add_custom_command(TARGET klip_app POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${OBS_ROOT}/licenses" "${CMAKE_CURRENT_BINARY_DIR}/licenses"
   COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${OBS_ROOT}/pin.json" "${CMAKE_CURRENT_BINARY_DIR}/obs-pin.json"
   COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts" "$<TARGET_FILE_DIR:klip_app>/fonts")
+
+# Build the separately installable native OBS notification plugin.
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/obs-plugin" "${CMAKE_CURRENT_BINARY_DIR}/obs-plugin")
