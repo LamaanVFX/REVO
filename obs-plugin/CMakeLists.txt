@@ -24,6 +24,12 @@ else()
   target_compile_options(revo_toasts PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
+# OBS itself is a separately built host application. Do not make the plugin
+# depend on LLVM-mingw's runtime DLLs being present in OBS's installation.
+if(MINGW)
+  target_link_options(revo_toasts PRIVATE -static)
+endif()
+
 set_target_properties(revo_toasts PROPERTIES
   PREFIX ""
   OUTPUT_NAME "revo-toasts"
